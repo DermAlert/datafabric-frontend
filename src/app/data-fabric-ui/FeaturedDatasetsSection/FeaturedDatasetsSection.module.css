@@ -1,0 +1,105 @@
+.featuredDatasetsSection {
+    margin-bottom: 1.5rem;
+  }
+  
+  .sectionHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  
+  .sectionTitle {
+    font-size: 1.125rem;
+    font-weight: 500;
+    color: #1f2937;
+    margin-bottom: 0;
+  }
+  
+  .sectionTitleLink {
+    font-size: 0.875rem;
+    color: #4f46e5;
+  }
+  
+  .sectionTitleLink:hover {
+    color: #4338ca;
+  }
+  
+  .datasetCards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  
+  .datasetCard {
+    background-color: white;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  }
+  
+  .datasetCardHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+  
+  .datasetCardLeft {
+    display: flex;
+    align-items: center;
+  }
+  
+  .datasetCardIcon {
+    height: 2rem;
+    width: 2rem;
+    border-radius: 0.375rem;
+    background-color: #ffedd5;
+    color: #9a3412;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 0.75rem;
+  }
+  
+  .datasetCardIconInner {
+    height: 1rem;
+    width: 1rem;
+  }
+  
+  .datasetCardInfo {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .datasetCardTitle {
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin: 0;
+  }
+  
+  .datasetCardSource {
+    font-size: 0.75rem;
+    color: #6b7280;
+  }
+  
+  .datasetCardMeta {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-bottom: 0.5rem;
+  }
+  
+  .datasetCardActions {
+    display: flex;
+    align-items: center;
+  }
+  
+  .datasetCardLink {
+    font-size: 0.75rem;
+    color: #4f46e5;
+    margin-right: 0.75rem;
+  }
+  
+  .datasetCardLink:last-child {
+    margin-right: 0;
+  }

@@ -1,0 +1,62 @@
+.statusBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  
+  .statusSuccess {
+    background-color: #dcfce7;
+    color: #166534;
+  }
+  
+  .statusRunning {
+    background-color: #dbeafe;
+    color: #1e40af;
+  }
+  
+  .statusFailed {
+    background-color: #fee2e2;
+    color: #b91c1c;
+  }
+  
+  .statusPaused {
+    background-color: #f3f4f6;
+    color: #4b5563;
+  }
+  
+  .statusIconSuccess {
+    height: 0.85rem;
+    width: 0.85rem;
+    color: #166534;
+    margin-right: 0.25rem;
+  }
+  
+  .statusIconRunning {
+    height: 0.85rem;
+    width: 0.85rem;
+    color: #1e40af;
+    margin-right: 0.25rem;
+    animation: spin 2s linear infinite;
+  }
+  
+  .statusIconFailed {
+    height: 0.85rem;
+    width: 0.85rem;
+    color: #b91c1c;
+    margin-right: 0.25rem;
+  }
+  
+  .statusIconPaused {
+    height: 0.85rem;
+    width: 0.85rem;
+    color: #4b5563;
+    margin-right: 0.25rem;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }

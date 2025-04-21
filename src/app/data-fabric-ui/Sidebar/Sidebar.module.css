@@ -1,0 +1,75 @@
+.mainSidebar {
+    width: 16rem;
+    background-color: white;
+    border-right: 1px solid #e5e7eb;
+  }
+  
+  .sidebarHeader {
+    padding: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  .sidebarTitle {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #1f2937;
+  }
+  
+  .sidebarSubtitle {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: 0.25rem;
+  }
+  
+  .sidebarContent {
+    padding: 1rem;
+  }
+  
+  .sidebarSectionHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+  }
+  
+  .sidebarSectionTitle {
+    font-weight: 500;
+    color: #374151;
+  }
+  
+  .addButton {
+    color: #4f46e5;
+    padding: 0.25rem;
+    border-radius: 9999px;
+  }
+  
+  .addButton:hover {
+    background-color: #eef2ff;
+  }
+  
+  .sourcesList {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .addSourceButton {
+    display: flex;
+    align-items: center;
+    font-size: 0.875rem;
+    color: #4f46e5;
+    padding: 0.5rem;
+    margin-top: 1rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+  }
+  
+  .addSourceButton:hover {
+    background-color: #eef2ff;
+  }
+  
+  .addSourceIcon {
+    height: 1rem;
+    width: 1rem;
+    margin-right: 0.5rem;
+  }

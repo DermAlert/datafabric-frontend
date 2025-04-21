@@ -1,0 +1,65 @@
+.leftNav {
+    width: 4rem;
+    background-color: #4338ca;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+  }
+  
+  .logoContainer {
+    margin-bottom: 2rem;
+  }
+  
+  .logoIcon {
+    height: 2rem;
+    width: 2rem;
+    border-radius: 0.5rem;
+    background-color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .logoIconInner {
+    height: 1.25rem;
+    width: 1.25rem;
+    color: #4338ca;
+  }
+  
+  .navLinksContainer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    flex-grow: 1;
+  }
+  
+  .navButton {
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+  }
+  
+  .navButtonActive {
+    background-color: #4f46e5;
+  }
+  
+  .navIcon {
+    height: 1.25rem;
+    width: 1.25rem;
+  }
+  
+  .bottomNavContainer {
+    margin-top: auto;
+  }
+  
+  .bottomNavButton {
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+  }
+  
+  .bottomNavButtonMargin {
+    margin-top: 1rem;
+  }

@@ -1,0 +1,27 @@
+.dagsTabs {
+    display: flex;
+    border-bottom: 1px solid #e5e7eb;
+    margin-bottom: 1.5rem;
+  }
+  
+  .dagsTab {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #6b7280;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+  
+  .dagsTab:hover {
+    color: #111827;
+  }
+  
+  .dagsTabActive {
+    color: #4f46e5;
+    border-bottom-color: #4f46e5;
+  }
