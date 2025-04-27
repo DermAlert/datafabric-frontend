@@ -8,6 +8,7 @@ import styles from './globalOld.module.css';
 import DataExplorerContent from './DataExplorerContent/DataExplorerContent';
 import DatabaseConnectContent from '../components/DatabaseConnect/DatabaseConnectContent';
 import AirflowContent from '../components/Airflow/AirflowContent';
+import DataDefineModal from './Sidebar/AddDatasetModal/AddDatasetModal';
 
 export default function DataFabricUI() {
   const [activeSidebar, setActiveSidebar] = useState("sources");
@@ -20,6 +21,8 @@ export default function DataFabricUI() {
   // State to track which view we're in: "dashboard", "explorer", "database", or "airflow"
   const [currentView, setCurrentView] = useState("dashboard");
   const [selectedDataset, setSelectedDataset] = useState(null);
+
+  const [shoeDataDefineModal, setShowDataDefineModal] = useState(false);
   
   const toggleSource = (sourceId) => {
     setExpandedSources({
@@ -27,7 +30,13 @@ export default function DataFabricUI() {
       [sourceId]: !expandedSources[sourceId]
     });
   };
+  const openDataDefineModal = () => {
+    setShowDataDefineModal(true);
+  };
 
+  const closeDataDefineModal = () => {
+    setShowDataDefineModal(false);
+  };
   const openAddDatasetModal = () => {
     setShowAddDatasetModal(true);
   };
@@ -55,7 +64,6 @@ export default function DataFabricUI() {
     setSelectedDataset(null);
   };
 
-  // Getting user info
   const currentUser = {
     username: "hannanhunny01", 
     initials: "HH"
@@ -78,6 +86,7 @@ export default function DataFabricUI() {
             openAddDatasetModal={openAddDatasetModal}
             openDatasetExplorer={openDatasetExplorer}
             openAirflowView={openAirflowView}
+            openDataDefineModal={openDataDefineModal}
           />
           
           <MainContent 
@@ -115,6 +124,9 @@ export default function DataFabricUI() {
       
       {showAddDatasetModal && (
         <AddDatasetModal onClose={closeAddDatasetModal} />
+      )}
+      {shoeDataDefineModal && (
+        <DataDefineModal onClose={closeDataDefineModal} />
       )}
     </div>
   );

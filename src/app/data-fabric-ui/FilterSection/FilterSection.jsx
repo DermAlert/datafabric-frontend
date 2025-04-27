@@ -1,28 +1,126 @@
-import { Calendar, ChevronDown, Search } from 'lucide-react';
+import { useState } from 'react';
+import { Calendar, ChevronDown, Search, Database, Table, FileText } from 'lucide-react';
 import styles from './FilterSection.module.css';
 
-export default function FilterSection({ expanded, toggleFilter }) {
+export default function FilterSection({ expanded, toggleFilter })  {
+    const [selectedFields, setSelectedFields] = useState({});
+  const [searchTerms, setSearchTerms] = useState({
+    ISIC: '',
+    ClinicalData: '',
+    UserSource: ''
+  });
+
+  const handleFieldToggle = (sourceId, fieldName) => {
+    setSelectedFields(prev => {
+      const key = `${sourceId}.${fieldName}`;
+      const newSelected = { ...prev };
+      
+      if (newSelected[key]) {
+        delete newSelected[key];
+      } else {
+        newSelected[key] = true;
+      }
+      
+      return newSelected;
+    });
+  };
+
+  const handleSearchChange = (sourceId, term) => {
+    setSearchTerms(prev => ({
+      ...prev,
+      [sourceId]: term
+    }));
+  };
+
+  const clearAllFilters = () => {
+    setSelectedFields({});
+    setSearchTerms({
+      ISIC: '',
+      ClinicalData: '',
+      UserSource: ''
+    });
+  };
+
+  const applyFilters = () => {
+    const selectedFieldsList = Object.keys(selectedFields).map(key => {
+      const [sourceId, fieldName] = key.split('.');
+      return { sourceId, fieldName };
+    });
+    
+    if (onApplyFilters) {
+      onApplyFilters(selectedFieldsList);
+    }
+  };
+
+  const getSelectedCountBySource = (sourceId) => {
+    return Object.keys(selectedFields).filter(key => key.startsWith(`${sourceId}.`)).length;
+  };
+
   return (
     <div className={styles.filterSection}>
       <div className={styles.filterHeader} onClick={toggleFilter}>
-        <h3 className={styles.filterTitle}>Filtros de Dados</h3>
+        <h3 className={styles.filterTitle}>Seleção de Metadados</h3>
         <ChevronDown className={`${styles.filterChevron} ${!expanded ? styles.filterChevronCollapsed : ''}`} />
       </div>
       
       {expanded && (
         <div className={styles.filterContent}>
-          <DateRangeFilter />
-          <ProductsFilter />
-          <ReferenceCodeFilter />
-          <BuyersFilter />
-          <LocationFilter />
+
+          <UserSourceFilter 
+            selectedFields={selectedFields}
+            onFieldToggle={handleFieldToggle}
+            searchTerm={searchTerms.UserSource}
+            onSearchChange={(term) => handleSearchChange('UserSource', term)}
+          />
+          <ISICArchiveFilter 
+            selectedFields={selectedFields}
+            onFieldToggle={handleFieldToggle}
+            searchTerm={searchTerms.ISIC}
+            onSearchChange={(term) => handleSearchChange('ISIC', term)}
+          />
+          
+          <ClinicalDataFilter 
+            selectedFields={selectedFields}
+            onFieldToggle={handleFieldToggle}
+            searchTerm={searchTerms.ClinicalData}
+            onSearchChange={(term) => handleSearchChange('ClinicalData', term)}
+          />
+          
+
+          
+          <div className={styles.selectionSummary}>
+            <div className={styles.selectionStats}>
+              <div className={styles.selectionStatItem}>
+                <span className={styles.statLabel}>ISIC Archive:</span>
+                <span className={styles.statValue}>{getSelectedCountBySource('ISIC')} campos</span>
+              </div>
+              <div className={styles.selectionStatItem}>
+                <span className={styles.statLabel}>Dados Clínicos:</span>
+                <span className={styles.statValue}>{getSelectedCountBySource('ClinicalData')} campos</span>
+              </div>
+              <div className={styles.selectionStatItem}>
+                <span className={styles.statLabel}>Fonte Personalizada:</span>
+                <span className={styles.statValue}>{getSelectedCountBySource('UserSource')} campos</span>
+              </div>
+              <div className={styles.selectionStatItem}>
+                <span className={styles.statLabel}>Total:</span>
+                <span className={styles.statValueTotal}>{Object.keys(selectedFields).length} campos</span>
+              </div>
+            </div>
+          </div>
           
           <div className={styles.formButtonContainer}>
-            <button className={styles.secondaryButton}>
-              Limpar Filtros
+            <button 
+              className={styles.secondaryButton} 
+              onClick={clearAllFilters}
+            >
+              Limpar Seleção
             </button>
-            <button className={styles.primaryButton}>
-              Aplicar Filtros
+            <button 
+              className={styles.primaryButton}
+              onClick={applyFilters}
+            >
+              Aplicar Seleção
             </button>
           </div>
         </div>
@@ -31,167 +129,264 @@ export default function FilterSection({ expanded, toggleFilter }) {
   );
 }
 
-function DateRangeFilter() {
+function ISICArchiveFilter({ selectedFields, onFieldToggle, searchTerm, onSearchChange }) {
+  const fields = [
+    { name: 'isic_id', description: 'Unique identifier for the image' },
+    { name: 'attribution', description: 'Source of the image' },
+    { name: 'copyright_license', description: 'License terms for usage' },
+    { name: 'diagnosis_1', description: 'Primary diagnosis' },
+    { name: 'diagnosis_2', description: 'Secondary diagnosis' },
+    { name: 'diagnosis_3', description: 'Tertiary diagnosis' },
+    { name: 'diagnosis_4', description: 'Additional diagnosis information' },
+    { name: 'diagnosis_5', description: 'Additional diagnosis information' },
+    { name: 'image_type', description: 'Type of medical imaging used' },
+    { name: 'melanocytic', description: 'Whether the lesion is melanocytic' },
+    { name: 'patient_id', description: 'Anonymous patient identifier' }
+  ];
+  
+  const filteredFields = fields.filter(field =>
+    field.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    field.description.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  
+  const selectedCount = Object.keys(selectedFields).filter(key => 
+    key.startsWith('ISIC.')
+  ).length;
+  
   return (
     <div className={styles.formGroup}>
-      <h4 className={styles.formGroupTitle}>Período</h4>
-      <div className={styles.dateRangeContainer}>
-        <div className={styles.dateFieldContainer}>
-          <label className={styles.dateFieldLabel}>Data Inicial</label>
-          <div className={styles.dateFieldInputContainer}>
-            <input 
-              type="text" 
-              value="01/01/2022" 
-              className={styles.dateInput}
-            />
-            <button className={styles.calendarButton}>
-              <Calendar className={styles.calendarIcon} />
-            </button>
-          </div>
+      <div className={styles.formGroupHeader}>
+        <div className={styles.formGroupTitleContainer}>
+          <FileText className={styles.sourceIcon} />
+          <h4 className={styles.formGroupTitle}>
+            ISIC Archive
+            <span className={styles.sourceBadge}>Referência</span>
+          </h4>
         </div>
-        <div className={styles.dateFieldContainer}>
-          <label className={styles.dateFieldLabel}>Data Final</label>
-          <div className={styles.dateFieldInputContainer}>
-            <input 
-              type="text" 
-              value="01/01/2025" 
-              className={styles.dateInput}
-            />
-            <button className={styles.calendarButton}>
-              <Calendar className={styles.calendarIcon} />
-            </button>
+        {selectedCount > 0 && (
+          <div className={styles.selectedCount}>{selectedCount} selecionados</div>
+        )}
+      </div>
+      
+      <div className={styles.searchInputContainer}>
+        <input 
+          type="text" 
+          placeholder="Buscar campos..." 
+          className={styles.formInput}
+          value={searchTerm}
+          onChange={(e) => onSearchChange(e.target.value)}
+        />
+        <Search className={styles.searchIcon} />
+      </div>
+      
+      <div className={styles.checkboxGrid}>
+        {filteredFields.map((field) => (
+          <div key={field.name} className={styles.metadataFieldContainer}>
+            <div className={styles.checkboxContainer}>
+              <input 
+                type="checkbox" 
+                id={`ISIC-${field.name}`} 
+                className={styles.checkbox}
+                checked={!!selectedFields[`ISIC.${field.name}`]}
+                onChange={() => onFieldToggle('ISIC', field.name)}
+              />
+              <label htmlFor={`ISIC-${field.name}`} className={styles.checkboxLabel}>
+                <span className={styles.fieldName}>{field.name}</span>
+              </label>
+            </div>
+            <div className={styles.fieldDescription} title={field.description}>
+              {field.description}
+            </div>
           </div>
+        ))}
+      </div>
+      
+      {filteredFields.length === 0 && (
+        <div className={styles.noResultsMessage}>
+          Nenhum campo encontrado para "{searchTerm}"
         </div>
+      )}
+      
+      <div className={styles.helperText}>
+        {selectedCount === 0 
+          ? "Nenhum campo selecionado" 
+          : `${selectedCount} campo${selectedCount > 1 ? 's' : ''} selecionado${selectedCount > 1 ? 's' : ''}`
+        }
       </div>
     </div>
   );
 }
 
-function ProductsFilter() {
+function ClinicalDataFilter({ selectedFields, onFieldToggle, searchTerm, onSearchChange }) {
+  const fields = [
+    { name: 'id', description: '' },
+    { name: 'diagnostico_cancer', description: '' },
+    { name: 'tipo_cancer', description: '' },
+    { name: 'cor_pele', description: '' },
+    { name: 'historico_familiar', description: '' },
+    { name: 'tipo_cancer_familiar', description: '' },
+    { name: 'exposicao_solar_prolongada', description: '' },
+    { name: 'uso_protetor_solar', description: '' },
+    { name: 'mudanca_pintas_manchas', description: '' },
+    { name: 'caracteristicas_lesoes', description: 'Lesion characteristics' },
+    { name: 'hipertenso', description: ' hypertension' },
+    { name: 'diabetes', description: ' has diabetes' },
+    { name: 'cardiopatia', description: ' has heart disease' },
+    { name: 'outras_doencas', description: ' other diseases' },
+    { name: 'uso_medicamentos', description: ' uses medication' }
+  ];
+  
+  const filteredFields = fields.filter(field =>
+    field.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    field.description.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  
+  const selectedCount = Object.keys(selectedFields).filter(key => 
+    key.startsWith('ClinicalData.')
+  ).length;
+  
   return (
     <div className={styles.formGroup}>
-      <h4 className={styles.formGroupTitle}>Produtos</h4>
+      <div className={styles.formGroupHeader}>
+        <div className={styles.formGroupTitleContainer}>
+          <Database className={styles.sourceIcon} />
+          <h4 className={styles.formGroupTitle}>
+            Dados Clínicos
+            <span className={styles.sourceBadgeClinical}>Integrado</span>
+          </h4>
+        </div>
+        {selectedCount > 0 && (
+          <div className={styles.selectedCount}>{selectedCount} selecionados</div>
+        )}
+      </div>
+      
       <div className={styles.searchInputContainer}>
         <input 
           type="text" 
-          placeholder="Buscar produtos..." 
+          placeholder="Buscar campos..." 
           className={styles.formInput}
+          value={searchTerm}
+          onChange={(e) => onSearchChange(e.target.value)}
         />
         <Search className={styles.searchIcon} />
       </div>
       
       <div className={styles.checkboxGrid}>
-        {[
-          "02226-FLTM SUPER-BREATH",
-          "01868-THREADER 1.2 M8-12",
-          "01865-THREADER 1.2 OTW",
-          "01877-GODZILLA PT",
-          "01873-GODZILLA 8F",
-          "01876-GODZILLA PT 8F",
-          "02085-CHOICE PT EXCHANGE",
-          "02009-CHOICE PLUS",
-          "02766-ADVANTAGE UP KIT"
-        ].map((product, index) => (
-          <div key={index} className={styles.checkboxContainer}>
-            <input type="checkbox" id={`prod${index+1}`} className={styles.checkbox} />
-            <label htmlFor={`prod${index+1}`} className={styles.checkboxLabel}>{product}</label>
+        {filteredFields.map((field) => (
+          <div key={field.name} className={styles.metadataFieldContainer}>
+            <div className={styles.checkboxContainer}>
+              <input 
+                type="checkbox" 
+                id={`ClinicalData-${field.name}`} 
+                className={styles.checkbox}
+                checked={!!selectedFields[`ClinicalData.${field.name}`]}
+                onChange={() => onFieldToggle('ClinicalData', field.name)}
+              />
+              <label htmlFor={`ClinicalData-${field.name}`} className={styles.checkboxLabel}>
+                <span className={styles.fieldName}>{field.name}</span>
+              </label>
+            </div>
+            <div className={styles.fieldDescription} title={field.description}>
+              {field.description}
+            </div>
           </div>
         ))}
       </div>
       
+      {filteredFields.length === 0 && (
+        <div className={styles.noResultsMessage}>
+          Nenhum campo encontrado para "{searchTerm}"
+        </div>
+      )}
+      
       <div className={styles.helperText}>
-        Nenhum produto selecionado (mostrando todos)
+        {selectedCount === 0 
+          ? "Nenhum campo selecionado" 
+          : `${selectedCount} campo${selectedCount > 1 ? 's' : ''} selecionado${selectedCount > 1 ? 's' : ''}`
+        }
       </div>
     </div>
   );
 }
 
-function ReferenceCodeFilter() {
+function UserSourceFilter({ selectedFields, onFieldToggle, searchTerm, onSearchChange }) {
+  const fields = [
+    { name: 'custom_diagnosis', description: 'Diagnóstico personalizado' },
+    { name: 'custom_severity', description: 'Grau de severidade' },
+    { name: 'patient_age', description: 'Idade do paciente' },
+    { name: 'treatment_score', description: 'Pontuação de eficácia do tratamento' },
+    { name: 'follow_up_months', description: 'Meses de acompanhamento' },
+    { name: 'risk_factor', description: 'Fator de risco calculado' }
+  ];
+  
+  const filteredFields = fields.filter(field =>
+    field.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    field.description.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  
+  const selectedCount = Object.keys(selectedFields).filter(key => 
+    key.startsWith('UserSource.')
+  ).length;
+  
   return (
     <div className={styles.formGroup}>
-      <h4 className={styles.formGroupTitle}>Código de Referência</h4>
+      <div className={styles.formGroupHeader}>
+        <div className={styles.formGroupTitleContainer}>
+          <Table className={styles.sourceIcon} />
+          <h4 className={styles.formGroupTitle}>
+            Fonte Personalizada
+            <span className={styles.sourceBadgeUser}>Usuário</span>
+          </h4>
+        </div>
+        {selectedCount > 0 && (
+          <div className={styles.selectedCount}>{selectedCount} selecionados</div>
+        )}
+      </div>
+      
       <div className={styles.searchInputContainer}>
         <input 
           type="text" 
-          placeholder="Buscar códigos..." 
+          placeholder="Buscar campos..." 
           className={styles.formInput}
+          value={searchTerm}
+          onChange={(e) => onSearchChange(e.target.value)}
         />
         <Search className={styles.searchIcon} />
       </div>
       
       <div className={styles.checkboxGrid}>
-        {[
-          "H749121160J1",
-          "H749121190J1",
-          "H749121220J1",
-          "H749121330J1",
-          "H749121350J1",
-          "H749121390J1"
-        ].map((code, index) => (
-          <div key={index} className={styles.checkboxContainer}>
-            <input type="checkbox" id={`ref${index+1}`} className={styles.checkbox} />
-            <label htmlFor={`ref${index+1}`} className={styles.checkboxLabel}>{code}</label>
+        {filteredFields.map((field) => (
+          <div key={field.name} className={styles.metadataFieldContainer}>
+            <div className={styles.checkboxContainer}>
+              <input 
+                type="checkbox" 
+                id={`UserSource-${field.name}`} 
+                className={styles.checkbox}
+                checked={!!selectedFields[`UserSource.${field.name}`]}
+                onChange={() => onFieldToggle('UserSource', field.name)}
+              />
+              <label htmlFor={`UserSource-${field.name}`} className={styles.checkboxLabel}>
+                <span className={styles.fieldName}>{field.name}</span>
+              </label>
+            </div>
+            <div className={styles.fieldDescription} title={field.description}>
+              {field.description}
+            </div>
           </div>
         ))}
       </div>
+      
+      {filteredFields.length === 0 && (
+        <div className={styles.noResultsMessage}>
+          Nenhum campo encontrado para "{searchTerm}"
+        </div>
+      )}
       
       <div className={styles.helperText}>
-        Nenhum Código de Referência selecionado (mostrando todos)
-      </div>
-    </div>
-  );
-}
-
-function BuyersFilter() {
-  return (
-    <div className={styles.formGroup}>
-      <h4 className={styles.formGroupTitle}>Compradores</h4>
-      <div className={styles.searchInputContainer}>
-        <input 
-          type="text" 
-          placeholder="Buscar comprador..." 
-          className={styles.formInput}
-        />
-        <Search className={styles.searchIcon} />
-      </div>
-      
-      <div className={styles.checkboxGrid}>
-        {[
-          "Ana Silva",
-          "Carlos Mendes",
-          "Julia Santos",
-          "Rafael Gomes",
-          "Thiago Almeida"
-        ].map((buyer, index) => (
-          <div key={index} className={styles.checkboxContainer}>
-            <input type="checkbox" id={`buyer${index+1}`} className={styles.checkbox} />
-            <label htmlFor={`buyer${index+1}`} className={styles.checkboxLabel}>{buyer}</label>
-          </div>
-        ))}
-      </div>
-      
-      <div className={styles.helperText}>
-        Nenhum comprador selecionado (mostrando todos)
-      </div>
-    </div>
-  );
-}
-
-function LocationFilter() {
-  return (
-    <div className={styles.formGroup}>
-      <h4 className={styles.formGroupTitle}>Localização</h4>
-      <div className={styles.checkboxGrid}>
-        {[
-          "São Paulo",
-          "Rio de Janeiro",
-          "Belo Horizonte"
-        ].map((location, index) => (
-          <div key={index} className={styles.checkboxContainer}>
-            <input type="checkbox" id={`loc${index+1}`} className={styles.checkbox} />
-            <label htmlFor={`loc${index+1}`} className={styles.checkboxLabel}>{location}</label>
-          </div>
-        ))}
+        {selectedCount === 0 
+          ? "Nenhum campo selecionado" 
+          : `${selectedCount} campo${selectedCount > 1 ? 's' : ''} selecionado${selectedCount > 1 ? 's' : ''}`
+        }
       </div>
     </div>
   );

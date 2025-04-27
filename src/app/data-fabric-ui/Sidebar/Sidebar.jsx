@@ -2,7 +2,7 @@ import { PlusCircle } from 'lucide-react';
 import SourceItem from '../SourceItem/SourceItem';
 import styles from './Sidebar.module.css';
 
-export default function Sidebar({ expandedSources, toggleSource, openAddDatasetModal, openDatasetExplorer, openAirflowView }) {
+export default function Sidebar({ expandedSources, toggleSource, openAddDatasetModal, openDatasetExplorer, openAirflowView ,openDataDefineModal }) {
   return (
     <div className={styles.mainSidebar}>
       <div className={styles.sidebarHeader}>
@@ -13,7 +13,7 @@ export default function Sidebar({ expandedSources, toggleSource, openAddDatasetM
       <div className={styles.sidebarContent}>
         <div className={styles.sidebarSectionHeader}>
           <h3 className={styles.sidebarSectionTitle}>Fontes de Dados</h3>
-          <button className={styles.addButton}>
+          <button className={styles.addButton} onClick={openDataDefineModal}>
             <PlusCircle className={styles.navIcon} />
           </button>
         </div>
