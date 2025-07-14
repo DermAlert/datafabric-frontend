@@ -1,3 +1,4 @@
+"use client"
 import { useState } from 'react';
 import { X, Eye, EyeOff, RefreshCw, Link2 } from 'lucide-react';
 import styles from '../../data-fabric-ui/globalOld.module.css'

@@ -1,3 +1,5 @@
+"use client"
+
 import { useState } from 'react';
 import { X, PlusCircle } from 'lucide-react';
 import styles from './CreateDagModal.module.css';

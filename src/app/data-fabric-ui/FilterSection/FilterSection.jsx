@@ -1,3 +1,4 @@
+"use client"
 import { useState } from 'react';
 import { Calendar, ChevronDown, Search, Database, Table, FileText } from 'lucide-react';
 import styles from './FilterSection.module.css';

@@ -1,3 +1,4 @@
+"use client"
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   X, Database, Server, Table, Columns, Search, ChevronDown, ChevronRight,
