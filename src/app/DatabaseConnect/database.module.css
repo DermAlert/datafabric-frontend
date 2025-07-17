@@ -1,0 +1,874 @@
+/* Layout */
+.mainLayout {
+    display: flex;
+    height: 100vh;
+    background-color: #f3f4f6;
+  }
+  
+  /* Left Navigation */
+  .leftNav {
+    width: 4rem;
+    background-color: #4338ca;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+  }
+  
+  .logoContainer {
+    margin-bottom: 2rem;
+  }
+  
+  .logoIcon {
+    height: 2rem;
+    width: 2rem;
+    border-radius: 0.5rem;
+    background-color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .logoIconInner {
+    height: 1.25rem;
+    width: 1.25rem;
+    color: #4338ca;
+  }
+  
+  .navLinksContainer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    flex-grow: 1;
+  }
+  
+  .navButton {
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+  }
+  
+  .navButtonActive {
+    background-color: #4f46e5;
+  }
+  
+  .navIcon {
+    height: 1.25rem;
+    width: 1.25rem;
+  }
+  
+  .bottomNavContainer {
+    margin-top: auto;
+  }
+  
+  .bottomNavButton {
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+  }
+  
+  .bottomNavButtonMargin {
+    margin-top: 1rem;
+  }
+  
+  /* Main Sidebar */
+  .mainSidebar {
+    width: 16rem;
+    background-color: white;
+    border-right: 1px solid #e5e7eb;
+  }
+  
+  .sidebarHeader {
+    padding: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  .sidebarTitle {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #1f2937;
+  }
+  
+  .sidebarSubtitle {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: 0.25rem;
+  }
+  
+  .sidebarContent {
+    padding: 1rem;
+  }
+  
+  .sidebarSectionHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+  }
+  
+  .sidebarSectionTitle {
+    font-weight: 500;
+    color: #374151;
+  }
+  
+  .addButton {
+    color: #4f46e5;
+    padding: 0.25rem;
+    border-radius: 9999px;
+  }
+  
+  .addButton:hover {
+    background-color: #eef2ff;
+  }
+  
+  .sourcesList {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .sourceItem {
+    border-radius: 0.375rem;
+  }
+  
+  .sourceItem:hover {
+    background-color: #f9fafb;
+  }
+  
+  .sourceHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem;
+    cursor: pointer;
+  }
+  
+  .sourceHeaderLeft {
+    display: flex;
+    align-items: center;
+  }
+  
+  .chevron {
+    height: 1rem;
+    width: 1rem;
+    color: #6b7280;
+    margin-right: 0.5rem;
+  }
+  
+  .sourceIconMinio {
+    height: 1rem;
+    width: 1rem;
+    color: #f97316;
+    margin-right: 0.5rem;
+  }
+  
+  .sourceIconPostgres {
+    height: 1rem;
+    width: 1rem;
+    color: #3b82f6;
+    margin-right: 0.5rem;
+  }
+  
+  .sourceIconAirflow {
+    height: 1rem;
+    width: 1rem;
+    color: #22c55e;
+    margin-right: 0.5rem;
+  }
+  
+  .sourceLabel {
+    font-size: 0.875rem;
+  }
+  
+  .sourceBadgeMinio {
+    font-size: 0.75rem;
+    background-color: #ffedd5;
+    color: #9a3412;
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+  }
+  
+  .sourceBadgePostgres {
+    font-size: 0.75rem;
+    background-color: #dbeafe;
+    color: #1e40af;
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+  }
+  
+  .sourceBadgeAirflow {
+    font-size: 0.75rem;
+    background-color: #dcfce7;
+    color: #166534;
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+  }
+  
+  .sourceContent {
+    margin-left: 2rem;
+    border-left: 1px solid #e5e7eb;
+    padding-left: 0.5rem;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+  
+  .sourceContentLabel {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-bottom: 0.5rem;
+  }
+  
+  .datasetList {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  
+  .datasetItem {
+    display: flex;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+  }
+  
+  .datasetItem:hover {
+    background-color: #f3f4f6;
+  }
+  
+  .datasetIcon {
+    height: 0.75rem;
+    width: 0.75rem;
+    margin-right: 0.5rem;
+    color: #6b7280;
+  }
+  
+  .addDatasetButton {
+    display: flex;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    color: #4f46e5;
+    border-radius: 0.25rem;
+    cursor: pointer;
+  }
+  
+  .addDatasetButton:hover {
+    background-color: #eef2ff;
+  }
+  
+  .addDatasetIcon {
+    height: 0.75rem;
+    width: 0.75rem;
+    margin-right: 0.5rem;
+  }
+  
+  .addSourceButton {
+    display: flex;
+    align-items: center;
+    font-size: 0.875rem;
+    color: #4f46e5;
+    padding: 0.5rem;
+    margin-top: 1rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+  }
+  
+  .addSourceButton:hover {
+    background-color: #eef2ff;
+  }
+  
+  .addSourceIcon {
+    height: 1rem;
+    width: 1rem;
+    margin-right: 0.5rem;
+  }
+  
+  /* Main Content */
+  .mainContent {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .header {
+    background-color: white;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  
+  .headerTitle {
+    display: flex;
+    align-items: center;
+  }
+  
+  .pageTitle {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1f2937;
+  }
+  
+  .headerRight {
+    display: flex;
+    align-items: center;
+  }
+  
+  .searchContainer {
+    position: relative;
+    margin-right: 1rem;
+  }
+  
+  .searchInput {
+    padding-left: 2rem;
+    padding-right: 0.75rem;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+  }
+  
+  .searchInput:focus {
+    outline: none;
+    ring: 2px;
+    ring-color: #6366f1;
+    border-color: #6366f1;
+  }
+  
+  .searchIcon {
+    position: absolute;
+    left: 0.5rem;
+    top: 0.5rem;
+    height: 1rem;
+    width: 1rem;
+    color: #9ca3af;
+  }
+  
+  .userAvatar {
+    height: 2rem;
+    width: 2rem;
+    border-radius: 9999px;
+    background-color: #4338ca;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .userInitials {
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  
+  .content {
+    flex: 1;
+    padding: 1.5rem;
+    background-color: #f3f4f6;
+    overflow: auto;
+  }
+  
+  .summarySection {
+    margin-bottom: 1.5rem;
+  }
+  
+  .sectionTitle {
+    font-size: 1.125rem;
+    font-weight: 500;
+    color: #1f2937;
+    margin-bottom: 1rem;
+  }
+  
+  .summaryCards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+  }
+  
+  .summaryCard {
+    background-color: white;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  }
+  
+  .cardLabel {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #6b7280;
+    margin-bottom: 0.25rem;
+  }
+  
+  .cardValue {
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+  
+  .recentSourcesSection {
+    margin-bottom: 1.5rem;
+  }
+  
+  .sectionHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  
+  .sectionTitleLink {
+    font-size: 0.875rem;
+    color: #4f46e5;
+  }
+  
+  .sectionTitleLink:hover {
+    color: #4338ca;
+  }
+  
+  .tableContainer {
+    background-color: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+  }
+  
+  .table {
+    min-width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  
+  .tableHeader {
+    background-color: #f9fafb;
+  }
+  
+  .tableHeaderCell {
+    padding: 0.75rem 1.5rem;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  
+  .tableBody {
+    background-color: white;
+  }
+  
+  .tableRow {
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  .tableCell {
+    padding: 1rem 1.5rem;
+    white-space: nowrap;
+    font-size: 0.875rem;
+    color: #1f2937;
+  }
+  
+  .tableCellMuted {
+    padding: 1rem 1.5rem;
+    white-space: nowrap;
+    font-size: 0.875rem;
+    color: #6b7280;
+  }
+  
+  .statusBadge {
+    padding: 0 0.5rem;
+    display: inline-flex;
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+    font-weight: 600;
+    border-radius: 9999px;
+    background-color: #dcfce7;
+    color: #166534;
+  }
+  
+  .featuredDatasetsSection {
+    margin-bottom: 1.5rem;
+  }
+  
+  .datasetCards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  
+  .datasetCard {
+    background-color: white;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  }
+  
+  .datasetCardHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+  
+  .datasetCardLeft {
+    display: flex;
+    align-items: center;
+  }
+  
+  .datasetCardIcon {
+    height: 2rem;
+    width: 2rem;
+    border-radius: 0.375rem;
+    background-color: #ffedd5;
+    color: #9a3412;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 0.75rem;
+  }
+  
+  .datasetCardIconInner {
+    height: 1rem;
+    width: 1rem;
+  }
+  
+  .datasetCardInfo {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .datasetCardTitle {
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  
+  .datasetCardSource {
+    font-size: 0.75rem;
+    color: #6b7280;
+  }
+  
+  .datasetCardMeta {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-bottom: 0.5rem;
+  }
+  
+  .datasetCardActions {
+    display: flex;
+    align-items: center;
+  }
+  
+  .datasetCardLink {
+    font-size: 0.75rem;
+    color: #4f46e5;
+    margin-right: 0.75rem;
+  }
+  
+  .datasetCardLink:last-child {
+    margin-right: 0;
+  }
+  
+  /* Modal */
+  .modalOverlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 50;
+  }
+  
+  .modalContainer {
+    background-color: white;
+    border-radius: 0.5rem;
+    width: 75%;
+    max-width: 56rem;
+    max-height: 75%;
+    overflow: auto;
+  }
+  
+  .modalHeader {
+    padding: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .modalTitle {
+    font-size: 1.125rem;
+    font-weight: 500;
+    color: #1f2937;
+  }
+  
+  .closeButton {
+    color: #9ca3af;
+  }
+  
+  .closeButton:hover {
+    color: #4b5563;
+  }
+  
+  .closeIcon {
+    height: 1.25rem;
+    width: 1.25rem;
+  }
+  
+  .modalBody {
+    padding: 1.5rem;
+  }
+  
+  .filterSection {
+    border: 1px solid #e5e7eb;
+    border-radius: 0.375rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .filterHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background-color: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+    cursor: pointer;
+  }
+  
+  .filterTitle {
+    font-weight: 500;
+    color: #374151;
+  }
+  
+  .filterChevron {
+    height: 1rem;
+    width: 1rem;
+    color: #6b7280;
+    transform: rotate(0deg);
+  }
+  
+  .filterChevronCollapsed {
+    transform: rotate(180deg);
+  }
+  
+  .filterContent {
+    padding: 1rem;
+  }
+  
+  .formGroup {
+    margin-bottom: 1.5rem;
+  }
+  
+  .formGroupTitle {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 0.5rem;
+  }
+  
+  .dateRangeContainer {
+    display: flex;
+    gap: 1rem;
+  }
+  
+  .dateFieldContainer {
+    flex: 1;
+  }
+  
+  .dateFieldLabel {
+    display: block;
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-bottom: 0.25rem;
+  }
+  
+  .dateFieldInputContainer {
+    position: relative;
+  }
+  
+  .dateInput {
+    border: 1px solid #d1d5db;
+    border-radius: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    width: 8rem;
+  }
+  
+  .calendarButton {
+    position: absolute;
+    right: 0.5rem;
+    top: 0.5rem;
+  }
+  
+  .calendarIcon {
+    height: 1rem;
+    width: 1rem;
+    color: #9ca3af;
+  }
+  
+  .searchInputContainer {
+    position: relative;
+    margin-bottom: 0.5rem;
+  }
+  
+  .checkboxGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem 1rem;
+    max-height: 10rem;
+    overflow-y: auto;
+  }
+  
+  .checkboxContainer {
+    display: flex;
+    align-items: center;
+  }
+  
+  .checkbox {
+    margin-right: 0.5rem;
+  }
+  
+  .checkboxLabel {
+    font-size: 0.75rem;
+    color: #374151;
+  }
+  
+  .helperText {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: 0.5rem;
+  }
+  
+  .formButtonContainer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1rem;
+  }
+  
+  .secondaryButton {
+    padding: 0.5rem 1rem;
+    margin-right: 0.5rem;
+    font-size: 0.875rem;
+    color: #374151;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+  }
+  
+  .secondaryButton:hover {
+    background-color: #f9fafb;
+  }
+  
+  .primaryButton {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    color: white;
+    background-color: #4f46e5;
+    border-radius: 0.375rem;
+  }
+  
+  .primaryButton:hover {
+    background-color: #4338ca;
+  }
+  
+  .formField {
+    margin-bottom: 1.5rem;
+  }
+  
+  .formLabel {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 0.25rem;
+  }
+  
+  .formInput {
+    border: 1px solid #d1d5db;
+    border-radius: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    width: 100%;
+  }
+  
+  .formTextarea {
+    border: 1px solid #d1d5db;
+    border-radius: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    width: 100%;
+    height: 6rem;
+  }
+  
+  .formSelect {
+    border: 1px solid #d1d5db;
+    border-radius: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    width: 100%;
+    background-color: white;
+  }
+  
+  .formHint {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: 0.25rem;
+  }
+  
+  .uploadContainer {
+    border: 2px dashed #d1d5db;
+    border-radius: 0.375rem;
+    padding: 1.5rem;
+    text-align: center;
+  }
+  
+  .uploadIcon {
+    height: 3rem;
+    width: 3rem;
+    color: #9ca3af;
+    margin: 0 auto 0.75rem auto;
+  }
+  
+  .uploadText {
+    font-size: 0.875rem;
+    color: #4b5563;
+    margin-bottom: 0.25rem;
+  }
+  
+  .uploadHint {
+    font-size: 0.75rem;
+    color: #6b7280;
+  }
+  
+  .uploadButton {
+    margin-top: 1rem;
+    padding: 0.25rem 1rem;
+    font-size: 0.875rem;
+    color: #4f46e5;
+    border: 1px solid #4f46e5;
+    border-radius: 0.375rem;
+  }
+  
+  .uploadButton:hover {
+    background-color: #eef2ff;
+  }
+  
+  .modalFooter {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 1rem;
+    border-top: 1px solid #e5e7eb;
+  }
+  
+  .twoColGrid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+  }
+  
+  .threeColGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+  }
