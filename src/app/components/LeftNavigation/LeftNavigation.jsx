@@ -1,6 +1,6 @@
 "use client";
 
-import { Database, Home, Grid, BarChart, Users, Settings, LogOut } from 'lucide-react';
+import { Database, Home, Grid, BarChart, Users, Settings, LogOut, Server, Activity, Compass } from 'lucide-react';
 import styles from './LeftNavigation.module.css';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -8,17 +8,16 @@ export default function LeftNavigation() {
   const pathname = usePathname();
   const router = useRouter();
 
-  // Map route paths to the corresponding sidebar keys for active styling
   const routeSidebarMap = {
     '/': 'home',
-    '/sources': 'sources',
-    '/datasets': 'datasets',
-    '/analytics': 'analytics',
-    '/users': 'users',
+    '/airflow': 'airflow',
+    '/databaseconnect': 'databaseconnect',
+    '/explorer': 'explorer',
+    '/maincontent': 'maincontent'
   };
 
   // Find the active route
-  const activeSidebar = routeSidebarMap[pathname] || '';
+  const activeSidebar = routeSidebarMap[pathname.toLowerCase()] || '';
 
   return (
     <div className={styles.leftNav}>
@@ -37,32 +36,32 @@ export default function LeftNavigation() {
           <Home className={styles.navIcon} />
         </button>
         <button
-          className={`${styles.navButton} ${activeSidebar === "sources" ? styles.navButtonActive : ""}`}
-          onClick={() => router.push('/sources')}
-          aria-label="Sources"
+          className={`${styles.navButton} ${activeSidebar === "airflow" ? styles.navButtonActive : ""}`}
+          onClick={() => router.push('/airflow')}
+          aria-label="Airflow"
         >
-          <Database className={styles.navIcon} />
+          <Activity className={styles.navIcon} />
         </button>
         <button
-          className={`${styles.navButton} ${activeSidebar === "datasets" ? styles.navButtonActive : ""}`}
-          onClick={() => router.push('/datasets')}
-          aria-label="Datasets"
+          className={`${styles.navButton} ${activeSidebar === "databaseconnect" ? styles.navButtonActive : ""}`}
+          onClick={() => router.push('/databaseconnect')}
+          aria-label="Database Connect"
+        >
+          <Server className={styles.navIcon} />
+        </button>
+        <button
+          className={`${styles.navButton} ${activeSidebar === "explorer" ? styles.navButtonActive : ""}`}
+          onClick={() => router.push('/explorer')}
+          aria-label="Explorer"
+        >
+          <Compass className={styles.navIcon} />
+        </button>
+        <button
+          className={`${styles.navButton} ${activeSidebar === "maincontent" ? styles.navButtonActive : ""}`}
+          onClick={() => router.push('/maincontent')}
+          aria-label="Main Content"
         >
           <Grid className={styles.navIcon} />
-        </button>
-        <button
-          className={`${styles.navButton} ${activeSidebar === "analytics" ? styles.navButtonActive : ""}`}
-          onClick={() => router.push('/analytics')}
-          aria-label="Analytics"
-        >
-          <BarChart className={styles.navIcon} />
-        </button>
-        <button
-          className={`${styles.navButton} ${activeSidebar === "users" ? styles.navButtonActive : ""}`}
-          onClick={() => router.push('/users')}
-          aria-label="Users"
-        >
-          <Users className={styles.navIcon} />
         </button>
       </div>
       
