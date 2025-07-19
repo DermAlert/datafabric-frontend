@@ -1,7 +1,7 @@
-import { Link2, Key, Settings, PlusCircle } from 'lucide-react';
+import { Link2, Key, Settings, PlusCircle, Layers } from 'lucide-react';
 import dbStyles from '../DatabaseConnectUI.module.css';
 
-export default function ConnectionTabs({ activeTab, setActiveTab, openAddConnectionModal }) {
+export default function ConnectionTabs({ activeTab, setActiveTab, openAddConnectionModal, openAddTypeModal }) {
   return (
     <div className={dbStyles.tabsContainer}>
       <div className={dbStyles.tabs}>
@@ -26,12 +26,25 @@ export default function ConnectionTabs({ activeTab, setActiveTab, openAddConnect
           <Settings className={dbStyles.tabIcon} />
           <span>Configurações</span>
         </button>
+        <button 
+          className={`${dbStyles.tab} ${activeTab === "connectionTypes" ? dbStyles.tabActive : ""}`}
+          onClick={() => setActiveTab("connectionTypes")}
+        >
+          <Layers className={dbStyles.tabIcon} />
+          <span>Tipos de Conexão</span>
+        </button>
       </div>
       
-      <button className={dbStyles.addConnectionButton} onClick={openAddConnectionModal}>
-        <PlusCircle className={dbStyles.addConnectionIcon} />
-        <span>Nova Conexão</span>
-      </button>
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <button className={dbStyles.addConnectionButton} onClick={openAddConnectionModal}>
+          <PlusCircle className={dbStyles.addConnectionIcon} />
+          <span>Nova Conexão</span>
+        </button>
+        <button className={dbStyles.addConnectionButton} style={{ background: '#059669' }} onClick={openAddTypeModal}>
+          <Layers className={dbStyles.addConnectionIcon} />
+          <span>Novo Tipo</span>
+        </button>
+      </div>
     </div>
   );
 }

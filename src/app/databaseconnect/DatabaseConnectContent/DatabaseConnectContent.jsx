@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Database } from 'lucide-react';
-import styles from '../database.module.css'
+import styles from '../database.module.css';
 import dbStyles from '../DatabaseConnectUI.module.css';
 
 import ConnectionHeader from '../ConnectionHeader/ConnectionHeader';
@@ -9,13 +9,20 @@ import ConnectionsView from '../ConnectionsView/ConnectionsView';
 import CredentialsView from '../CredentialsView/CredentialsView';
 import SettingsView from '../SettingsView/SettingsView';
 import ConnectionModal from '../ConnectionModal/ConnectionModal';
+import ConnectionTypeModal from '../ConnectionTypeModal/ConnectionTypeModal';
+import ConnectionTypeView from '../ConnectionTypeView/ConnectionTypeView';
 
 export default function DatabaseConnectContent({ returnToDashboard, currentUser }) {
   const [activeTab, setActiveTab] = useState("connections");
   const [showAddConnectionModal, setShowAddConnectionModal] = useState(false);
+  const [showAddTypeModal, setShowAddTypeModal] = useState(false);
   const [selectedDatabase, setSelectedDatabase] = useState(null);
   const [editingConnection, setEditingConnection] = useState(null);
-  
+  const [editingType, setEditingType] = useState(null);
+
+  // Add this for ConnectionTypeView selection!
+  const [selectedTypeId, setSelectedTypeId] = useState(null);
+
   const connections = [
     {
       id: "postgres-analytics",
@@ -71,7 +78,7 @@ export default function DatabaseConnectContent({ returnToDashboard, currentUser 
     }
   ];
 
-  // Database connection types
+  // Database connection types for ConnectionModal (static)
   const connectionTypes = [
     { value: "postgresql", label: "PostgreSQL", icon: <Database className={dbStyles.dbTypeIcon} /> },
     { value: "mysql", label: "MySQL", icon: <Database className={dbStyles.dbTypeIcon} /> },
@@ -83,19 +90,32 @@ export default function DatabaseConnectContent({ returnToDashboard, currentUser 
     { value: "bigquery", label: "Google BigQuery", icon: <Database className={dbStyles.dbTypeIcon} /> }
   ];
 
+  // Connections modal handlers
   const openAddConnectionModal = () => {
     setShowAddConnectionModal(true);
     setEditingConnection(null);
   };
-
   const openEditConnectionModal = (connection) => {
     setEditingConnection(connection);
     setShowAddConnectionModal(true);
   };
-
   const closeConnectionModal = () => {
     setShowAddConnectionModal(false);
     setEditingConnection(null);
+  };
+
+  // Type modal handlers
+  const openAddTypeModal = () => {
+    setShowAddTypeModal(true);
+    setEditingType(null);
+  };
+  const openEditTypeModal = (type) => {
+    setEditingType(type);
+    setShowAddTypeModal(true);
+  };
+  const closeTypeModal = () => {
+    setShowAddTypeModal(false);
+    setEditingType(null);
   };
 
   const handleSelectDatabase = (dbId) => {
@@ -110,14 +130,15 @@ export default function DatabaseConnectContent({ returnToDashboard, currentUser 
     <div className={styles.mainContent}>
       {/* Header */}
       <ConnectionHeader currentUser={currentUser} />
-      
+
       {/* Tabs */}
       <ConnectionTabs 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
         openAddConnectionModal={openAddConnectionModal}
+        openAddTypeModal={openAddTypeModal}
       />
-      
+
       {/* Content */}
       <div className={styles.content}>
         {activeTab === "connections" && (
@@ -125,25 +146,36 @@ export default function DatabaseConnectContent({ returnToDashboard, currentUser 
             connections={connections}
             selectedDatabase={selectedDatabase}
             handleSelectDatabase={handleSelectDatabase}
-            openEditConnectionModal={openEditConnectionModal} 
+            openEditConnectionModal={openEditConnectionModal}
+            openEditTypeModal={openEditTypeModal}
           />
         )}
-        
         {activeTab === "credentials" && (
           <CredentialsView />
         )}
-        
         {activeTab === "settings" && (
           <SettingsView />
         )}
+        {activeTab === "connectionTypes" && (
+          <ConnectionTypeView 
+            selectedTypeId={selectedTypeId}
+            setSelectedTypeId={setSelectedTypeId}
+            openEditTypeModal={openEditTypeModal}
+          />
+        )}
       </div>
-      
-      {/* Add/Edit Connection Modal */}
+
       {showAddConnectionModal && (
         <ConnectionModal 
           connectionTypes={connectionTypes}
           editingConnection={editingConnection}
           onClose={closeConnectionModal}
+        />
+      )}
+      {showAddTypeModal && (
+        <ConnectionTypeModal
+          editingType={editingType}
+          onClose={closeTypeModal}
         />
       )}
     </div>
