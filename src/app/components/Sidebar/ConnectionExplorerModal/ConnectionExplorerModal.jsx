@@ -1,369 +1,341 @@
-"use client"
-import React, { useState, useEffect, useMemo } from 'react';
+"use client";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   X, Database, Server, Table, Columns, Search, ChevronDown, ChevronRight,
-  Eye, EyeOff, RefreshCw, CheckCircle, XCircle, AlertCircle, Activity, Folder, Cloud, Zap
-} from 'lucide-react';
-import styles from './ConnectionExplorerModal.module.css';
+  Eye, EyeOff, RefreshCw, CheckCircle, XCircle, AlertCircle, Activity, Folder, Cloud, Zap, Info
+} from "lucide-react";
+import styles from "./ConnectionExplorerModal.module.css";
+
+async function fetchJson(url, opts = {}) {
+  const res = await fetch(url, opts);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function patchFlAtivo(url, fl_ativo) {
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ fl_ativo }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function InfoModal({ isOpen, title, children, onClose }) {
+  if (!isOpen) return null;
+  return (
+    <div className={styles.infoModalOverlay}>
+      <div className={styles.infoModal}>
+        <div className={styles.infoModalHeader}>
+          <h3 className={styles.infoModalTitle}>{title}</h3>
+          <button type="button" onClick={onClose} className={styles.infoModalClose}>
+            <X size={20} />
+          </button>
+        </div>
+        <div className={styles.infoModalContent}>{children}</div>
+      </div>
+    </div>
+  );
+}
 
 export default function ConnectionExplorerModal({ isOpen, onClose }) {
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [expandedConnections, setExpandedConnections] = useState({});
+  const [expandedCatalogs, setExpandedCatalogs] = useState({});
   const [expandedSchemas, setExpandedSchemas] = useState({});
   const [expandedTables, setExpandedTables] = useState({});
-  const [enabledStates, setEnabledStates] = useState({});
   const [loading, setLoading] = useState(false);
-  const [filterType, setFilterType] = useState('all');
+  const [filterType, setFilterType] = useState("all");
   const [showEnabledOnly, setShowEnabledOnly] = useState(false);
+  const [error, setError] = useState(null);
 
-  // Mock data structure representing connections, schemas, tables, and columns
-  const [connections, setConnections] = useState([
-    {
-      id: 'minio-1',
-      name: 'MinIO Principal',
-      type: 'MinIO',
-      status: 'connected',
-      host: 'minio.datacenter.com',
-      port: 9000,
-      description: 'Armazenamento de objetos principal',
-      lastSync: '2024-01-15T10:30:00Z',
-      schemas: [
-        {
-          id: 'medical-images',
-          name: 'medical-images',
-          description: 'Imagens médicas organizadas por tipo',
-          tables: [
-            {
-              id: 'skin-cancer-light',
-              name: 'skin-cancer-light',
-              type: 'bucket',
-              description: 'Imagens de câncer de pele - pele clara',
-              rowCount: 15420,
-              size: '2.3 GB',
-              columns: [
-                { id: 'image_id', name: 'image_id', type: 'string', nullable: false, description: 'Identificador único da imagem' },
-                { id: 'patient_id', name: 'patient_id', type: 'string', nullable: false, description: 'ID do paciente' },
-                { id: 'diagnosis', name: 'diagnosis', type: 'string', nullable: true, description: 'Diagnóstico da lesão' },
-                { id: 'image_path', name: 'image_path', type: 'string', nullable: false, description: 'Caminho da imagem' },
-                { id: 'upload_date', name: 'upload_date', type: 'datetime', nullable: false, description: 'Data de upload' }
-              ]
-            },
-            {
-              id: 'skin-cancer-dark',
-              name: 'skin-cancer-dark',
-              type: 'bucket',
-              description: 'Imagens de câncer de pele - pele escura',
-              rowCount: 8760,
-              size: '1.8 GB',
-              columns: [
-                { id: 'image_id', name: 'image_id', type: 'string', nullable: false, description: 'Identificador único da imagem' },
-                { id: 'patient_id', name: 'patient_id', type: 'string', nullable: false, description: 'ID do paciente' },
-                { id: 'diagnosis', name: 'diagnosis', type: 'string', nullable: true, description: 'Diagnóstico da lesão' },
-                { id: 'image_path', name: 'image_path', type: 'string', nullable: false, description: 'Caminho da imagem' },
-                { id: 'metadata', name: 'metadata', type: 'json', nullable: true, description: 'Metadados da imagem' }
-              ]
-            }
-          ]
-        },
-        {
-          id: 'backup-data',
-          name: 'backup-data',
-          description: 'Dados de backup e arquivos históricos',
-          tables: [
-            {
-              id: 'daily-backups',
-              name: 'daily-backups',
-              type: 'bucket',
-              description: 'Backups diários do sistema',
-              rowCount: 365,
-              size: '12.4 GB',
-              columns: [
-                { id: 'backup_id', name: 'backup_id', type: 'string', nullable: false, description: 'ID do backup' },
-                { id: 'backup_date', name: 'backup_date', type: 'date', nullable: false, description: 'Data do backup' },
-                { id: 'file_path', name: 'file_path', type: 'string', nullable: false, description: 'Caminho do arquivo' },
-                { id: 'file_size', name: 'file_size', type: 'bigint', nullable: false, description: 'Tamanho do arquivo' }
-              ]
-            }
-          ]
-        }
-      ]
-    },
-    {
-      id: 'postgres-1',
-      name: 'PostgreSQL Analytics',
-      type: 'PostgreSQL',
-      status: 'connected',
-      host: 'postgres.datacenter.com',
-      port: 5432,
-      description: 'Banco de dados principal para análises',
-      lastSync: '2024-01-15T09:15:00Z',
-      schemas: [
-        {
-          id: 'clinical_data',
-          name: 'clinical_data',
-          description: 'Dados clínicos dos pacientes',
-          tables: [
-            {
-              id: 'patients',
-              name: 'patients',
-              type: 'table',
-              description: 'Informações básicas dos pacientes',
-              rowCount: 25600,
-              size: '4.2 MB',
-              columns: [
-                { id: 'patient_id', name: 'patient_id', type: 'uuid', nullable: false, description: 'ID único do paciente' },
-                { id: 'age', name: 'age', type: 'integer', nullable: true, description: 'Idade do paciente' },
-                { id: 'gender', name: 'gender', type: 'varchar(10)', nullable: true, description: 'Gênero do paciente' },
-                { id: 'skin_type', name: 'skin_type', type: 'integer', nullable: true, description: 'Tipo de pele (escala 1-6)' },
-                { id: 'family_history', name: 'family_history', type: 'boolean', nullable: true, description: 'Histórico familiar de câncer' },
-                { id: 'created_at', name: 'created_at', type: 'timestamp', nullable: false, description: 'Data de criação do registro' }
-              ]
-            },
-            {
-              id: 'diagnoses',
-              name: 'diagnoses',
-              type: 'table',
-              description: 'Diagnósticos médicos',
-              rowCount: 18300,
-              size: '2.8 MB',
-              columns: [
-                { id: 'diagnosis_id', name: 'diagnosis_id', type: 'uuid', nullable: false, description: 'ID único do diagnóstico' },
-                { id: 'patient_id', name: 'patient_id', type: 'uuid', nullable: false, description: 'ID do paciente' },
-                { id: 'diagnosis_type', name: 'diagnosis_type', type: 'varchar(100)', nullable: false, description: 'Tipo de diagnóstico' },
-                { id: 'severity', name: 'severity', type: 'integer', nullable: true, description: 'Gravidade (1-5)' },
-                { id: 'diagnosis_date', name: 'diagnosis_date', type: 'date', nullable: false, description: 'Data do diagnóstico' },
-                { id: 'doctor_id', name: 'doctor_id', type: 'uuid', nullable: false, description: 'ID do médico' }
-              ]
-            }
-          ]
-        },
-        {
-          id: 'analytics',
-          name: 'analytics',
-          description: 'Dados processados para análise',
-          tables: [
-            {
-              id: 'ml_predictions',
-              name: 'ml_predictions',
-              type: 'table',
-              description: 'Predições do modelo de ML',
-              rowCount: 45200,
-              size: '8.7 MB',
-              columns: [
-                { id: 'prediction_id', name: 'prediction_id', type: 'uuid', nullable: false, description: 'ID da predição' },
-                { id: 'image_id', name: 'image_id', type: 'varchar(100)', nullable: false, description: 'ID da imagem analisada' },
-                { id: 'model_version', name: 'model_version', type: 'varchar(20)', nullable: false, description: 'Versão do modelo' },
-                { id: 'confidence_score', name: 'confidence_score', type: 'decimal(5,4)', nullable: false, description: 'Pontuação de confiança' },
-                { id: 'prediction_result', name: 'prediction_result', type: 'varchar(50)', nullable: false, description: 'Resultado da predição' },
-                { id: 'created_at', name: 'created_at', type: 'timestamp', nullable: false, description: 'Data da predição' }
-              ]
-            }
-          ]
-        }
-      ]
-    },
-    {
-      id: 'airflow-1',
-      name: 'Airflow Pipeline',
-      type: 'Airflow',
-      status: 'running',
-      host: 'airflow.datacenter.com',
-      port: 8080,
-      description: 'Pipeline de processamento de dados',
-      lastSync: '2024-01-15T10:45:00Z',
-      schemas: [
-        {
-          id: 'workflows',
-          name: 'workflows',
-          description: 'Fluxos de trabalho automatizados',
-          tables: [
-            {
-              id: 'etl_clinical_data',
-              name: 'etl_clinical_data',
-              type: 'dag',
-              description: 'ETL para dados clínicos',
-              rowCount: 0,
-              size: '0 KB',
-              columns: [
-                { id: 'dag_id', name: 'dag_id', type: 'string', nullable: false, description: 'ID do DAG' },
-                { id: 'execution_date', name: 'execution_date', type: 'datetime', nullable: false, description: 'Data de execução' },
-                { id: 'state', name: 'state', type: 'string', nullable: false, description: 'Estado da execução' },
-                { id: 'start_date', name: 'start_date', type: 'datetime', nullable: true, description: 'Data de início' },
-                { id: 'end_date', name: 'end_date', type: 'datetime', nullable: true, description: 'Data de fim' }
-              ]
-            }
-          ]
-        }
-      ]
-    }
-  ]);
+  const [connectionTypes, setConnectionTypes] = useState([]);
+  const [connections, setConnections] = useState([]);
+  const [catalogsByConn, setCatalogsByConn] = useState({});
+  const [schemasByCatalog, setSchemasByCatalog] = useState({});
+  const [tablesBySchema, setTablesBySchema] = useState({});
+  const [columnsByTable, setColumnsByTable] = useState({});
+  const [tableDetails, setTableDetails] = useState({});
+  const [distinctModal, setDistinctModal] = useState({ open: false, values: [], columnName: "", total: 0 });
+  const [enabledStates, setEnabledStates] = useState({});
+  const [modalInfo, setModalInfo] = useState({ open: false, content: null });
+  const [refreshKey, setRefreshKey] = useState(Date.now());
 
-   
+  const scrollRefs = useRef({});
+
   useEffect(() => {
-    const initialStates = {};
-    connections.forEach(conn => {
-      initialStates[`connection-${conn.id}`] = true;
-      conn.schemas.forEach(schema => {
-        initialStates[`schema-${conn.id}-${schema.id}`] = true;
-        schema.tables.forEach(table => {
-          initialStates[`table-${conn.id}-${schema.id}-${table.id}`] = true;
-          table.columns.forEach(column => {
-            initialStates[`column-${conn.id}-${schema.id}-${table.id}-${column.id}`] = true;
-          });
-        });
-      });
-    });
-    setEnabledStates(initialStates);
-  }, [connections]);
+    if (!isOpen) return;
+    setLoading(true);
+    fetchJson("http://localhost:8004/api/connection/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pagination: { limit: 100, query_total: false, skip: 0 } }),
+    })
+      .then((data) => setConnectionTypes(data.items || []))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [isOpen]);
 
-  // Get icon for connection type
-  const getConnectionIcon = (type) => {
-    switch (type) {
-      case 'MinIO': return <Cloud className={styles.connectionTypeIcon} />;
-      case 'PostgreSQL': return <Database className={styles.connectionTypeIcon} />;
-      case 'Airflow': return <Zap className={styles.connectionTypeIcon} />;
-      default: return <Server className={styles.connectionTypeIcon} />;
+  useEffect(() => {
+    if (!isOpen) return;
+    setLoading(true);
+    setConnections([]);
+    fetchJson("http://localhost:8004/api/data-connections/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        filterType && filterType !== "all"
+          ? { pagination: { limit: 100, query_total: false, skip: 0 }, connection_type_id: filterType }
+          : { pagination: { limit: 100, query_total: false, skip: 0 } }
+      ),
+    })
+      .then((data) => setConnections(data.items || []))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [isOpen, filterType, refreshKey]);
+
+  const handleExpandConnection = async (connId) => {
+    setExpandedConnections((prev) => ({ ...prev, [connId]: !prev[connId] }));
+    if (!catalogsByConn[connId]) {
+      setLoading(true);
+      try {
+        const catalogs = await fetchJson(
+          `http://localhost:8004/api/metadata/connections/${connId}/catalogs`
+        );
+        setCatalogsByConn((prev) => ({ ...prev, [connId]: catalogs }));
+        const es = {};
+        catalogs.forEach((cat) => {
+          es[`catalog-${cat.id}`] = cat.fl_ativo !== false;
+        });
+        setEnabledStates((prev) => ({ ...prev, ...es }));
+      } catch (e) {
+        setError("Erro ao carregar catálogos.");
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
-  // Get status icon
+  const handleExpandCatalog = async (connId, catalogId) => {
+    const key = `${connId}-${catalogId}`;
+    setExpandedCatalogs((prev) => ({ ...prev, [key]: !prev[key] }));
+    if (!schemasByCatalog[catalogId]) {
+      setLoading(true);
+      try {
+        const schemas = await fetchJson(
+          `http://localhost:8004/api/metadata/connections/${connId}/schemas?catalog_id=${catalogId}`
+        );
+        setSchemasByCatalog((prev) => ({ ...prev, [catalogId]: schemas }));
+        const es = {};
+        schemas.forEach((s) => {
+          es[`schema-${s.id}`] = s.fl_ativo !== false;
+        });
+        setEnabledStates((prev) => ({ ...prev, ...es }));
+      } catch (e) {
+        setError("Erro ao carregar schemas.");
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleExpandSchema = async (schemaId) => {
+    setExpandedSchemas((prev) => ({ ...prev, [schemaId]: !prev[schemaId] }));
+    setLoading(true);
+    try {
+      const tables = await fetchJson(
+        `http://localhost:8004/api/metadata/schemas/${schemaId}/tables`
+      );
+      setTablesBySchema((prev) => ({ ...prev, [schemaId]: tables }));
+      const es = {};
+      tables.forEach((t) => {
+        es[`table-${t.id}`] = t.fl_ativo !== false;
+      });
+      setEnabledStates((prev) => ({ ...prev, ...es }));
+    } catch (e) {
+      setError("Erro ao carregar tabelas.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExpandTable = async (tableId) => {
+    setExpandedTables((prev) => ({ ...prev, [tableId]: !prev[tableId] }));
+    setLoading(true);
+    try {
+      const detail = await fetchJson(
+        `http://localhost:8004/api/metadata/tables/${tableId}`
+      );
+      setTableDetails((prev) => ({ ...prev, [tableId]: detail }));
+      setColumnsByTable((prev) => ({ ...prev, [tableId]: detail.columns || [] }));
+      const es = {};
+      (detail.columns || []).forEach((col) => {
+        es[`column-${col.id}`] = col.fl_ativo !== false;
+      });
+      setEnabledStates((prev) => ({ ...prev, ...es }));
+    } catch (e) {
+      setError("Erro ao carregar colunas.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  async function handleToggleFlAtivo(type, id, fl_ativo) {
+    let url = "";
+    if (type === "catalog") url = `http://localhost:8004/api/metadata/catalogs/${id}/fl_ativo`;
+    else if (type === "schema") url = `http://localhost:8004/api/metadata/schemas/${id}/fl_ativo`;
+    else if (type === "table") url = `http://localhost:8004/api/metadata/tables/${id}/fl_ativo`;
+    else if (type === "column") url = `http://localhost:8004/api/metadata/columns/${id}/fl_ativo`;
+    try {
+      await patchFlAtivo(url, fl_ativo);
+      setEnabledStates((es) => ({ ...es, [`${type}-${id}`]: fl_ativo }));
+      setRefreshKey(Date.now());
+    } catch (e) {
+      alert("Falha ao atualizar: " + e.message);
+    }
+  }
+
+  function handleShowTableInfo(tableId) {
+    setLoading(true);
+    fetchJson(`http://localhost:8004/api/metadata/tables/${tableId}`)
+      .then((data) => {
+        setModalInfo({
+          open: true,
+          content: (
+            <div>
+              <div><b>ID:</b> {data.id}</div>
+              <div><b>Nome:</b> {data.table_name}</div>
+              <div><b>Tipo:</b> {data.table_type}</div>
+              <div><b>Linhas estimadas:</b> {data.estimated_row_count}</div>
+              <div><b>Tamanho:</b> {data.total_size_bytes} bytes</div>
+              <div><b>Chave primária:</b> {data.primary_key_count || 0}</div>
+              <div><b>Colunas:</b> {data.column_count || (data.columns?.length ?? 0)}</div>
+              <div><b>Descrição:</b> {data.description || <i>—</i>}</div>
+              <div style={{ marginTop: 8 }}>
+                <b>Propriedades:</b>
+                <pre style={{ fontSize: 13 }}>
+                  {JSON.stringify(data.properties, null, 2)}
+                </pre>
+              </div>
+            </div>
+          ),
+        });
+      })
+      .finally(() => setLoading(false));
+  }
+
+  function handleShowDistinct(columnId, columnName) {
+    setLoading(true);
+    fetchJson(`http://localhost:8004/api/metadata/columns/${columnId}/distinct-values?limit=1000`)
+      .then((data) => {
+        setDistinctModal({ open: true, columnName, values: data.distinct_values || [], total: data.total_returned });
+      })
+      .finally(() => setLoading(false));
+  }
+
+  const getConnectionIcon = (type) => {
+    switch ((type || "").toLowerCase()) {
+      case "minio":
+        return <Cloud className={styles.connectionTypeIcon} />;
+      case "postgresql":
+        return <Database className={styles.connectionTypeIcon} />;
+      case "airflow":
+        return <Zap className={styles.connectionTypeIcon} />;
+      default:
+        return <Server className={styles.connectionTypeIcon} />;
+    }
+  };
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'connected': return <CheckCircle className={styles.textGreen} />;
-      case 'running': return <Activity className={styles.textBlue} />;
-      case 'disconnected': return <XCircle className={styles.textRed} />;
-      default: return <AlertCircle className={styles.textYellow} />;
+      case "connected":
+      case "active":
+      case "success":
+        return <CheckCircle className={styles.textGreen} />;
+      case "running":
+        return <Activity className={styles.textBlue} />;
+      case "disconnected":
+        return <XCircle className={styles.textRed} />;
+      case "error":
+      case "failed":
+        return <AlertCircle className={styles.textRed} />;
+      default:
+        return <AlertCircle className={styles.textGray} />;
     }
   };
 
-  // Toggle functions
-  const toggleConnection = (connectionId) => {
-    setExpandedConnections(prev => ({
-      ...prev,
-      [connectionId]: !prev[connectionId]
-    }));
-  };
-  const toggleSchema = (connectionId, schemaId) => {
-    const key = `${connectionId}-${schemaId}`;
-    setExpandedSchemas(prev => ({
-      ...prev,
-      [key]: !prev[key]
-    }));
-  };
-  const toggleTable = (connectionId, schemaId, tableId) => {
-    const key = `${connectionId}-${schemaId}-${tableId}`;
-    setExpandedTables(prev => ({
-      ...prev,
-      [key]: !prev[key]
-    }));
-  };
+  function filterList(list, prop = "name", type = "") {
+    const search = searchTerm.trim().toLowerCase();
+    let filtered = list.filter(item => item[prop]?.toLowerCase().includes(search));
+    if (showEnabledOnly && type) {
+      filtered = filtered.filter(item => enabledStates[`${type}-${item.id}`] !== false);
+    }
+    return filtered;
+  }
 
-  // Enable/disable functions
-  const toggleEnabled = (key, type, connectionId, schemaId, tableId) => {
-    setEnabledStates(prev => {
-      const newStates = { ...prev };
-      const newValue = !prev[key];
-      newStates[key] = newValue;
-      // Handle cascading disable/enable
-      if (type === 'connection') {
-        const conn = connections.find(c => c.id === connectionId);
-        conn.schemas.forEach(schema => {
-          const schemaKey = `schema-${connectionId}-${schema.id}`;
-          newStates[schemaKey] = newValue;
-          schema.tables.forEach(table => {
-            const tableKey = `table-${connectionId}-${schema.id}-${table.id}`;
-            newStates[tableKey] = newValue;
-            table.columns.forEach(column => {
-              const columnKey = `column-${connectionId}-${schema.id}-${table.id}-${column.id}`;
-              newStates[columnKey] = newValue;
-            });
-          });
-        });
-      } else if (type === 'schema') {
-        const conn = connections.find(c => c.id === connectionId);
-        const schema = conn.schemas.find(s => s.id === schemaId);
-        schema.tables.forEach(table => {
-          const tableKey = `table-${connectionId}-${schemaId}-${table.id}`;
-          newStates[tableKey] = newValue;
-          table.columns.forEach(column => {
-            const columnKey = `column-${connectionId}-${schemaId}-${table.id}-${column.id}`;
-            newStates[columnKey] = newValue;
-          });
-        });
-      } else if (type === 'table') {
-        const conn = connections.find(c => c.id === connectionId);
-        const schema = conn.schemas.find(s => s.id === schemaId);
-        const table = schema.tables.find(t => t.id === tableId);
-        table.columns.forEach(column => {
-          const columnKey = `column-${connectionId}-${schemaId}-${tableId}-${column.id}`;
-          newStates[columnKey] = newValue;
-        });
-      }
-      return newStates;
-    });
-  };
-
-  // Filter connections based on search and filters
-  const filteredConnections = useMemo(() => {
-    return connections.filter(conn => {
-      const search = searchTerm.toLowerCase();
-      const matchesSearch = conn.name.toLowerCase().includes(search) ||
-        conn.type.toLowerCase().includes(search) ||
-        conn.description.toLowerCase().includes(search);
-
-      const matchesType = filterType === 'all' || conn.type === filterType;
-      const matchesEnabled = !showEnabledOnly || enabledStates[`connection-${conn.id}`];
-
-      return matchesSearch && matchesType && matchesEnabled;
-    });
-  }, [connections, searchTerm, filterType, showEnabledOnly, enabledStates]);
-
-  // Refresh connection data
-  const refreshConnections = () => {
-    setLoading(true);
-    setTimeout(() => setLoading(false), 1000);
-  };
-
-  // Get enabled counts
   const getEnabledCounts = () => {
-    let totalConnections = 0, enabledConnections = 0;
+    let totalConnections = connections.length,
+      enabledConnections = connections.filter(conn => enabledStates[`connection-${conn.id}`] !== false).length;
+    let totalCatalogs = 0, enabledCatalogs = 0;
     let totalSchemas = 0, enabledSchemas = 0;
     let totalTables = 0, enabledTables = 0;
     let totalColumns = 0, enabledColumns = 0;
 
-    connections.forEach(conn => {
-      totalConnections++;
-      if (enabledStates[`connection-${conn.id}`]) enabledConnections++;
-      conn.schemas.forEach(schema => {
+    Object.values(catalogsByConn).forEach(catalogs =>
+      catalogs?.forEach(cat => {
+        totalCatalogs++;
+        if (enabledStates[`catalog-${cat.id}`] !== false) enabledCatalogs++;
+      })
+    );
+    Object.values(schemasByCatalog).forEach(schemas =>
+      schemas?.forEach(schema => {
         totalSchemas++;
-        if (enabledStates[`schema-${conn.id}-${schema.id}`]) enabledSchemas++;
-        schema.tables.forEach(table => {
-          totalTables++;
-          if (enabledStates[`table-${conn.id}-${schema.id}-${table.id}`]) enabledTables++;
-          table.columns.forEach(column => {
-            totalColumns++;
-            if (enabledStates[`column-${conn.id}-${schema.id}-${table.id}-${column.id}`]) enabledColumns++;
-          });
-        });
-      });
-    });
-
+        if (enabledStates[`schema-${schema.id}`] !== false) enabledSchemas++;
+      })
+    );
+    Object.values(tablesBySchema).forEach(tables =>
+      tables?.forEach(table => {
+        totalTables++;
+        if (enabledStates[`table-${table.id}`] !== false) enabledTables++;
+      })
+    );
+    Object.values(columnsByTable).forEach(cols =>
+      cols?.forEach(col => {
+        totalColumns++;
+        if (enabledStates[`column-${col.id}`] !== false) enabledColumns++;
+      })
+    );
     return {
       connections: `${enabledConnections}/${totalConnections}`,
+      catalogs: `${enabledCatalogs}/${totalCatalogs}`,
       schemas: `${enabledSchemas}/${totalSchemas}`,
       tables: `${enabledTables}/${totalTables}`,
-      columns: `${enabledColumns}/${totalColumns}`
+      columns: `${enabledColumns}/${totalColumns}`,
     };
   };
-
   const enabledCounts = getEnabledCounts();
+
+  const refreshConnections = () => {
+    setRefreshKey(Date.now());
+    setCatalogsByConn({});
+    setSchemasByCatalog({});
+    setTablesBySchema({});
+    setColumnsByTable({});
+  };
+
+  const scrollToRef = (key) => {
+    setTimeout(() => {
+      if (scrollRefs.current[key]) {
+        scrollRefs.current[key].scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    }, 0);
+  };
 
   if (!isOpen) return null;
 
   return (
     <div className={styles.modalOverlay}>
       <div className={styles.modalContainer}>
-        {/* Header */}
         <div className={styles.modalHeader}>
           <div className={styles.headerLeft}>
             <div className={styles.headerTitleBlock}>
@@ -371,22 +343,40 @@ export default function ConnectionExplorerModal({ isOpen, onClose }) {
               <h2 className={styles.modalTitle}>Explorador de Conexões</h2>
             </div>
             <div className={styles.modalSummary}>
-              <span className={styles.summaryBadge}><Database className={styles.connectionTypeIcon} />{enabledCounts.connections}</span>
-              <span className={styles.summaryBadge}><Folder className={styles.connectionTypeIcon} />{enabledCounts.schemas}</span>
-              <span className={styles.summaryBadge}><Table className={styles.connectionTypeIcon} />{enabledCounts.tables}</span>
-              <span className={styles.summaryBadge}><Columns className={styles.connectionTypeIcon} />{enabledCounts.columns}</span>
+              <span className={styles.summaryBadge}>
+                <Database className={styles.connectionTypeIcon} />
+                {enabledCounts.connections}
+              </span>
+              <span className={styles.summaryBadge}>
+                <Cloud className={styles.connectionTypeIcon} />
+                {enabledCounts.catalogs}
+              </span>
+              <span className={styles.summaryBadge}>
+                <Folder className={styles.connectionTypeIcon} />
+                {enabledCounts.schemas}
+              </span>
+              <span className={styles.summaryBadge}>
+                <Table className={styles.connectionTypeIcon} />
+                {enabledCounts.tables}
+              </span>
+              <span className={styles.summaryBadge}>
+                <Columns className={styles.connectionTypeIcon} />
+                {enabledCounts.columns}
+              </span>
             </div>
           </div>
           <div className={styles.modalActions}>
             <button
+              type="button"
               onClick={refreshConnections}
               disabled={loading}
-              className={`${styles.refreshButton} ${loading ? styles.bgDisabled : ''}`}
+              className={`${styles.refreshButton} ${loading ? styles.bgDisabled : ""}`}
             >
-              <RefreshCw className={loading ? styles.spin : ''} />
+              <RefreshCw className={loading ? styles.spin : ""} />
               Atualizar
             </button>
             <button
+              type="button"
               onClick={onClose}
               className={styles.modalCloseButton}
               title="Fechar"
@@ -395,14 +385,13 @@ export default function ConnectionExplorerModal({ isOpen, onClose }) {
             </button>
           </div>
         </div>
-        {/* Controls */}
         <div className={styles.modalControls}>
           <div className={styles.modalSearchBlock}>
             <div className={styles.searchContainer}>
               <Search className={styles.searchIcon} />
               <input
                 type="text"
-                placeholder="Pesquisar conexões, esquemas, tabelas..."
+                placeholder="Pesquisar conexões, catálogos, esquemas, tabelas..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className={styles.searchInput}
@@ -414,39 +403,62 @@ export default function ConnectionExplorerModal({ isOpen, onClose }) {
               className={styles.filterSelect}
             >
               <option value="all">Todos os Tipos</option>
-              <option value="MinIO">MinIO</option>
-              <option value="PostgreSQL">PostgreSQL</option>
-              <option value="Airflow">Airflow</option>
+              {connectionTypes.map((type) => (
+                <option value={type.id} key={type.id}>
+                  {type.name}
+                </option>
+              ))}
             </select>
           </div>
           <label className={styles.enabledCheckboxLabel}>
             <input
               type="checkbox"
               checked={showEnabledOnly}
-              onChange={e => setShowEnabledOnly(e.target.checked)}
+              onChange={(e) => setShowEnabledOnly(e.target.checked)}
               className={styles.enabledCheckbox}
             />
             Mostrar apenas habilitados
           </label>
         </div>
-        {/* Content */}
         <div className={styles.modalContent}>
-          {filteredConnections.length === 0 ? (
+          {error && (
+            <div className={styles.error}>
+              <AlertCircle />
+              <span>{error}</span>
+            </div>
+          )}
+          {loading ? (
+            <div className={styles.emptyConnections}>
+              <Activity className={styles.textBlue} />
+              <span>Carregando...</span>
+            </div>
+          ) : connections.length === 0 ? (
             <div className={styles.emptyConnections}>
               <AlertCircle />
               <span>Nenhuma conexão encontrada para os filtros atuais.</span>
             </div>
           ) : (
-            filteredConnections.map(connection => (
-              <div key={connection.id} className={styles.connectionCard}>
-                {/* Connection Header */}
+            filterList(connections, "name", "connection").map((connection, connIdx) => (
+              <div
+                key={connection.id}
+                className={styles.connectionCard}
+                ref={el => { scrollRefs.current[`connection-${connection.id}`] = el; }}
+              >
                 <div className={styles.connectionHeader}>
                   <div className={styles.connectionHeaderLeft}>
                     <button
-                      onClick={() => toggleConnection(connection.id)}
+                      type="button"
+                      onClick={async () => {
+                        await handleExpandConnection(connection.id);
+                        scrollToRef(`connection-${connection.id}`);
+                      }}
                       className={styles.expandButton}
                     >
-                      {expandedConnections[connection.id] ? <ChevronDown /> : <ChevronRight />}
+                      {expandedConnections[connection.id] ? (
+                        <ChevronDown />
+                      ) : (
+                        <ChevronRight />
+                      )}
                     </button>
                     {getConnectionIcon(connection.type)}
                     <span className={styles.connectionName}>{connection.name}</span>
@@ -454,127 +466,247 @@ export default function ConnectionExplorerModal({ isOpen, onClose }) {
                     {getStatusIcon(connection.status)}
                   </div>
                   <div className={styles.connectionHeaderRight}>
-                    <span className={styles.connectionHost}>{connection.host}:{connection.port}</span>
+                    <span className={styles.connectionHost}>
+                      {connection.host}:{connection.port}
+                    </span>
                     <button
-                      onClick={() => toggleEnabled(`connection-${connection.id}`, 'connection', connection.id)}
+                      type="button"
+                      onClick={() =>
+                        handleToggleFlAtivo("connection", connection.id, !(enabledStates[`connection-${connection.id}`]))
+                      }
                       className={styles.toggleButton}
                     >
-                      {enabledStates[`connection-${connection.id}`]
-                        ? <Eye />
-                        : <EyeOff />}
+                      {enabledStates[`connection-${connection.id}`] ? (
+                        <Eye />
+                      ) : (
+                        <EyeOff />
+                      )}
                     </button>
                   </div>
                 </div>
-                {/* Connection Content */}
                 {expandedConnections[connection.id] && (
                   <div style={{ padding: "1.2rem" }}>
-                    <div className={styles.connectionDescription}>{connection.description}</div>
-                    <div className={styles.lastSync}>
-                      Última sincronização: {new Date(connection.lastSync).toLocaleString()}
+                    <div className={styles.connectionDescription}>
+                      {connection.description}
                     </div>
-                    {/* Schemas */}
+                    <div className={styles.lastSync}>
+                      Última sincronização:{" "}
+                      {connection.last_sync_time
+                        ? new Date(connection.last_sync_time).toLocaleString()
+                        : "-"}
+                    </div>
                     <div className={styles.schemasBlock}>
-                      {connection.schemas.map(schema => (
-                        <div key={schema.id} className={styles.schemaCard}>
+                      {filterList(catalogsByConn[connection.id] || [], "catalog_name", "catalog").map((catalog) => (
+                        <div
+                          key={catalog.id}
+                          className={styles.schemaCard}
+                          ref={el => { scrollRefs.current[`catalog-${catalog.id}`] = el; }}
+                        >
                           <div className={styles.schemaHeader}>
                             <div className={styles.schemaHeaderLeft}>
                               <button
-                                onClick={() => toggleSchema(connection.id, schema.id)}
+                                type="button"
+                                onClick={async () => {
+                                  await handleExpandCatalog(connection.id, catalog.id);
+                                  scrollToRef(`catalog-${catalog.id}`);
+                                }}
                                 className={styles.schemaChevron}
                               >
-                                {expandedSchemas[`${connection.id}-${schema.id}`]
-                                  ? <ChevronDown />
-                                  : <ChevronRight />}
+                                {expandedCatalogs[`${connection.id}-${catalog.id}`] ? (
+                                  <ChevronDown />
+                                ) : (
+                                  <ChevronRight />
+                                )}
                               </button>
-                              <Folder className={styles.schemaIcon} />
-                              <span className={styles.schemaName}>{schema.name}</span>
+                              <Cloud className={styles.schemaIcon} />
+                              <span className={styles.schemaName}>{catalog.catalog_name}</span>
                             </div>
                             <button
-                              onClick={() => toggleEnabled(`schema-${connection.id}-${schema.id}`, 'schema', connection.id, schema.id)}
+                              type="button"
+                              onClick={() =>
+                                handleToggleFlAtivo("catalog", catalog.id, !(enabledStates[`catalog-${catalog.id}`]))
+                              }
                               className={styles.schemaToggle}
                             >
-                              {enabledStates[`schema-${connection.id}-${schema.id}`]
-                                ? <Eye />
-                                : <EyeOff />}
+                              {enabledStates[`catalog-${catalog.id}`] ? (
+                                <Eye />
+                              ) : (
+                                <EyeOff />
+                              )}
                             </button>
                           </div>
-                          {expandedSchemas[`${connection.id}-${schema.id}`] && (
+                          {expandedCatalogs[`${connection.id}-${catalog.id}`] && (
                             <div style={{ padding: "0.9rem" }}>
-                              <div className={styles.schemaDescription}>{schema.description}</div>
-                              {/* Tables */}
+                              <div className={styles.schemaDescription}>
+                                {catalog.description}
+                              </div>
                               <div className={styles.tablesBlock}>
-                                {schema.tables.map(table => (
-                                  <div key={table.id} className={styles.tableCard}>
+                                {filterList(schemasByCatalog[catalog.id] || [], "schema_name", "schema").map((schema) => (
+                                  <div
+                                    key={schema.id}
+                                    className={styles.tableCard}
+                                    ref={el => { scrollRefs.current[`schema-${schema.id}`] = el; }}
+                                  >
                                     <div className={styles.tableHeader}>
                                       <div className={styles.tableHeaderLeft}>
                                         <button
-                                          onClick={() => toggleTable(connection.id, schema.id, table.id)}
+                                          type="button"
+                                          onClick={async () => {
+                                            await handleExpandSchema(schema.id);
+                                            scrollToRef(`schema-${schema.id}`);
+                                          }}
                                           className={styles.tableChevron}
                                         >
-                                          {expandedTables[`${connection.id}-${schema.id}-${table.id}`]
-                                            ? <ChevronDown />
-                                            : <ChevronRight />}
+                                          {expandedSchemas[schema.id] ? (
+                                            <ChevronDown />
+                                          ) : (
+                                            <ChevronRight />
+                                          )}
                                         </button>
-                                        <Table className={styles.tableIcon} />
-                                        <span className={styles.tableName}>{table.name}</span>
-                                        <span className={styles.tableType}>({table.type})</span>
+                                        <Folder className={styles.tableIcon} />
+                                        <span className={styles.tableName}>{schema.schema_name}</span>
                                       </div>
                                       <div className={styles.tableHeaderRight}>
-                                        <span className={styles.tableRows}>
-                                          {table.rowCount?.toLocaleString()} linhas · {table.size}
-                                        </span>
                                         <button
-                                          onClick={() => toggleEnabled(`table-${connection.id}-${schema.id}-${table.id}`, 'table', connection.id, schema.id, table.id)}
+                                          type="button"
+                                          onClick={() =>
+                                            handleToggleFlAtivo("schema", schema.id, !(enabledStates[`schema-${schema.id}`]))
+                                          }
                                           className={styles.tableToggle}
                                         >
-                                          {enabledStates[`table-${connection.id}-${schema.id}-${table.id}`]
-                                            ? <Eye />
-                                            : <EyeOff />}
+                                          {enabledStates[`schema-${schema.id}`] ? (
+                                            <Eye />
+                                          ) : (
+                                            <EyeOff />
+                                          )}
                                         </button>
                                       </div>
                                     </div>
-                                    {expandedTables[`${connection.id}-${schema.id}-${table.id}`] && (
+                                    {expandedSchemas[schema.id] && (
                                       <div style={{ padding: "0.85rem" }}>
-                                        <div className={styles.tableDescription}>{table.description}</div>
-                                        {/* Columns */}
+                                        <div className={styles.tableDescription}>
+                                          {schema.description}
+                                        </div>
                                         <div className={styles.columnsBlock}>
-                                          {table.columns.map(column => (
-                                            <div key={column.id} className={styles.columnRow}>
+                                          {filterList(tablesBySchema[schema.id] || [], "table_name", "table").map((table) => (
+                                            <div
+                                              key={table.id}
+                                              className={styles.columnRow}
+                                              ref={el => { scrollRefs.current[`table-${table.id}`] = el; }}
+                                            >
                                               <div className={styles.columnLeft}>
-                                                <Columns className={styles.columnIcon} />
+                                                <Table className={styles.columnIcon} />
                                                 <div className={styles.columnInfo}>
-                                                  <span className={styles.columnName}>{column.name}</span>
-                                                  <span className={styles.columnType}>{column.type}</span>
-                                                  {column.nullable ? (
-                                                    <span className={styles.nullable}>NULL</span>
-                                                  ) : (
-                                                    <span className={styles.notNull}>NOT NULL</span>
-                                                  )}
+                                                  <span className={styles.columnName}>
+                                                    {table.table_name}
+                                                  </span>
+                                                  <span className={styles.tableType}>
+                                                    ({table.table_type})
+                                                  </span>
+                                                  <span className={styles.tableRows}>
+                                                    {table.estimated_row_count !== undefined
+                                                      ? `${table.estimated_row_count} linhas`
+                                                      : ""}
+                                                  </span>
                                                 </div>
                                               </div>
-                                              <div style={{ display: 'flex', alignItems: 'center', gap: "0.6rem" }}>
-                                                <span className={styles.columnDescription}>{column.description}</span>
+                                              <div
+                                                style={{
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  gap: "0.6rem",
+                                                }}
+                                              >
                                                 <button
+                                                  type="button"
                                                   onClick={() =>
-                                                    toggleEnabled(
-                                                      `column-${connection.id}-${schema.id}-${table.id}-${column.id}`,
-                                                      'column',
-                                                      connection.id,
-                                                      schema.id,
-                                                      table.id
-                                                    )
+                                                    handleToggleFlAtivo("table", table.id, !(enabledStates[`table-${table.id}`]))
                                                   }
                                                   className={styles.columnToggle}
                                                 >
-                                                  {enabledStates[
-                                                    `column-${connection.id}-${schema.id}-${table.id}-${column.id}`
-                                                  ] ? (
+                                                  {enabledStates[`table-${table.id}`] ? (
                                                     <Eye />
                                                   ) : (
                                                     <EyeOff />
                                                   )}
                                                 </button>
+                                                <button
+                                                  type="button"
+                                                  className={styles.infoButton}
+                                                  onClick={() => handleShowTableInfo(table.id)}
+                                                >
+                                                  <Info size={15} />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className={styles.tableChevron}
+                                                  onClick={async () => {
+                                                    await handleExpandTable(table.id);
+                                                    scrollToRef(`table-${table.id}`);
+                                                  }}
+                                                >
+                                                  {expandedTables[table.id] ? <ChevronDown /> : <ChevronRight />}
+                                                </button>
                                               </div>
+                                              {expandedTables[table.id] && (
+                                                <div style={{ marginLeft: 24, marginTop: 4 }}>
+                                                  {filterList(columnsByTable[table.id] || [], "column_name", "column").map((column) => (
+                                                    <div
+                                                      key={column.id}
+                                                      className={styles.columnRow}
+                                                      style={{
+                                                        borderLeft: "2px solid #ddd",
+                                                        marginLeft: 12,
+                                                        paddingLeft: 12,
+                                                      }}
+                                                    >
+                                                      <div className={styles.columnLeft}>
+                                                        <Columns className={styles.columnIcon} />
+                                                        <div className={styles.columnInfo}>
+                                                          <span className={styles.columnName}>
+                                                            {column.column_name}
+                                                          </span>
+                                                          <span className={styles.columnType}>
+                                                            {column.data_type}
+                                                          </span>
+                                                          <span className={column.is_nullable ? styles.nullable : styles.notNull}>
+                                                            {column.is_nullable ? "NULL" : "NOT NULL"}
+                                                          </span>
+                                                        </div>
+                                                      </div>
+                                                      <div
+                                                        style={{
+                                                          display: "flex",
+                                                          alignItems: "center",
+                                                          gap: "0.6rem",
+                                                        }}
+                                                      >
+                                                        <button
+                                                          type="button"
+                                                          onClick={() =>
+                                                            handleToggleFlAtivo("column", column.id, !(enabledStates[`column-${column.id}`]))
+                                                          }
+                                                          className={styles.columnToggle}
+                                                        >
+                                                          {enabledStates[`column-${column.id}`] ? (
+                                                            <Eye />
+                                                          ) : (
+                                                            <EyeOff />
+                                                          )}
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          className={styles.distinctButton}
+                                                          title="Valores distintos"
+                                                          onClick={() => handleShowDistinct(column.id, column.column_name)}
+                                                        >
+                                                          <Search size={13} />
+                                                        </button>
+                                                      </div>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              )}
                                             </div>
                                           ))}
                                         </div>
@@ -594,17 +726,31 @@ export default function ConnectionExplorerModal({ isOpen, onClose }) {
             ))
           )}
         </div>
-        {/* Footer */}
         <div className={styles.modalFooter}>
-          <button
-            onClick={onClose}
-            className={styles.footerCloseButton}
-          >
+          <button type="button" onClick={onClose} className={styles.footerCloseButton}>
             <X style={{ marginRight: 8 }} />
             Fechar
           </button>
         </div>
       </div>
+      <InfoModal
+        isOpen={modalInfo.open}
+        title="Detalhes da Tabela"
+        onClose={() => setModalInfo({ open: false, content: null })}
+      >
+        {modalInfo.content}
+      </InfoModal>
+      <InfoModal
+        isOpen={distinctModal.open}
+        title={`Valores distintos: ${distinctModal.columnName} (${distinctModal.total})`}
+        onClose={() => setDistinctModal({ open: false, values: [], columnName: "", total: 0 })}
+      >
+        <div style={{ maxHeight: 250, overflow: "auto", fontSize: 13, background: "#f8fafc", borderRadius: 6, padding: 10 }}>
+          {distinctModal.values.length === 0
+            ? <i>Nenhum valor encontrado.</i>
+            : <ul>{distinctModal.values.map((v, i) => <li key={i}>{String(v)}</li>)}</ul>}
+        </div>
+      </InfoModal>
     </div>
   );
 }
