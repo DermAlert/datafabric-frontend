@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Database } from "lucide-react";
+import { X, Database, Book, Layers, List, Columns } from "lucide-react";
 import styles from "./EquivalenceManagerModal.module.css";
 
 import ColumnGroupsSection from "./ColumnGroupsSection/ColumnGroupsSection";
@@ -8,6 +8,39 @@ import DataDictionarySection from "./DataDictionarySection/DataDictionarySection
 import ColumnMappingsSection from "./ColumnMappingsSection/ColumnMappingsSection";
 import AvailableColumnsSection from "./AvailableColumnsSection/AvailableColumnsSection";
 
+const TABS = [
+  {
+    key: "domains",
+    label: "Domínios",
+    icon: <Layers size={18} />,
+    content: <SemanticDomainsSection />,
+  },
+  {
+    key: "dictionary",
+    label: "Dicionário",
+    icon: <Book size={18} />,
+    content: <DataDictionarySection />,
+  },
+  {
+    key: "groups",
+    label: "Grupos",
+    icon: <List size={18} />,
+    content: <ColumnGroupsSection />,
+  },
+  {
+    key: "mappings",
+    label: "Mapeamentos",
+    icon: <Database size={18} />,
+    content: <ColumnMappingsSection />,
+  },
+  {
+    key: "availableColumns",
+    label: "Colunas",
+    icon: <Columns size={18} />,
+    content: <AvailableColumnsSection />,
+  },
+];
+
 export default function EquivalenceManagerModal({ isOpen, onClose }) {
   const [section, setSection] = useState("domains");
 
@@ -15,59 +48,12 @@ export default function EquivalenceManagerModal({ isOpen, onClose }) {
 
   return (
     <div className={styles.modalOverlay}>
-      <div className={styles.modalContainer}>
-        <div className={styles.modalHeader}>
+      <div className={styles.modalContainer} role="dialog" aria-modal="true">
+        <header className={styles.modalHeader} tabIndex={-1}>
           <div className={styles.headerLeft}>
             <Database className={styles.modalIcon} />
             <h2 className={styles.modalTitle}>Equivalência e Mapeamento de Dados</h2>
           </div>
-          <nav className={styles.modalNavTabs} role="tablist">
-            <button
-              className={section === "domains" ? styles.activeTab : ""}
-              aria-selected={section === "domains"}
-              onClick={() => setSection("domains")}
-              tabIndex={0}
-              role="tab"
-            >
-              Domínios
-            </button>
-            <button
-              className={section === "dictionary" ? styles.activeTab : ""}
-              aria-selected={section === "dictionary"}
-              onClick={() => setSection("dictionary")}
-              tabIndex={0}
-              role="tab"
-            >
-              Dicionário
-            </button>
-            <button
-              className={section === "groups" ? styles.activeTab : ""}
-              aria-selected={section === "groups"}
-              onClick={() => setSection("groups")}
-              tabIndex={0}
-              role="tab"
-            >
-              Grupos
-            </button>
-            <button
-              className={section === "mappings" ? styles.activeTab : ""}
-              aria-selected={section === "mappings"}
-              onClick={() => setSection("mappings")}
-              tabIndex={0}
-              role="tab"
-            >
-              Mapeamentos
-            </button>
-            <button
-              className={section === "availableColumns" ? styles.activeTab : ""}
-              aria-selected={section === "availableColumns"}
-              onClick={() => setSection("availableColumns")}
-              tabIndex={0}
-              role="tab"
-            >
-              Colunas Disponíveis
-            </button>
-          </nav>
           <button
             type="button"
             onClick={onClose}
@@ -76,19 +62,34 @@ export default function EquivalenceManagerModal({ isOpen, onClose }) {
           >
             <X className={styles.closeIcon} />
           </button>
-        </div>
-        <div className={styles.modalContent}>
-          {section === "domains" && <SemanticDomainsSection />}
-          {section === "dictionary" && <DataDictionarySection />}
-          {section === "groups" && <ColumnGroupsSection />}
-          {section === "mappings" && <ColumnMappingsSection />}
-          {section === "availableColumns" && <AvailableColumnsSection />}
-        </div>
-        <div className={styles.modalFooter}>
+        </header>
+
+        <nav className={styles.modalNavTabs} role="tablist">
+          {TABS.map(tab => (
+            <button
+              key={tab.key}
+              className={section === tab.key ? styles.activeTab : ""}
+              aria-selected={section === tab.key}
+              onClick={() => setSection(tab.key)}
+              tabIndex={0}
+              role="tab"
+              type="button"
+            >
+              {tab.icon}
+              <span className={styles.tabLabel}>{tab.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <section className={styles.modalContent}>
+          {TABS.find(tab => tab.key === section)?.content}
+        </section>
+
+        <footer className={styles.modalFooter}>
           <button type="button" onClick={onClose} className={styles.secondaryButton}>
             <X style={{ marginRight: 8 }} /> Fechar
           </button>
-        </div>
+        </footer>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { Plus, Edit, Trash2, Save, X, Loader2, AlertTriangle, Info, Search, Eye } from "lucide-react";
-import styles from "./ColumnMappingsSection.module.css";
+import { Plus, Edit, Trash2, Save, X, AlertTriangle, Info, Search, Eye, ChevronDown, ChevronRight, Link2, CheckCircle, Database } from "lucide-react";
+import styles from './ColumnMappingsSection.module.css';
 import {
   api_searchColumnMappings,
   api_postColumnMapping,
@@ -15,7 +15,7 @@ import {
   api_deleteValueMapping,
 } from '../api'
 
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 10;
 
 export default function ColumnMappingsSection() {
   const [groups, setGroups] = useState([]);
@@ -38,6 +38,7 @@ export default function ColumnMappingsSection() {
   const [valueMappings, setValueMappings] = useState([]);
   const [valueGroup, setValueGroup] = useState(null);
   const [valueColumnId, setValueColumnId] = useState(null);
+  const [expandedMapping, setExpandedMapping] = useState(null);
 
   useEffect(() => {
     api_searchColumnGroups({ pagination: { limit: 1000, query_total: false, skip: 0 } })
@@ -59,7 +60,7 @@ export default function ColumnMappingsSection() {
       setMappings(res.items || []);
       setTotal(res.total || 0);
     } catch (e) {
-      setError("Erro ao carregar mapeamentos: " + e.message);
+      setError("Failed to load mappings: " + e.message);
     }
     setLoading(false);
   };
@@ -96,12 +97,14 @@ export default function ColumnMappingsSection() {
     setShowModal(true);
     setAvailableColumns([]);
   }
+
   function openEdit(mapping) {
     setModalMapping({ ...mapping });
     setShowModal(true);
     setAvailableColumns([]);
     if (mapping.group_id) doFetchAvailableColumns(mapping.group_id);
   }
+
   function closeModal() { setShowModal(false); setModalMapping(null); setAvailableColumns([]); }
 
   const handleSubmit = async e => {
@@ -127,7 +130,7 @@ export default function ColumnMappingsSection() {
       closeModal();
       fetchMappings();
     } catch (e) {
-      setError("Falha ao salvar mapeamento: " + e.message);
+      setError("Failed to save mapping: " + e.message);
       setLoading(false);
     }
   };
@@ -140,7 +143,7 @@ export default function ColumnMappingsSection() {
       setConfirmDelete(null);
       fetchMappings();
     } catch (e) {
-      setError("Falha ao remover mapeamento: " + e.message);
+      setError("Failed to delete mapping: " + e.message);
       setLoading(false);
     }
   };
@@ -162,6 +165,7 @@ export default function ColumnMappingsSection() {
     }
     setLoading(false);
   };
+
   const closeValueModal = () => {
     setShowValueModal(false);
     setValueMappings([]);
@@ -169,6 +173,7 @@ export default function ColumnMappingsSection() {
     setValueColumnId(null);
     setModalValue(null);
   };
+
   const handleValueSubmit = async e => {
     e.preventDefault();
     setLoading(true);
@@ -193,10 +198,11 @@ export default function ColumnMappingsSection() {
       const values = await api_getValueMappingsByGroup(valueGroup, valueColumnId);
       setValueMappings(values || []);
     } catch (e) {
-      setError("Falha ao salvar mapeamento de valor: " + e.message);
+      setError("Failed to save value mapping: " + e.message);
       setLoading(false);
     }
   };
+
   const handleValueDelete = async (id) => {
     setLoading(true);
     setError(null);
@@ -205,171 +211,354 @@ export default function ColumnMappingsSection() {
       const values = await api_getValueMappingsByGroup(valueGroup, valueColumnId);
       setValueMappings(values || []);
     } catch (e) {
-      setError("Falha ao remover mapeamento de valor: " + e.message);
+      setError("Failed to delete value mapping: " + e.message);
       setLoading(false);
     }
   };
 
+  const toggleMappingExpand = (mappingId) => {
+    setExpandedMapping(expandedMapping === mappingId ? null : mappingId);
+  };
+
   return (
-    <div>
-      <div className={styles.sectionHeader}>
-        <h3 className={styles.sectionTitle}><Info className={styles.sectionInfoIcon} /> Mapeamentos de Colunas</h3>
-        <button className={styles.addBtn} onClick={openAdd}><Plus /> Novo Mapeamento</button>
+    <div className={styles.container}>
+      {/* Header */}
+      <div className={styles.header}>
+        <div className={styles.headerLeft}>
+          <h2 className={styles.title}>
+            <Database className={styles.titleIcon} />
+            Column Mappings
+          </h2>
+          <div className={styles.badges}>
+            <span className={styles.countBadge}>
+              {total} Mappings
+            </span>
+            <span className={styles.groupBadge}>
+              {groups.length} Groups
+            </span>
+          </div>
+        </div>
+        <div className={styles.actions}>
+          <button 
+            className={styles.primaryButton}
+            onClick={openAdd}
+          >
+            <Plus className={styles.buttonIcon} />
+            New Mapping
+          </button>
+        </div>
       </div>
-      <div className={styles.sectionSearchRow}>
-        <div className={styles.sectionSearchBlock}>
+
+      {/* Search and Filters */}
+      <div className={styles.searchRow}>
+        <div className={styles.searchContainer}>
           <Search className={styles.searchIcon} />
           <input
             type="text"
-            placeholder="Buscar mapeamento (notas)..."
-            className={styles.sectionSearchInput}
+            placeholder="Search mappings..."
+            className={styles.searchInput}
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
           />
         </div>
-        <select className={styles.sectionSelect} value={filterGroup} onChange={e => { setFilterGroup(e.target.value); setPage(0); }}>
-          <option value="">Todos Grupos</option>
-          {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+        
+        <select 
+          className={styles.filterSelect} 
+          value={filterGroup} 
+          onChange={e => { setFilterGroup(e.target.value); setPage(0); }}
+        >
+          <option value="">All Groups</option>
+          {groups.map(g => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
         </select>
+        
         <input
-          className={styles.sectionSelect}
+          className={styles.filterInput}
           type="number"
           value={filterColumn}
           onChange={e => { setFilterColumn(e.target.value); setPage(0); }}
-          placeholder="ID Coluna"
+          placeholder="Column ID"
           min={0}
-          style={{ width: 100 }}
         />
       </div>
 
+      {/* Content */}
       {loading ? (
-        <div className={styles.sectionPlaceholder}><Loader2 className={styles.spin} /> Carregando...</div>
+        <div className={styles.loadingState}>
+          <div className={styles.spinner}></div>
+          <p>Loading mappings...</p>
+        </div>
       ) : error ? (
-        <div className={styles.sectionError}><AlertTriangle /> {error}</div>
+        <div className={styles.errorState}>
+          <AlertTriangle className={styles.errorIcon} />
+          <p>{error}</p>
+        </div>
       ) : mappings.length === 0 ? (
-        <div className={styles.sectionPlaceholder}><AlertTriangle /> Nenhum mapeamento encontrado.</div>
+        <div className={styles.emptyState}>
+          <Info className={styles.emptyIcon} />
+          <p>No mappings found</p>
+          <button 
+            className={styles.secondaryButton}
+            onClick={openAdd}
+          >
+            <Plus className={styles.buttonIcon} />
+            Create your first mapping
+          </button>
+        </div>
       ) : (
-        <div className={styles.mappingsTableWrapper}>
-          <table className={styles.mappingsTable}>
-            <thead>
-              <tr>
-                <th>Grupo</th>
-                <th>ID Coluna</th>
-                <th>Regra de Transformação</th>
-                <th>Confiança</th>
-                <th>Notas</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {mappings.map(mapping => (
-                <tr key={mapping.id}>
-                  <td>{groups.find(g => g.id === mapping.group_id)?.name || mapping.group_id}</td>
-                  <td>{mapping.column_id}</td>
-                  <td>{mapping.transformation_rule}</td>
-                  <td>{mapping.confidence_score}</td>
-                  <td>
-                    <span title={mapping.notes} style={{ maxWidth: 150, display: "inline-block", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
-                      {mapping.notes}
+        <div className={styles.mappingsContainer}>
+          {mappings.map(mapping => (
+            <div key={mapping.id} className={styles.mappingCard}>
+              <div 
+                className={styles.mappingHeader}
+                onClick={() => toggleMappingExpand(mapping.id)}
+              >
+                <div className={styles.mappingTitle}>
+                  {expandedMapping === mapping.id ? (
+                    <ChevronDown className={styles.chevronIcon} />
+                  ) : (
+                    <ChevronRight className={styles.chevronIcon} />
+                  )}
+                  <h3 className={styles.mappingName}>
+                    {groups.find(g => g.id === mapping.group_id)?.name || `Group ${mapping.group_id}`}
+                    <span className={styles.columnId}>Column ID: {mapping.column_id}</span>
+                  </h3>
+                </div>
+                <div className={styles.mappingActions}>
+                  <button 
+                    className={styles.iconButton}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEdit(mapping);
+                    }}
+                    title="Edit"
+                  >
+                    <Edit size={16} />
+                  </button>
+                  <button 
+                    className={styles.iconButton}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDelete({ id: mapping.id, column_id: mapping.column_id });
+                    }}
+                    title="Delete"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                  <button 
+                    className={styles.iconButton}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openValueMappings(mapping.group_id, mapping.column_id);
+                    }}
+                    title="Value Mappings"
+                  >
+                    <Eye size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {expandedMapping === mapping.id && (
+                <div className={styles.mappingDetails}>
+                  <div className={styles.detailRow}>
+                    <span className={styles.detailLabel}>Transformation Rule:</span>
+                    <span className={styles.detailValue}>
+                      {mapping.transformation_rule || <em>None defined</em>}
                     </span>
-                  </td>
-                  <td>
-                    <button className={styles.mappingActionBtn} title="Editar" onClick={() => openEdit(mapping)}><Edit size={16} /></button>
-                    <button className={styles.mappingActionBtn} title="Remover" onClick={() => setConfirmDelete({ id: mapping.id, column_id: mapping.column_id })}><Trash2 size={15} /></button>
-                    <button className={styles.mappingActionBtn} title="Valores Mapeados" onClick={() => openValueMappings(mapping.group_id, mapping.column_id)}><Eye size={15} /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className={styles.sectionPagination}>
-            <button disabled={page <= 0} onClick={() => setPage(p => Math.max(p - 1, 0))}>&lt;</button>
-            <span>Página {page + 1} de {pageCount || 1}</span>
-            <button disabled={page >= pageCount - 1} onClick={() => setPage(p => p + 1)}>&gt;</button>
+                  </div>
+                  <div className={styles.detailRow}>
+                    <span className={styles.detailLabel}>Confidence:</span>
+                    <span className={styles.confidenceBadge}>
+                      {mapping.confidence_score}
+                    </span>
+                  </div>
+                  {mapping.notes && (
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Notes:</span>
+                      <span className={styles.detailValue}>
+                        {mapping.notes}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {/* Pagination */}
+          <div className={styles.pagination}>
+            <button 
+              className={styles.paginationButton}
+              disabled={page <= 0}
+              onClick={() => setPage(p => Math.max(p - 1, 0))}
+            >
+              Previous
+            </button>
+            <span className={styles.pageInfo}>
+              Page {page + 1} of {pageCount || 1}
+            </span>
+            <button 
+              className={styles.paginationButton}
+              disabled={page >= pageCount - 1}
+              onClick={() => setPage(p => p + 1)}
+            >
+              Next
+            </button>
           </div>
         </div>
       )}
 
-      {/* Add/Edit Modal for mapping */}
+      {/* Add/Edit Modal */}
       {showModal && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modalContainerSmall}>
-            <form onSubmit={handleSubmit}>
-              <div className={styles.modalHeader}>
-                <h4 className={styles.modalTitle}>{modalMapping.id ? "Editar Mapeamento" : "Novo Mapeamento"}</h4>
-                <button className={styles.modalCloseButton} onClick={closeModal} type="button"><X /></button>
+          <div className={styles.modal}>
+            <div className={styles.modalHeader}>
+              <h3 className={styles.modalTitle}>
+                {modalMapping.id ? "Edit Mapping" : "Create New Mapping"}
+              </h3>
+              <button 
+                className={styles.modalCloseButton}
+                onClick={closeModal}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmit} className={styles.modalForm}>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Group *</label>
+                <select
+                  className={styles.formInput}
+                  required
+                  value={modalMapping.group_id || ""}
+                  onChange={e => {
+                    setModalMapping(mm => ({ ...mm, group_id: e.target.value }));
+                    if (e.target.value) doFetchAvailableColumns(Number(e.target.value));
+                  }}
+                  disabled={!!modalMapping.id}
+                >
+                  <option value="">Select a group</option>
+                  {groups.map(g => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
               </div>
-              <div className={styles.modalBody}>
-                <div className={styles.formField}>
-                  <label>Grupo *</label>
-                  <select
-                    required
-                    value={modalMapping.group_id || ""}
-                    onChange={e => {
-                      setModalMapping(mm => ({ ...mm, group_id: e.target.value }));
-                      if (e.target.value) doFetchAvailableColumns(Number(e.target.value));
-                    }}
-                    disabled={!!modalMapping.id}
-                  >
-                    <option value="">Selecione</option>
-                    {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                  </select>
-                </div>
-                <div className={styles.formField}>
-                  <label>Coluna *</label>
-                  <select
-                    required
-                    value={modalMapping.column_id || ""}
-                    onChange={e => setModalMapping(mm => ({ ...mm, column_id: e.target.value }))}
-                    disabled={!!modalMapping.id}
-                  >
-                    <option value="">Selecione</option>
-                    {(availableColumns || []).map(col =>
-                      <option key={col.id} value={col.id}>
-                        {col.column_name} (ID: {col.id}) [{col.data_type}]
-                      </option>
-                    )}
-                  </select>
-                </div>
-                <div className={styles.formField}>
-                  <label>Regra de Transformação</label>
-                  <input value={modalMapping.transformation_rule} onChange={e => setModalMapping(mm => ({ ...mm, transformation_rule: e.target.value }))} />
-                </div>
-                <div className={styles.formField}>
-                  <label>Confiança (0-1)</label>
-                  <input required type="number" min="0" max="1" step="0.01" value={modalMapping.confidence_score} onChange={e => setModalMapping(mm => ({ ...mm, confidence_score: e.target.value }))} />
-                </div>
-                <div className={styles.formField}>
-                  <label>Notas</label>
-                  <textarea value={modalMapping.notes} onChange={e => setModalMapping(mm => ({ ...mm, notes: e.target.value }))} />
-                </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Column *</label>
+                <select
+                  className={styles.formInput}
+                  required
+                  value={modalMapping.column_id || ""}
+                  onChange={e => setModalMapping(mm => ({ ...mm, column_id: e.target.value }))}
+                  disabled={!!modalMapping.id}
+                >
+                  <option value="">Select a column</option>
+                  {availableColumns.map(col => (
+                    <option key={col.id} value={col.id}>
+                      {col.column_name} (ID: {col.id}) [{col.data_type}]
+                    </option>
+                  ))}
+                </select>
               </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Transformation Rule</label>
+                <input
+                  type="text"
+                  className={styles.formInput}
+                  value={modalMapping.transformation_rule}
+                  onChange={e => setModalMapping(mm => ({ ...mm, transformation_rule: e.target.value }))}
+                  placeholder="e.g. UPPER({column})"
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Confidence Score (0-1) *</label>
+                <input
+                  type="number"
+                  className={styles.formInput}
+                  required
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={modalMapping.confidence_score}
+                  onChange={e => setModalMapping(mm => ({ ...mm, confidence_score: e.target.value }))}
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Notes</label>
+                <textarea
+                  className={styles.formTextarea}
+                  value={modalMapping.notes}
+                  onChange={e => setModalMapping(mm => ({ ...mm, notes: e.target.value }))}
+                  rows={3}
+                />
+              </div>
+
               <div className={styles.modalFooter}>
-                <button type="button" className={styles.cancelButton} onClick={closeModal}>Cancelar</button>
-                <button type="submit" className={styles.submitButton}><Save /> Salvar</button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={closeModal}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={styles.primaryButton}
+                >
+                  <Save size={16} className={styles.buttonIcon} />
+                  {modalMapping.id ? "Update" : "Create"} Mapping
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Delete Confirm */}
+      {/* Delete Confirmation Modal */}
       {confirmDelete && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modalContainerSmall}>
+          <div className={styles.modal}>
             <div className={styles.modalHeader}>
-              <h4 className={styles.modalTitle}>Remover Mapeamento</h4>
-              <button className={styles.modalCloseButton} onClick={() => setConfirmDelete(null)}><X /></button>
+              <h3 className={styles.modalTitle}>Confirm Deletion</h3>
+              <button 
+                className={styles.modalCloseButton}
+                onClick={() => setConfirmDelete(null)}
+              >
+                <X size={20} />
+              </button>
             </div>
+            
             <div className={styles.modalBody}>
-              <p>
-                Tem certeza que deseja remover o mapeamento de coluna <b>{confirmDelete.column_id}</b>?<br />
-                Esta ação não pode ser desfeita.
-              </p>
+              <div className={styles.alertBox}>
+                <AlertTriangle className={styles.alertIcon} />
+                <p>
+                  Are you sure you want to delete the mapping for column ID <strong>{confirmDelete.column_id}</strong>?
+                  This action cannot be undone.
+                </p>
+              </div>
             </div>
+
             <div className={styles.modalFooter}>
-              <button className={styles.cancelButton} onClick={() => setConfirmDelete(null)}>Cancelar</button>
-              <button className={styles.submitButton} onClick={handleDelete}><Trash2 /> Remover</button>
+              <button
+                className={styles.secondaryButton}
+                onClick={() => setConfirmDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className={styles.dangerButton}
+                onClick={handleDelete}
+              >
+                <Trash2 size={16} className={styles.buttonIcon} />
+                Delete Mapping
+              </button>
             </div>
           </div>
         </div>
@@ -378,74 +567,155 @@ export default function ColumnMappingsSection() {
       {/* Value Mappings Modal */}
       {showValueModal && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modalContainerLarge}>
+          <div className={styles.largeModal}>
             <div className={styles.modalHeader}>
-              <h4 className={styles.modalTitle}>Mapeamentos de Valores</h4>
-              <button className={styles.modalCloseButton} onClick={closeValueModal}><X /></button>
+              <h3 className={styles.modalTitle}>Value Mappings</h3>
+              <button 
+                className={styles.modalCloseButton}
+                onClick={closeValueModal}
+              >
+                <X size={20} />
+              </button>
             </div>
+            
             <div className={styles.modalBody}>
-              <button className={styles.addBtn} onClick={() => setModalValue({ source_value: "", standard_value: "", description: "" })}><Plus /> Novo Mapeamento de Valor</button>
+              <div className={styles.valueMappingsHeader}>
+                <h4 className={styles.subtitle}>
+                  Column ID: {valueColumnId}
+                  {valueGroup && (
+                    <span className={styles.groupName}>
+                      {groups.find(g => g.id === valueGroup)?.name || `Group ${valueGroup}`}
+                    </span>
+                  )}
+                </h4>
+                <button
+                  className={styles.primaryButton}
+                  onClick={() => setModalValue({ source_value: "", standard_value: "", description: "" })}
+                >
+                  <Plus className={styles.buttonIcon} />
+                  New Value Mapping
+                </button>
+              </div>
+
               {loading ? (
-                <div className={styles.sectionPlaceholder}><Loader2 className={styles.spin} /> Carregando...</div>
+                <div className={styles.loadingState}>
+                  <div className={styles.spinner}></div>
+                  <p>Loading value mappings...</p>
+                </div>
               ) : valueMappings.length === 0 ? (
-                <div className={styles.sectionPlaceholder}><AlertTriangle /> Nenhum valor mapeado.</div>
+                <div className={styles.emptyState}>
+                  <Info className={styles.emptyIcon} />
+                  <p>No value mappings defined for this column</p>
+                </div>
               ) : (
-                <table className={styles.valueMappingsTable}>
-                  <thead>
-                    <tr>
-                      <th>Valor de Origem</th>
-                      <th>Valor Padrão</th>
-                      <th>Descrição</th>
-                      <th>Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {valueMappings.map(vm => (
-                      <tr key={vm.id}>
-                        <td>{vm.source_value}</td>
-                        <td>{vm.standard_value}</td>
-                        <td>{vm.description}</td>
-                        <td>
-                          <button className={styles.mappingActionBtn} title="Editar" onClick={() => setModalValue(vm)}><Edit size={16} /></button>
-                          <button className={styles.mappingActionBtn} title="Remover" onClick={() => handleValueDelete(vm.id)}><Trash2 size={15} /></button>
-                        </td>
+                <div className={styles.valueMappingsTable}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Source Value</th>
+                        <th>Standard Value</th>
+                        <th>Description</th>
+                        <th>Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {valueMappings.map(vm => (
+                        <tr key={vm.id}>
+                          <td>{vm.source_value}</td>
+                          <td>{vm.standard_value}</td>
+                          <td>{vm.description || '-'}</td>
+                          <td>
+                            <button
+                              className={styles.iconButton}
+                              onClick={() => setModalValue(vm)}
+                            >
+                              <Edit size={16} />
+                            </button>
+                            <button
+                              className={styles.iconButton}
+                              onClick={() => handleValueDelete(vm.id)}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>
-          {modalValue && (
-            <div className={styles.modalOverlay} style={{ zIndex: 100 }}>
-              <div className={styles.modalContainerSmall}>
-                <form onSubmit={handleValueSubmit}>
-                  <div className={styles.modalHeader}>
-                    <h4 className={styles.modalTitle}>{modalValue.id ? "Editar" : "Novo"} Mapeamento de Valor</h4>
-                    <button className={styles.modalCloseButton} onClick={() => setModalValue(null)} type="button"><X /></button>
-                  </div>
-                  <div className={styles.modalBody}>
-                    <div className={styles.formField}>
-                      <label>Valor de Origem *</label>
-                      <input required value={modalValue.source_value} onChange={e => setModalValue(mv => ({ ...mv, source_value: e.target.value }))} />
-                    </div>
-                    <div className={styles.formField}>
-                      <label>Valor Padrão *</label>
-                      <input required value={modalValue.standard_value} onChange={e => setModalValue(mv => ({ ...mv, standard_value: e.target.value }))} />
-                    </div>
-                    <div className={styles.formField}>
-                      <label>Descrição</label>
-                      <input value={modalValue.description} onChange={e => setModalValue(mv => ({ ...mv, description: e.target.value }))} />
-                    </div>
-                  </div>
-                  <div className={styles.modalFooter}>
-                    <button type="button" className={styles.cancelButton} onClick={() => setModalValue(null)}>Cancelar</button>
-                    <button type="submit" className={styles.submitButton}><Save /> Salvar</button>
-                  </div>
-                </form>
-              </div>
+        </div>
+      )}
+
+      {/* Value Mapping Edit Modal */}
+      {modalValue && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modal}>
+            <div className={styles.modalHeader}>
+              <h3 className={styles.modalTitle}>
+                {modalValue.id ? "Edit Value Mapping" : "Create Value Mapping"}
+              </h3>
+              <button 
+                className={styles.modalCloseButton}
+                onClick={() => setModalValue(null)}
+              >
+                <X size={20} />
+              </button>
             </div>
-          )}
+            
+            <form onSubmit={handleValueSubmit} className={styles.modalForm}>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Source Value *</label>
+                <input
+                  type="text"
+                  className={styles.formInput}
+                  required
+                  value={modalValue.source_value}
+                  onChange={e => setModalValue(mv => ({ ...mv, source_value: e.target.value }))}
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Standard Value *</label>
+                <input
+                  type="text"
+                  className={styles.formInput}
+                  required
+                  value={modalValue.standard_value}
+                  onChange={e => setModalValue(mv => ({ ...mv, standard_value: e.target.value }))}
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Description</label>
+                <textarea
+                  className={styles.formTextarea}
+                  value={modalValue.description}
+                  onChange={e => setModalValue(mv => ({ ...mv, description: e.target.value }))}
+                  rows={3}
+                />
+              </div>
+
+              <div className={styles.modalFooter}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setModalValue(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={styles.primaryButton}
+                >
+                  <Save size={16} className={styles.buttonIcon} />
+                  {modalValue.id ? "Update" : "Create"} Mapping
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

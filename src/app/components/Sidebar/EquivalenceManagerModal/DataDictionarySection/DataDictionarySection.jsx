@@ -1,5 +1,16 @@
 import { useState, useEffect } from "react";
-import { Plus, Edit, Trash2, Save, X, Loader2, AlertTriangle, Search, Info } from "lucide-react";
+import {
+  PlusIcon,
+  PencilSquareIcon,
+  TrashIcon,
+  CheckCircleIcon,
+  XMarkIcon,
+  MagnifyingGlassIcon,
+  InformationCircleIcon,
+  ExclamationTriangleIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon
+} from "@heroicons/react/24/outline";
 import styles from "./DataDictionarySection.module.css";
 import {
   api_getDataDictionary,
@@ -8,7 +19,7 @@ import {
   api_deleteDataDictionary,
   api_searchDataDictionary,
   api_getSemanticDomains,
-} from '../api'
+} from "../api";
 
 const PAGE_SIZE = 15;
 
@@ -75,7 +86,7 @@ export default function DataDictionarySection() {
     });
     setShowModal(true);
   }
-  function closeModal() { setShowModal(false); setModalTerm(null); }
+  function closeModal() { setShowModal(false); setModalTerm(null); setError(null); }
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -117,14 +128,19 @@ export default function DataDictionarySection() {
   const pageCount = Math.ceil(total / PAGE_SIZE);
 
   return (
-    <div>
+    <div className={styles.sectionRoot}>
       <div className={styles.sectionHeader}>
-        <h3 className={styles.sectionTitle}><Info className={styles.sectionInfoIcon} /> Dicionário de Dados</h3>
-        <button className={styles.addBtn} onClick={openAdd}><Plus /> Novo Termo</button>
+        <h3 className={styles.sectionTitle}>
+          <InformationCircleIcon className={styles.sectionInfoIcon} />
+          Dicionário de Dados
+        </h3>
+        <button className={styles.addBtnFloat} onClick={openAdd}>
+          <PlusIcon className={styles.iconSm} /> Novo Termo
+        </button>
       </div>
       <div className={styles.sectionSearchRow}>
         <div className={styles.sectionSearchBlock}>
-          <Search className={styles.searchIcon} />
+          <MagnifyingGlassIcon className={styles.searchIcon} />
           <input
             type="text"
             placeholder="Buscar termo por nome..."
@@ -148,54 +164,70 @@ export default function DataDictionarySection() {
         </select>
       </div>
 
-      {loading ? (
-        <div className={styles.sectionPlaceholder}><Loader2 className={styles.spin} /> Carregando...</div>
-      ) : error ? (
-        <div className={styles.sectionError}><AlertTriangle /> {error}</div>
-      ) : terms.length === 0 ? (
-        <div className={styles.sectionPlaceholder}><AlertTriangle /> Nenhum termo encontrado.</div>
-      ) : (
-        <div className={styles.dictTableWrapper}>
-          <table className={styles.dictTable}>
-            <thead>
-              <tr>
-                <th>Nome</th>
-                <th>Nome Exibição</th>
-                <th>Descrição</th>
-                <th>Tipo</th>
-                <th>Domínio</th>
-                <th>Sinônimos</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {terms.map(term => (
-                <tr key={term.id}>
-                  <td>{term.name}</td>
-                  <td>{term.display_name}</td>
-                  <td>
-                    <span title={term.description} style={{ maxWidth: 180, display: "inline-block", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
-                      {term.description}
-                    </span>
-                  </td>
-                  <td>{term.data_type}</td>
-                  <td>{domains.find(d => d.id === term.semantic_domain_id)?.name || "-"}</td>
-                  <td>{(term.synonyms || []).join(", ")}</td>
-                  <td>
-                    <button className={styles.dictActionBtn} title="Editar" onClick={() => openEdit(term)}><Edit size={16} /></button>
-                    <button className={styles.dictActionBtn} title="Remover" onClick={() => setConfirmDelete({ id: term.id, name: term.name })}><Trash2 size={15} /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className={styles.sectionPagination}>
-            <button disabled={page <= 0} onClick={() => setPage(p => Math.max(p - 1, 0))}>&lt;</button>
-            <span>Página {page + 1} de {pageCount || 1}</span>
-            <button disabled={page >= pageCount - 1} onClick={() => setPage(p => p + 1)}>&gt;</button>
+      <div className={styles.dictTableWrapper}>
+        {loading ? (
+          <div className={styles.sectionPlaceholder}>
+            Carregando...
           </div>
+        ) : error ? (
+          <div className={styles.sectionError}>
+            <ExclamationTriangleIcon className={styles.iconSm} /> {error}
+          </div>
+        ) : terms.length === 0 ? (
+          <div className={styles.sectionPlaceholder}>
+            <ExclamationTriangleIcon className={styles.iconSm} /> Nenhum termo encontrado.
+          </div>
+        ) : (
+          <div className={styles.responsiveTable}>
+            <table className={styles.dictTable}>
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Exibição</th>
+                  <th>Descrição</th>
+                  <th>Tipo</th>
+                  <th>Domínio</th>
+                  <th>Sinônimos</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {terms.map(term => (
+                  <tr key={term.id}>
+                    <td>{term.name}</td>
+                    <td>{term.display_name}</td>
+                    <td>
+                      <span title={term.description} className={styles.cellEllipsis}>
+                        {term.description}
+                      </span>
+                    </td>
+                    <td>{term.data_type}</td>
+                    <td>{domains.find(d => d.id === term.semantic_domain_id)?.name || "-"}</td>
+                    <td>{(term.synonyms || []).join(", ")}</td>
+                    <td>
+                      <button className={styles.dictActionBtn} title="Editar" onClick={() => openEdit(term)}>
+                        <PencilSquareIcon className={styles.iconXs} />
+                      </button>
+                      <button className={styles.dictActionBtn} title="Remover" onClick={() => setConfirmDelete({ id: term.id, name: term.name })}>
+                        <TrashIcon className={styles.iconXs} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className={styles.sectionPagination}>
+          <button disabled={page <= 0} onClick={() => setPage(p => Math.max(p - 1, 0))}>
+            <ChevronLeftIcon className={styles.iconSm} />
+          </button>
+          <span>Página {page + 1} de {pageCount || 1}</span>
+          <button disabled={page >= pageCount - 1} onClick={() => setPage(p => p + 1)}>
+            <ChevronRightIcon className={styles.iconSm} />
+          </button>
         </div>
-      )}
+      </div>
 
       {showModal && (
         <div className={styles.modalOverlay}>
@@ -203,7 +235,9 @@ export default function DataDictionarySection() {
             <form onSubmit={handleSubmit}>
               <div className={styles.modalHeader}>
                 <h4 className={styles.modalTitle}>{modalTerm.id ? "Editar Termo" : "Novo Termo"}</h4>
-                <button className={styles.modalCloseButton} onClick={closeModal} type="button"><X /></button>
+                <button className={styles.modalCloseButton} onClick={closeModal} type="button">
+                  <XMarkIcon className={styles.iconSm} />
+                </button>
               </div>
               <div className={styles.modalBody}>
                 <div className={styles.formField}>
@@ -272,10 +306,18 @@ export default function DataDictionarySection() {
                     rows={2}
                   />
                 </div>
+                {error && error.startsWith("Validação") && (
+                  <div className={styles.formError}><ExclamationTriangleIcon className={styles.iconXs} /> {error}</div>
+                )}
+                {error && error.startsWith("Exemplos") && (
+                  <div className={styles.formError}><ExclamationTriangleIcon className={styles.iconXs} /> {error}</div>
+                )}
               </div>
               <div className={styles.modalFooter}>
                 <button type="button" className={styles.cancelButton} onClick={closeModal}>Cancelar</button>
-                <button type="submit" className={styles.submitButton}><Save /> Salvar</button>
+                <button type="submit" className={styles.submitButton}>
+                  <CheckCircleIcon className={styles.iconXs} /> Salvar
+                </button>
               </div>
             </form>
           </div>
@@ -287,7 +329,9 @@ export default function DataDictionarySection() {
           <div className={styles.modalContainerSmall}>
             <div className={styles.modalHeader}>
               <h4 className={styles.modalTitle}>Remover Termo</h4>
-              <button className={styles.modalCloseButton} onClick={() => setConfirmDelete(null)}><X /></button>
+              <button className={styles.modalCloseButton} onClick={() => setConfirmDelete(null)}>
+                <XMarkIcon className={styles.iconSm} />
+              </button>
             </div>
             <div className={styles.modalBody}>
               <p>
@@ -297,11 +341,18 @@ export default function DataDictionarySection() {
             </div>
             <div className={styles.modalFooter}>
               <button className={styles.cancelButton} onClick={() => setConfirmDelete(null)}>Cancelar</button>
-              <button className={styles.submitButton} onClick={handleDelete}><Trash2 /> Remover</button>
+              <button className={styles.submitButton} onClick={handleDelete}>
+                <TrashIcon className={styles.iconXs} /> Remover
+              </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Floating Add Button for mobile */}
+      <button className={styles.addBtnMobile} onClick={openAdd} title="Novo Termo">
+        <PlusIcon className={styles.iconSm} />
+      </button>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { Plus, Edit, Trash2, Save, X, Loader2, AlertTriangle, Info, Link2, ChevronRight, ChevronDown } from "lucide-react";
-import styles from "./ColumnGroupsSection.module.css";
+import { Plus, Edit, Trash2, Save, X, AlertTriangle, Info, Search, Eye, ChevronDown, ChevronRight, Database, Users } from "lucide-react";
+import styles from './ColumnGroupsSection.module.css';
 import {
   api_getColumnGroups,
   api_postColumnGroup,
@@ -24,7 +24,7 @@ export default function ColumnGroupsSection() {
   const [showModal, setShowModal] = useState(false);
   const [modalGroup, setModalGroup] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [expanded, setExpanded] = useState({});
+  const [expandedGroup, setExpandedGroup] = useState(null);
 
   useEffect(() => {
     api_getSemanticDomains().then(setDomains).catch(() => setDomains([]));
@@ -54,7 +54,7 @@ export default function ColumnGroupsSection() {
       }
       setGroups(items);
     } catch (e) {
-      setError("Erro ao carregar grupos: " + e.message);
+      setError("Failed to load groups: " + e.message);
     }
     setLoading(false);
   };
@@ -71,6 +71,7 @@ export default function ColumnGroupsSection() {
     });
     setShowModal(true);
   }
+
   function openEdit(group) {
     setModalGroup({
       ...group,
@@ -80,7 +81,11 @@ export default function ColumnGroupsSection() {
     });
     setShowModal(true);
   }
-  function closeModal() { setShowModal(false); setModalGroup(null); }
+
+  function closeModal() { 
+    setShowModal(false); 
+    setModalGroup(null); 
+  }
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -103,7 +108,7 @@ export default function ColumnGroupsSection() {
       closeModal();
       fetchGroups();
     } catch (e) {
-      setError("Falha ao salvar grupo: " + e.message);
+      setError("Failed to save group: " + e.message);
       setLoading(false);
     }
   };
@@ -116,176 +121,334 @@ export default function ColumnGroupsSection() {
       setConfirmDelete(null);
       fetchGroups();
     } catch (e) {
-      setError("Falha ao remover grupo: " + e.message);
+      setError("Failed to delete group: " + e.message);
       setLoading(false);
     }
   };
 
-  const toggleExpand = id => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+  const toggleGroupExpand = (groupId) => {
+    setExpandedGroup(expandedGroup === groupId ? null : groupId);
+  };
 
   return (
-    <div>
-      <div className={styles.sectionHeader}>
-        <h3 className={styles.sectionTitle}><Info className={styles.sectionInfoIcon} /> Grupos de Colunas</h3>
-        <button className={styles.addBtn} onClick={openAdd}><Plus /> Novo Grupo</button>
+    <div className={styles.container}>
+      {/* Header */}
+      <div className={styles.header}>
+        <div className={styles.headerLeft}>
+          <h2 className={styles.title}>
+            <Users className={styles.titleIcon} />
+            Column Groups
+          </h2>
+          <div className={styles.badges}>
+            <span className={styles.countBadge}>
+              {groups.length} Groups
+            </span>
+            <span className={styles.domainBadge}>
+              {domains.length} Domains
+            </span>
+          </div>
+        </div>
+        <div className={styles.actions}>
+          <button 
+            className={styles.primaryButton}
+            onClick={openAdd}
+          >
+            <Plus className={styles.buttonIcon} />
+            New Group
+          </button>
+        </div>
       </div>
-      <div className={styles.sectionSearchRow}>
-        <div className={styles.sectionSearchBlock}>
+
+      {/* Search and Filters */}
+      <div className={styles.searchRow}>
+        <div className={styles.searchContainer}>
+          <Search className={styles.searchIcon} />
           <input
             type="text"
-            placeholder="Buscar grupo por nome..."
-            className={styles.sectionSearchInput}
+            placeholder="Search groups..."
+            className={styles.searchInput}
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <select className={styles.sectionSelect} value={filterDomain} onChange={e => setFilterDomain(e.target.value)}>
-          <option value="">Todos Domínios</option>
-          {domains.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+        
+        <select 
+          className={styles.filterSelect} 
+          value={filterDomain} 
+          onChange={e => setFilterDomain(e.target.value)}
+        >
+          <option value="">All Domains</option>
+          {domains.map(d => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
         </select>
-        <select className={styles.sectionSelect} value={filterTerm} onChange={e => setFilterTerm(e.target.value)}>
-          <option value="">Todos Termos</option>
-          {dictTerms.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        
+        <select 
+          className={styles.filterSelect} 
+          value={filterTerm} 
+          onChange={e => setFilterTerm(e.target.value)}
+        >
+          <option value="">All Terms</option>
+          {dictTerms.map(t => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
         </select>
       </div>
 
+      {/* Content */}
       {loading ? (
-        <div className={styles.sectionPlaceholder}><Loader2 className={styles.spin} /> Carregando...</div>
+        <div className={styles.loadingState}>
+          <div className={styles.spinner}></div>
+          <p>Loading groups...</p>
+        </div>
       ) : error ? (
-        <div className={styles.sectionError}><AlertTriangle /> {error}</div>
+        <div className={styles.errorState}>
+          <AlertTriangle className={styles.errorIcon} />
+          <p>{error}</p>
+        </div>
       ) : groups.length === 0 ? (
-        <div className={styles.sectionPlaceholder}><AlertTriangle /> Nenhum grupo encontrado.</div>
+        <div className={styles.emptyState}>
+          <Info className={styles.emptyIcon} />
+          <p>No groups found</p>
+          <button 
+            className={styles.secondaryButton}
+            onClick={openAdd}
+          >
+            <Plus className={styles.buttonIcon} />
+            Create your first group
+          </button>
+        </div>
       ) : (
-        <div className={styles.groupsTableWrapper}>
-          <table className={styles.groupsTable}>
-            <thead>
-              <tr>
-                <th>Nome</th>
-                <th>Descrição</th>
-                <th>Domínio</th>
-                <th>Termo Dicionário</th>
-                <th>Propriedades</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {groups.map(group => (
-                <>
-                  <tr key={group.id}>
-                    <td>
-                      <button
-                        className={styles.expandBtn}
-                        onClick={() => toggleExpand(group.id)}
-                        title="Ver colunas/valores mapeados"
-                      >
-                        {expanded[group.id] ? <ChevronDown /> : <ChevronRight />}
-                      </button>
-                      {group.name}
-                    </td>
-                    <td>
-                      <span title={group.description} style={{ maxWidth: 170, display: "inline-block", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
+        <div className={styles.groupsContainer}>
+          {groups.map(group => (
+            <div key={group.id} className={styles.groupCard}>
+              <div 
+                className={styles.groupHeader}
+                onClick={() => toggleGroupExpand(group.id)}
+              >
+                <div className={styles.groupTitle}>
+                  {expandedGroup === group.id ? (
+                    <ChevronDown className={styles.chevronIcon} />
+                  ) : (
+                    <ChevronRight className={styles.chevronIcon} />
+                  )}
+                  <h3 className={styles.groupName}>
+                    {group.name}
+                    {group.description && (
+                      <span className={styles.groupDescription}>
                         {group.description}
                       </span>
-                    </td>
-                    <td>{domains.find(d => d.id === group.semantic_domain_id)?.name || "-"}</td>
-                    <td>{dictTerms.find(t => t.id === group.data_dictionary_term_id)?.name || "-"}</td>
-                    <td>
-                      <pre style={{ fontSize: 11, maxWidth: 140, whiteSpace: "pre-wrap", overflowX: "auto" }}>
-                        {JSON.stringify(group.properties || {}, null, 1)}
-                      </pre>
-                    </td>
-                    <td>
-                      <button className={styles.groupActionBtn} title="Editar" onClick={() => openEdit(group)}><Edit size={16} /></button>
-                      <button className={styles.groupActionBtn} title="Remover" onClick={() => setConfirmDelete({ id: group.id, name: group.name })}><Trash2 size={15} /></button>
-                    </td>
-                  </tr>
-                  {expanded[group.id] && (
-                    <tr>
-                      <td colSpan={6} style={{ background: "#f7fafc" }}>
-                        <GroupMappingsPreview groupId={group.id} />
-                      </td>
-                    </tr>
+                    )}
+                  </h3>
+                </div>
+                <div className={styles.groupActions}>
+                  <button 
+                    className={styles.iconButton}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEdit(group);
+                    }}
+                    title="Edit"
+                  >
+                    <Edit size={16} />
+                  </button>
+                  <button 
+                    className={styles.iconButton}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDelete({ id: group.id, name: group.name });
+                    }}
+                    title="Delete"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {expandedGroup === group.id && (
+                <div className={styles.groupDetails}>
+                  <div className={styles.detailRow}>
+                    <span className={styles.detailLabel}>Domain:</span>
+                    <span className={styles.detailValue}>
+                      {domains.find(d => d.id === group.semantic_domain_id)?.name || <em>None assigned</em>}
+                    </span>
+                  </div>
+                  <div className={styles.detailRow}>
+                    <span className={styles.detailLabel}>Dictionary Term:</span>
+                    <span className={styles.detailValue}>
+                      {dictTerms.find(t => t.id === group.data_dictionary_term_id)?.name || <em>None assigned</em>}
+                    </span>
+                  </div>
+                  {group.properties && Object.keys(group.properties).length > 0 && (
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Properties:</span>
+                      <div className={styles.propertiesContainer}>
+                        <pre className={styles.propertiesJson}>
+                          {JSON.stringify(group.properties, null, 2)}
+                        </pre>
+                      </div>
+                    </div>
                   )}
-                </>
-              ))}
-            </tbody>
-          </table>
+                  <div className={styles.mappingsPreview}>
+                    <GroupMappingsPreview groupId={group.id} />
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
+      {/* Add/Edit Modal */}
       {showModal && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modalContainerSmall}>
-            <form onSubmit={handleSubmit}>
-              <div className={styles.modalHeader}>
-                <h4 className={styles.modalTitle}>{modalGroup.id ? "Editar Grupo" : "Novo Grupo"}</h4>
-                <button className={styles.modalCloseButton} onClick={closeModal} type="button"><X /></button>
+          <div className={styles.modal}>
+            <div className={styles.modalHeader}>
+              <h3 className={styles.modalTitle}>
+                {modalGroup.id ? "Edit Group" : "Create New Group"}
+              </h3>
+              <button 
+                className={styles.modalCloseButton}
+                onClick={closeModal}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmit} className={styles.modalForm}>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Name *</label>
+                <input
+                  type="text"
+                  className={styles.formInput}
+                  required
+                  value={modalGroup.name}
+                  onChange={e => setModalGroup(mg => ({ ...mg, name: e.target.value }))}
+                  placeholder="Enter group name"
+                />
               </div>
-              <div className={styles.modalBody}>
-                <div className={styles.formField}>
-                  <label>Nome *</label>
-                  <input required value={modalGroup.name} onChange={e => setModalGroup(mg => ({ ...mg, name: e.target.value }))} />
-                </div>
-                <div className={styles.formField}>
-                  <label>Descrição</label>
-                  <textarea value={modalGroup.description} onChange={e => setModalGroup(mg => ({ ...mg, description: e.target.value }))} />
-                </div>
-                <div className={styles.formField}>
-                  <label>Domínio Semântico</label>
-                  <select value={modalGroup.semantic_domain_id || ""} onChange={e => setModalGroup(mg => ({ ...mg, semantic_domain_id: e.target.value }))}>
-                    <option value="">Nenhum</option>
-                    {domains.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
-                </div>
-                <div className={styles.formField}>
-                  <label>Termo Dicionário</label>
-                  <select value={modalGroup.data_dictionary_term_id || ""} onChange={e => setModalGroup(mg => ({ ...mg, data_dictionary_term_id: e.target.value }))}>
-                    <option value="">Nenhum</option>
-                    {dictTerms.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
-                </div>
-                <div className={styles.formField}>
-                  <label>Propriedades (JSON)</label>
-                  <textarea
-                    value={JSON.stringify(modalGroup.properties ?? {}, null, 2)}
-                    onChange={e => {
-                      try {
-                        const val = JSON.parse(e.target.value);
-                        setModalGroup(mg => ({ ...mg, properties: val }));
-                        setError(null);
-                      } catch (err) {
-                        setError("Propriedades: JSON inválido");
-                      }
-                    }}
-                    rows={2}
-                  />
-                </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Description</label>
+                <textarea
+                  className={styles.formTextarea}
+                  value={modalGroup.description}
+                  onChange={e => setModalGroup(mg => ({ ...mg, description: e.target.value }))}
+                  placeholder="Enter group description"
+                  rows={3}
+                />
               </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Semantic Domain</label>
+                <select
+                  className={styles.formInput}
+                  value={modalGroup.semantic_domain_id || ""}
+                  onChange={e => setModalGroup(mg => ({ ...mg, semantic_domain_id: e.target.value }))}
+                >
+                  <option value="">Select a domain</option>
+                  {domains.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Dictionary Term</label>
+                <select
+                  className={styles.formInput}
+                  value={modalGroup.data_dictionary_term_id || ""}
+                  onChange={e => setModalGroup(mg => ({ ...mg, data_dictionary_term_id: e.target.value }))}
+                >
+                  <option value="">Select a term</option>
+                  {dictTerms.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Properties (JSON)</label>
+                <textarea
+                  className={styles.formTextarea}
+                  value={JSON.stringify(modalGroup.properties ?? {}, null, 2)}
+                  onChange={e => {
+                    try {
+                      const val = JSON.parse(e.target.value);
+                      setModalGroup(mg => ({ ...mg, properties: val }));
+                      setError(null);
+                    } catch (err) {
+                      setError("Invalid JSON format in properties");
+                    }
+                  }}
+                  placeholder='{"key": "value"}'
+                  rows={4}
+                />
+              </div>
+
               <div className={styles.modalFooter}>
-                <button type="button" className={styles.cancelButton} onClick={closeModal}>Cancelar</button>
-                <button type="submit" className={styles.submitButton}><Save /> Salvar</button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={closeModal}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={styles.primaryButton}
+                >
+                  <Save size={16} className={styles.buttonIcon} />
+                  {modalGroup.id ? "Update" : "Create"} Group
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
       {confirmDelete && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modalContainerSmall}>
+          <div className={styles.modal}>
             <div className={styles.modalHeader}>
-              <h4 className={styles.modalTitle}>Remover Grupo</h4>
-              <button className={styles.modalCloseButton} onClick={() => setConfirmDelete(null)}><X /></button>
+              <h3 className={styles.modalTitle}>Confirm Deletion</h3>
+              <button 
+                className={styles.modalCloseButton}
+                onClick={() => setConfirmDelete(null)}
+              >
+                <X size={20} />
+              </button>
             </div>
+            
             <div className={styles.modalBody}>
-              <p>
-                Tem certeza que deseja remover o grupo <b>{confirmDelete.name}</b>?<br />
-                Esta ação não pode ser desfeita.
-              </p>
+              <div className={styles.alertBox}>
+                <AlertTriangle className={styles.alertIcon} />
+                <p>
+                  Are you sure you want to delete the group <strong>{confirmDelete.name}</strong>?
+                  This action cannot be undone and may affect related mappings.
+                </p>
+              </div>
             </div>
+
             <div className={styles.modalFooter}>
-              <button className={styles.cancelButton} onClick={() => setConfirmDelete(null)}>Cancelar</button>
-              <button className={styles.submitButton} onClick={handleDelete}><Trash2 /> Remover</button>
+              <button
+                className={styles.secondaryButton}
+                onClick={() => setConfirmDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className={styles.dangerButton}
+                onClick={handleDelete}
+              >
+                <Trash2 size={16} className={styles.buttonIcon} />
+                Delete Group
+              </button>
             </div>
           </div>
         </div>
@@ -297,6 +460,7 @@ export default function ColumnGroupsSection() {
 function GroupMappingsPreview({ groupId }) {
   const [group, setGroup] = useState(null);
   const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     setLoading(true);
     api_getColumnGroup(groupId)
@@ -304,27 +468,80 @@ function GroupMappingsPreview({ groupId }) {
       .catch(() => setGroup(null))
       .finally(() => setLoading(false));
   }, [groupId]);
-  if (loading) return <div style={{ color: "#64748b" }}><Loader2 className={styles.spin} /> Carregando mapeamentos...</div>;
-  if (!group) return <div style={{ color: "#dc2626" }}><AlertTriangle /> Falha ao carregar detalhes do grupo.</div>;
+
+  if (loading) {
+    return (
+      <div className={styles.previewLoading}>
+        <div className={styles.spinner}></div>
+        <span>Loading mappings...</span>
+      </div>
+    );
+  }
+
+  if (!group) {
+    return (
+      <div className={styles.previewError}>
+        <AlertTriangle className={styles.errorIcon} />
+        <span>Failed to load group details</span>
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <div><b>Colunas mapeadas:</b> {group.column_mappings?.length || 0}</div>
-      <div style={{ fontSize: 13, marginLeft: 6 }}>
-        {(group.column_mappings || []).map((m, i) =>
-          <div key={m.id || i}>
-            <span style={{ color: "#3730a3" }}>{m.column_id}</span>
-            {m.transformation_rule && <span style={{ color: "#64748b" }}> | Regra: {m.transformation_rule}</span>}
-            {m.confidence_score && <span style={{ color: "#059669" }}> | Confiança: {m.confidence_score}</span>}
-            {m.notes && <span style={{ color: "#334155" }}> | {m.notes}</span>}
+    <div className={styles.previewContainer}>
+      <div className={styles.previewSection}>
+        <h4 className={styles.previewTitle}>
+          <Database size={16} />
+          Column Mappings ({group.column_mappings?.length || 0})
+        </h4>
+        {(group.column_mappings || []).length === 0 ? (
+          <p className={styles.previewEmpty}>No column mappings defined</p>
+        ) : (
+          <div className={styles.previewList}>
+            {(group.column_mappings || []).slice(0, 3).map((m, i) => (
+              <div key={m.id || i} className={styles.previewItem}>
+                <span className={styles.previewLabel}>Column {m.column_id}</span>
+                {m.transformation_rule && (
+                  <span className={styles.previewDetail}>Rule: {m.transformation_rule}</span>
+                )}
+                {m.confidence_score && (
+                  <span className={styles.confidenceBadge}>{m.confidence_score}</span>
+                )}
+              </div>
+            ))}
+            {(group.column_mappings || []).length > 3 && (
+              <p className={styles.previewMore}>
+                +{(group.column_mappings || []).length - 3} more mappings
+              </p>
+            )}
           </div>
         )}
       </div>
-      <div style={{ marginTop: 7 }}><b>Valores mapeados:</b> {group.value_mappings?.length || 0}</div>
-      <div style={{ fontSize: 13, marginLeft: 6 }}>
-        {(group.value_mappings || []).map((v, i) =>
-          <div key={v.id || i}>
-            <span style={{ color: "#be185d" }}>{v.source_value}</span> → <span style={{ color: "#0ea5e9" }}>{v.standard_value}</span>
-            {v.description && <span style={{ color: "#64748b" }}> | {v.description}</span>}
+
+      <div className={styles.previewSection}>
+        <h4 className={styles.previewTitle}>
+          <Eye size={16} />
+          Value Mappings ({group.value_mappings?.length || 0})
+        </h4>
+        {(group.value_mappings || []).length === 0 ? (
+          <p className={styles.previewEmpty}>No value mappings defined</p>
+        ) : (
+          <div className={styles.previewList}>
+            {(group.value_mappings || []).slice(0, 3).map((v, i) => (
+              <div key={v.id || i} className={styles.previewItem}>
+                <span className={styles.sourceValue}>{v.source_value}</span>
+                <span className={styles.arrow}>→</span>
+                <span className={styles.standardValue}>{v.standard_value}</span>
+                {v.description && (
+                  <span className={styles.previewDetail}>{v.description}</span>
+                )}
+              </div>
+            ))}
+            {(group.value_mappings || []).length > 3 && (
+              <p className={styles.previewMore}>
+                +{(group.value_mappings || []).length - 3} more mappings
+              </p>
+            )}
           </div>
         )}
       </div>

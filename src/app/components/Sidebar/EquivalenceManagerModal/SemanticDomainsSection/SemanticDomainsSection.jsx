@@ -1,5 +1,16 @@
 import { useState, useEffect, useMemo } from "react";
-import { ChevronDown, ChevronRight, Plus, Edit, Trash2, Save, X, Loader2, AlertTriangle, Info } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  PlusIcon,
+  PencilSquareIcon,
+  TrashIcon,
+  XMarkIcon,
+  ArrowPathIcon,
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+  CheckCircleIcon
+} from "@heroicons/react/24/outline";
 import styles from "./SemanticDomainsSection.module.css";
 import {
   api_getSemanticDomains,
@@ -7,7 +18,7 @@ import {
   api_putSemanticDomain,
   api_deleteSemanticDomain,
   api_searchSemanticDomains,
-} from '../api'
+} from "../api";
 
 function buildDomainTree(domains) {
   const byId = {};
@@ -66,7 +77,7 @@ export default function SemanticDomainsSection() {
     setModalDomain(domain);
     setShowModal(true);
   }
-  function closeModal() { setShowModal(false); setModalDomain(null); }
+  function closeModal() { setShowModal(false); setModalDomain(null); setError(null); }
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -111,26 +122,28 @@ export default function SemanticDomainsSection() {
 
   function renderNode(node, level = 0) {
     return (
-      <div key={node.id} style={{ marginLeft: level * 24 }}>
+      <div key={node.id} style={{ marginLeft: level * 18 }}>
         <div className={styles.domainNode}>
           {node.children.length > 0 ? (
-            <button className={styles.domainExpandBtn} onClick={() => toggleExpand(node.id)}>
-              {expanded[node.id] ? <ChevronDown /> : <ChevronRight />}
+            <button className={styles.domainExpandBtn} onClick={() => toggleExpand(node.id)} tabIndex={0}>
+              {expanded[node.id] ? <ChevronDownIcon className={styles.iconSm} /> : <ChevronRightIcon className={styles.iconSm} />}
             </button>
           ) : (
-            <span style={{ width: 24, display: "inline-block" }} />
+            <span style={{ width: 22, display: "inline-block" }} />
           )}
           <span className={styles.domainName}>{node.name}</span>
           <span className={styles.domainDesc}>{node.description}</span>
-          <button className={styles.domainActionBtn} title="Editar" onClick={() => openEdit(node)}>
-            <Edit size={16} />
-          </button>
-          <button className={styles.domainActionBtn} title="Adicionar subdomínio" onClick={() => openAdd(node.id)}>
-            <Plus size={15} />
-          </button>
-          <button className={styles.domainActionBtn} title="Remover" onClick={() => setConfirmDelete({ id: node.id, name: node.name })}>
-            <Trash2 size={15} />
-          </button>
+          <div className={styles.domainActions}>
+            <button className={styles.domainActionBtn} title="Editar" onClick={() => openEdit(node)}>
+              <PencilSquareIcon className={styles.iconXs} />
+            </button>
+            <button className={styles.domainActionBtn} title="Adicionar subdomínio" onClick={() => openAdd(node.id)}>
+              <PlusIcon className={styles.iconXs} />
+            </button>
+            <button className={styles.domainActionBtn} title="Remover" onClick={() => setConfirmDelete({ id: node.id, name: node.name })}>
+              <TrashIcon className={styles.iconXs} />
+            </button>
+          </div>
         </div>
         {expanded[node.id] && node.children.map(child => renderNode(child, level + 1))}
       </div>
@@ -140,10 +153,12 @@ export default function SemanticDomainsSection() {
   const tree = useMemo(() => buildDomainTree(domains), [domains]);
 
   return (
-    <div>
+    <div className={styles.sectionRoot}>
       <div className={styles.sectionHeader}>
-        <h3 className={styles.sectionTitle}><Info className={styles.sectionInfoIcon} /> Domínios Semânticos</h3>
-        <button className={styles.addBtn} onClick={() => openAdd()}><Plus /> Novo Domínio</button>
+        <h3 className={styles.sectionTitle}><InformationCircleIcon className={styles.sectionInfoIcon} /> Domínios Semânticos</h3>
+        <button className={styles.addBtnFloat} onClick={() => openAdd()}>
+          <PlusIcon className={styles.iconSm} /> Novo Domínio
+        </button>
       </div>
       <div className={styles.sectionSearchBlock}>
         <input
@@ -154,17 +169,19 @@ export default function SemanticDomainsSection() {
           className={styles.sectionSearchInput}
         />
       </div>
-      {loading ? (
-        <div className={styles.sectionPlaceholder}><Loader2 className={styles.spin} /> Carregando...</div>
-      ) : error ? (
-        <div className={styles.sectionError}><AlertTriangle /> {error}</div>
-      ) : domains.length === 0 ? (
-        <div className={styles.sectionPlaceholder}><AlertTriangle /> Nenhum domínio encontrado.</div>
-      ) : (
-        <div className={styles.domainTree}>
-          {tree.map(node => renderNode(node))}
-        </div>
-      )}
+      <div className={styles.domainListWrapper}>
+        {loading ? (
+          <div className={styles.sectionPlaceholder}><ArrowPathIcon className={styles.spin} /> Carregando...</div>
+        ) : error ? (
+          <div className={styles.sectionError}><ExclamationTriangleIcon className={styles.iconSm} /> {error}</div>
+        ) : domains.length === 0 ? (
+          <div className={styles.sectionPlaceholder}><ExclamationTriangleIcon className={styles.iconSm} /> Nenhum domínio encontrado.</div>
+        ) : (
+          <div className={styles.domainTree}>
+            {tree.map(node => renderNode(node))}
+          </div>
+        )}
+      </div>
 
       {/* Add/Edit Modal */}
       {showModal && (
@@ -173,7 +190,9 @@ export default function SemanticDomainsSection() {
             <form onSubmit={handleSubmit}>
               <div className={styles.modalHeader}>
                 <h4 className={styles.modalTitle}>{modalDomain.id ? "Editar Domínio" : "Novo Domínio"}</h4>
-                <button className={styles.modalCloseButton} onClick={closeModal} type="button"><X /></button>
+                <button className={styles.modalCloseButton} onClick={closeModal} type="button">
+                  <XMarkIcon className={styles.iconSm} />
+                </button>
               </div>
               <div className={styles.modalBody}>
                 <div className={styles.formField}>
@@ -217,12 +236,18 @@ export default function SemanticDomainsSection() {
                       }
                     }}
                     rows={3}
+                    className={error && error.startsWith("Regras") ? styles.inputError : ""}
                   />
                 </div>
+                {error && error.startsWith("Regras") && (
+                  <div className={styles.formError}><ExclamationTriangleIcon className={styles.iconXs} /> {error}</div>
+                )}
               </div>
               <div className={styles.modalFooter}>
                 <button type="button" className={styles.cancelButton} onClick={closeModal}>Cancelar</button>
-                <button type="submit" className={styles.submitButton}><Save /> Salvar</button>
+                <button type="submit" className={styles.submitButton}>
+                  <CheckCircleIcon className={styles.iconXs} /> Salvar
+                </button>
               </div>
             </form>
           </div>
@@ -235,7 +260,9 @@ export default function SemanticDomainsSection() {
           <div className={styles.modalContainerSmall}>
             <div className={styles.modalHeader}>
               <h4 className={styles.modalTitle}>Remover Domínio</h4>
-              <button className={styles.modalCloseButton} onClick={() => setConfirmDelete(null)}><X /></button>
+              <button className={styles.modalCloseButton} onClick={() => setConfirmDelete(null)}>
+                <XMarkIcon className={styles.iconSm} />
+              </button>
             </div>
             <div className={styles.modalBody}>
               <p>
@@ -245,11 +272,18 @@ export default function SemanticDomainsSection() {
             </div>
             <div className={styles.modalFooter}>
               <button className={styles.cancelButton} onClick={() => setConfirmDelete(null)}>Cancelar</button>
-              <button className={styles.submitButton} onClick={handleDelete}><Trash2 /> Remover</button>
+              <button className={styles.submitButton} onClick={handleDelete}>
+                <TrashIcon className={styles.iconXs} /> Remover
+              </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Floating Add Button for mobile */}
+      <button className={styles.addBtnMobile} onClick={() => openAdd()} title="Novo Domínio">
+        <PlusIcon className={styles.iconSm} />
+      </button>
     </div>
   );
 }
