@@ -761,6 +761,7 @@
   border: 1px solid #e2e8f0;
   border-radius: 4px;
   padding: 8px;
+  position: relative;
 }
 
 .valueMappingCard:hover {
@@ -802,11 +803,26 @@
   font-size: 12px;
 }
 
+.mappingName {
+  font-size: 10px;
+  color: #3b82f6;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
 .valueDescription {
   font-size: 10px;
   color: #64748b;
   font-style: italic;
   line-height: 1.3;
+  margin-bottom: 4px;
+}
+
+.valueMappingActions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 4px;
 }
 
 .summarySection {
@@ -868,3 +884,4 @@
     grid-template-columns: 1fr;
   }
 }
+

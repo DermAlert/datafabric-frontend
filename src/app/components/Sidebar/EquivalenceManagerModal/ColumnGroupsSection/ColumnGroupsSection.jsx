@@ -10,6 +10,9 @@ import {
   api_getSemanticDomains,
   api_searchDataDictionary,
   api_getColumnGroup,
+  api_postValueMapping,
+  api_putValueMapping,
+  api_deleteValueMapping,
 } from '../api'
 
 export default function ColumnGroupsSection() {
@@ -460,14 +463,92 @@ export default function ColumnGroupsSection() {
 function GroupMappingsPreview({ groupId }) {
   const [group, setGroup] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showValueMappingModal, setShowValueMappingModal] = useState(false);
+  const [modalValueMapping, setModalValueMapping] = useState(null);
+  const [confirmDeleteValueMapping, setConfirmDeleteValueMapping] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
+    fetchGroupData();
+  }, [groupId]);
+
+  const fetchGroupData = () => {
     setLoading(true);
     api_getColumnGroup(groupId)
       .then(setGroup)
       .catch(() => setGroup(null))
       .finally(() => setLoading(false));
-  }, [groupId]);
+  };
+
+  const openAddValueMapping = (columnId, columnName) => {
+    setModalValueMapping({
+      group_id: groupId,
+      source_column_id: columnId,
+      source_column_name: columnName,
+      source_value: "",
+      standard_value: "",
+      description: "",
+      name: ""
+    });
+    setShowValueMappingModal(true);
+  };
+
+  const openEditValueMapping = (mapping) => {
+    setModalValueMapping({
+      ...mapping,
+      name: mapping.name || mapping.source_value
+    });
+    setShowValueMappingModal(true);
+  };
+
+  const closeValueMappingModal = () => {
+    setShowValueMappingModal(false);
+    setModalValueMapping(null);
+    setError(null);
+  };
+
+  const handleValueMappingSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      if (modalValueMapping.id) {
+        await api_putValueMapping(modalValueMapping.id, {
+          source_value: modalValueMapping.source_value,
+          standard_value: modalValueMapping.standard_value,
+          description: modalValueMapping.description,
+          name: modalValueMapping.name || modalValueMapping.source_value
+        });
+      } else {
+        await api_postValueMapping({
+          group_id: modalValueMapping.group_id,
+          source_column_id: modalValueMapping.source_column_id,
+          source_value: modalValueMapping.source_value,
+          standard_value: modalValueMapping.standard_value,
+          description: modalValueMapping.description,
+          name: modalValueMapping.name || modalValueMapping.source_value
+        });
+      }
+      closeValueMappingModal();
+      fetchGroupData();
+    } catch (e) {
+      setError("Failed to save value mapping: " + e.message);
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteValueMapping = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await api_deleteValueMapping(confirmDeleteValueMapping.id);
+      setConfirmDeleteValueMapping(null);
+      fetchGroupData();
+    } catch (e) {
+      setError("Failed to delete value mapping: " + e.message);
+      setLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -499,6 +580,13 @@ function GroupMappingsPreview({ groupId }) {
 
   return (
     <div className={styles.previewContainer}>
+      {error && (
+        <div className={styles.errorState}>
+          <AlertTriangle className={styles.errorIcon} />
+          <p>{error}</p>
+        </div>
+      )}
+
       {/* Column Mappings Section */}
       <div className={styles.previewSection}>
         <h4 className={styles.previewTitle}>
@@ -512,7 +600,9 @@ function GroupMappingsPreview({ groupId }) {
             {(group.column_mappings || []).map((mapping) => (
               <div key={mapping.id} className={styles.columnMappingCard}>
                 <div className={styles.mappingHeader}>
-                  <span className={styles.columnId}>Column ID: {mapping.column_id}</span>
+                  <span className={styles.columnId}>
+                    Column: {mapping.column_name || mapping.column_id}
+                  </span>
                   {mapping.confidence_score && (
                     <span className={`${styles.confidenceBadge} ${
                       parseFloat(mapping.confidence_score) >= 0.9 ? styles.highConfidence :
@@ -522,6 +612,13 @@ function GroupMappingsPreview({ groupId }) {
                       {Math.round(parseFloat(mapping.confidence_score) * 100)}% confidence
                     </span>
                   )}
+                  <button
+                    className={styles.iconButton}
+                    onClick={() => openAddValueMapping(mapping.column_id, mapping.column_name)}
+                    title="Add Value Mapping"
+                  >
+                    <Plus size={14} />
+                  </button>
                 </div>
                 
                 {mapping.transformation_rule && (
@@ -556,7 +653,7 @@ function GroupMappingsPreview({ groupId }) {
             {Object.entries(valuesByColumn).map(([columnId, mappings]) => (
               <div key={columnId} className={styles.columnValueGroup}>
                 <h5 className={styles.columnHeader}>
-                  Column {columnId} ({mappings.length} mapping{mappings.length !== 1 ? 's' : ''})
+                  {mappings[0]?.source_column_name || `Column ${columnId}`} ({mappings.length} mapping{mappings.length !== 1 ? 's' : ''})
                 </h5>
                 <div className={styles.valueMappingsGrid}>
                   {mappings.map((mapping) => (
@@ -570,11 +667,32 @@ function GroupMappingsPreview({ groupId }) {
                           "{mapping.standard_value}"
                         </span>
                       </div>
+                      {mapping.name && mapping.name !== mapping.source_value && (
+                        <div className={styles.mappingName}>
+                          Name: {mapping.name}
+                        </div>
+                      )}
                       {mapping.description && (
                         <div className={styles.valueDescription}>
                           {mapping.description}
                         </div>
                       )}
+                      <div className={styles.valueMappingActions}>
+                        <button
+                          className={styles.iconButton}
+                          onClick={() => openEditValueMapping(mapping)}
+                          title="Edit Value Mapping"
+                        >
+                          <Edit size={12} />
+                        </button>
+                        <button
+                          className={styles.iconButton}
+                          onClick={() => setConfirmDeleteValueMapping(mapping)}
+                          title="Delete Value Mapping"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -612,6 +730,144 @@ function GroupMappingsPreview({ groupId }) {
           )}
         </div>
       </div>
+
+      {/* Value Mapping Modal */}
+      {showValueMappingModal && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modal}>
+            <div className={styles.modalHeader}>
+              <h3 className={styles.modalTitle}>
+                {modalValueMapping.id ? "Edit Value Mapping" : "Create Value Mapping"}
+              </h3>
+              <button 
+                className={styles.modalCloseButton}
+                onClick={closeValueMappingModal}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleValueMappingSubmit} className={styles.modalForm}>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Column</label>
+                <input
+                  type="text"
+                  className={styles.formInput}
+                  value={modalValueMapping.source_column_name || `Column ${modalValueMapping.source_column_id}`}
+                  disabled
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Name</label>
+                <input
+                  type="text"
+                  className={styles.formInput}
+                  value={modalValueMapping.name}
+                  onChange={e => setModalValueMapping(mv => ({ ...mv, name: e.target.value }))}
+                  placeholder="Enter mapping name"
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Source Value *</label>
+                <input
+                  type="text"
+                  className={styles.formInput}
+                  required
+                  value={modalValueMapping.source_value}
+                  onChange={e => setModalValueMapping(mv => ({ ...mv, source_value: e.target.value }))}
+                  placeholder="Enter source value"
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Standard Value *</label>
+                <input
+                  type="text"
+                  className={styles.formInput}
+                  required
+                  value={modalValueMapping.standard_value}
+                  onChange={e => setModalValueMapping(mv => ({ ...mv, standard_value: e.target.value }))}
+                  placeholder="Enter standard value"
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Description</label>
+                <textarea
+                  className={styles.formTextarea}
+                  value={modalValueMapping.description}
+                  onChange={e => setModalValueMapping(mv => ({ ...mv, description: e.target.value }))}
+                  placeholder="Enter description"
+                  rows={3}
+                />
+              </div>
+
+              <div className={styles.modalFooter}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={closeValueMappingModal}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={styles.primaryButton}
+                >
+                  <Save size={16} className={styles.buttonIcon} />
+                  {modalValueMapping.id ? "Update" : "Create"} Mapping
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Value Mapping Confirmation Modal */}
+      {confirmDeleteValueMapping && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modal}>
+            <div className={styles.modalHeader}>
+              <h3 className={styles.modalTitle}>Confirm Deletion</h3>
+              <button 
+                className={styles.modalCloseButton}
+                onClick={() => setConfirmDeleteValueMapping(null)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className={styles.modalBody}>
+              <div className={styles.alertBox}>
+                <AlertTriangle className={styles.alertIcon} />
+                <p>
+                  Are you sure you want to delete the value mapping from <strong>"{confirmDeleteValueMapping.source_value}"</strong> to <strong>"{confirmDeleteValueMapping.standard_value}"</strong>?
+                  This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className={styles.modalFooter}>
+              <button
+                className={styles.secondaryButton}
+                onClick={() => setConfirmDeleteValueMapping(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className={styles.dangerButton}
+                onClick={handleDeleteValueMapping}
+              >
+                <Trash2 size={16} className={styles.buttonIcon} />
+                Delete Mapping
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
