@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Edit, Trash2, Save, X, AlertTriangle, Info, Search, Eye, ChevronDown, ChevronRight, Link2, CheckCircle, Database } from "lucide-react";
+import { Columns,Plus, Edit, Trash2, Save, X, AlertTriangle, Info, Search, Eye, ChevronDown, ChevronRight, Link2, CheckCircle, Database } from "lucide-react";
 import styles from './ColumnMappingsSection.module.css';
 import {
   api_searchColumnMappings,
@@ -14,6 +14,350 @@ import {
   api_putValueMapping,
   api_deleteValueMapping,
 } from '../api'
+
+// Fetch functions for connection explorer
+async function fetchJson(url, opts = {}) {
+  const res = await fetch(url, opts);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function patchFlAtivo(url, fl_ativo) {
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ fl_ativo }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+function ConnectionExplorerModal({ isOpen, onClose, onColumnSelect }) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [expandedConnections, setExpandedConnections] = useState({});
+  const [expandedCatalogs, setExpandedCatalogs] = useState({});
+  const [expandedSchemas, setExpandedSchemas] = useState({});
+  const [expandedTables, setExpandedTables] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Selection state
+  const [selectedConnectionType, setSelectedConnectionType] = useState("");
+  const [selectedConnection, setSelectedConnection] = useState("");
+  const [selectedCatalog, setSelectedCatalog] = useState("");
+  const [selectedSchema, setSelectedSchema] = useState("");
+  const [selectedTable, setSelectedTable] = useState("");
+  const [selectedColumn, setSelectedColumn] = useState("");
+
+  const [connectionTypes, setConnectionTypes] = useState([]);
+  const [connections, setConnections] = useState([]);
+  const [catalogsByConn, setCatalogsByConn] = useState({});
+  const [schemasByCatalog, setSchemasByCatalog] = useState({});
+  const [tablesBySchema, setTablesBySchema] = useState({});
+  const [columnsByTable, setColumnsByTable] = useState({});
+
+  // Load connection types on modal open
+  useEffect(() => {
+    if (!isOpen) return;
+    setLoading(true);
+    fetchJson("http://localhost:8004/api/connection/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pagination: { limit: 100, query_total: false, skip: 0 } }),
+    })
+      .then((data) => setConnectionTypes(data.items || []))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [isOpen]);
+
+  // Load connections when connection type is selected
+  useEffect(() => {
+    if (!selectedConnectionType || selectedConnectionType === "all") {
+      setConnections([]);
+      return;
+    }
+    
+    setLoading(true);
+    setConnections([]);
+    setSelectedConnection("");
+    setSelectedCatalog("");
+    setSelectedSchema("");
+    setSelectedTable("");
+    setSelectedColumn("");
+    
+    fetchJson("http://localhost:8004/api/data-connections/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pagination: { limit: 100, query_total: false, skip: 0 },
+        connection_type_id: selectedConnectionType
+      }),
+    })
+      .then((data) => setConnections(data.items || []))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [selectedConnectionType]);
+
+  // Load catalogs when connection is selected
+  useEffect(() => {
+    if (!selectedConnection) {
+      setCatalogsByConn({});
+      return;
+    }
+
+    setLoading(true);
+    setSelectedCatalog("");
+    setSelectedSchema("");
+    setSelectedTable("");
+    setSelectedColumn("");
+
+    fetchJson(`http://localhost:8004/api/metadata/connections/${selectedConnection}/catalogs?fl_ativo=true`)
+      .then((catalogs) => {
+        setCatalogsByConn({ [selectedConnection]: catalogs });
+      })
+      .catch((e) => setError("Erro ao carregar catálogos."))
+      .finally(() => setLoading(false));
+  }, [selectedConnection]);
+
+  // Load schemas when catalog is selected
+  useEffect(() => {
+    if (!selectedCatalog || !selectedConnection) {
+      setSchemasByCatalog({});
+      return;
+    }
+
+    setLoading(true);
+    setSelectedSchema("");
+    setSelectedTable("");
+    setSelectedColumn("");
+
+    fetchJson(`http://localhost:8004/api/metadata/connections/${selectedConnection}/schemas?catalog_id=${selectedCatalog}&fl_ativo=true`)
+      .then((schemas) => {
+        setSchemasByCatalog({ [selectedCatalog]: schemas });
+      })
+      .catch((e) => setError("Erro ao carregar schemas."))
+      .finally(() => setLoading(false));
+  }, [selectedCatalog, selectedConnection]);
+
+  // Load tables when schema is selected
+  useEffect(() => {
+    if (!selectedSchema) {
+      setTablesBySchema({});
+      return;
+    }
+
+    setLoading(true);
+    setSelectedTable("");
+    setSelectedColumn("");
+
+    fetchJson(`http://localhost:8004/api/metadata/schemas/${selectedSchema}/tables?fl_ativo=true`)
+      .then((tables) => {
+        setTablesBySchema({ [selectedSchema]: tables });
+      })
+      .catch((e) => setError("Erro ao carregar tabelas."))
+      .finally(() => setLoading(false));
+  }, [selectedSchema]);
+
+  // Load columns when table is selected
+  useEffect(() => {
+    if (!selectedTable) {
+      setColumnsByTable({});
+      return;
+    }
+
+    setLoading(true);
+    setSelectedColumn("");
+
+    fetchJson(`http://localhost:8004/api/metadata/tables/${selectedTable}/columns?fl_ativo=true`)
+      .then((columns) => {
+        setColumnsByTable({ [selectedTable]: columns });
+      })
+      .catch((e) => setError("Erro ao carregar colunas."))
+      .finally(() => setLoading(false));
+  }, [selectedTable]);
+
+  const handleColumnSelect = (column) => {
+    const connectionType = connectionTypes.find(t => t.id == selectedConnectionType);
+    const connection = connections.find(c => c.id == selectedConnection);
+    const catalog = catalogsByConn[selectedConnection]?.find(c => c.id == selectedCatalog);
+    const schema = schemasByCatalog[selectedCatalog]?.find(s => s.id == selectedSchema);
+    const table = tablesBySchema[selectedSchema]?.find(t => t.id == selectedTable);
+    
+    onColumnSelect({
+      column,
+      table,
+      schema,
+      catalog,
+      connection,
+      connectionType
+    });
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className={styles.modalOverlay}>
+      <div className={styles.modalContainer}>
+        <div className={styles.modalHeader}>
+          <div className={styles.headerLeft}>
+            <div className={styles.headerTitleBlock}>
+              <Database className={styles.modalIcon} />
+              <h2 className={styles.modalTitle}>Explorador de Conexões</h2>
+            </div>
+          </div>
+          <div className={styles.modalActions}>
+            <button
+              type="button"
+              onClick={onClose}
+              className={styles.modalCloseButton}
+              title="Fechar"
+            >
+              <X />
+            </button>
+          </div>
+        </div>
+
+        {/* Selection Flow */}
+        <div className={styles.selectionFlow}>
+          <div className={styles.selectionStep}>
+            <label className={styles.selectionLabel}>1. Tipo de Conexão:</label>
+            <select
+              value={selectedConnectionType}
+              onChange={(e) => setSelectedConnectionType(e.target.value)}
+              className={styles.selectionSelect}
+            >
+              <option value="">Selecione um tipo de conexão</option>
+              {connectionTypes.map((type) => (
+                <option value={type.id} key={type.id}>
+                  {type.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {selectedConnectionType && (
+            <div className={styles.selectionStep}>
+              <label className={styles.selectionLabel}>2. Conexão de Dados:</label>
+              <select
+                value={selectedConnection}
+                onChange={(e) => setSelectedConnection(e.target.value)}
+                className={styles.selectionSelect}
+                disabled={loading}
+              >
+                <option value="">Selecione uma conexão</option>
+                {connections.map((conn) => (
+                  <option value={conn.id} key={conn.id}>
+                    {conn.name} ({conn.host}:{conn.port})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {selectedConnection && catalogsByConn[selectedConnection] && (
+            <div className={styles.selectionStep}>
+              <label className={styles.selectionLabel}>3. Catálogo:</label>
+              <select
+                value={selectedCatalog}
+                onChange={(e) => setSelectedCatalog(e.target.value)}
+                className={styles.selectionSelect}
+                disabled={loading}
+              >
+                <option value="">Selecione um catálogo</option>
+                {catalogsByConn[selectedConnection].map((catalog) => (
+                  <option value={catalog.id} key={catalog.id}>
+                    {catalog.catalog_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {selectedCatalog && schemasByCatalog[selectedCatalog] && (
+            <div className={styles.selectionStep}>
+              <label className={styles.selectionLabel}>4. Schema:</label>
+              <select
+                value={selectedSchema}
+                onChange={(e) => setSelectedSchema(e.target.value)}
+                className={styles.selectionSelect}
+                disabled={loading}
+              >
+                <option value="">Selecione um schema</option>
+                {schemasByCatalog[selectedCatalog].map((schema) => (
+                  <option value={schema.id} key={schema.id}>
+                    {schema.schema_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {selectedSchema && tablesBySchema[selectedSchema] && (
+            <div className={styles.selectionStep}>
+              <label className={styles.selectionLabel}>5. Tabela:</label>
+              <select
+                value={selectedTable}
+                onChange={(e) => setSelectedTable(e.target.value)}
+                className={styles.selectionSelect}
+                disabled={loading}
+              >
+                <option value="">Selecione uma tabela</option>
+                {tablesBySchema[selectedSchema].map((table) => (
+                  <option value={table.id} key={table.id}>
+                    {table.table_name} ({table.table_type})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {selectedTable && columnsByTable[selectedTable] && (
+            <div className={styles.selectionStep}>
+              <label className={styles.selectionLabel}>6. Coluna:</label>
+              <div className={styles.columnsList}>
+                {columnsByTable[selectedTable].map((column) => (
+                  <div
+                    key={column.id}
+                    className={styles.columnItem}
+                    onClick={() => handleColumnSelect(column)}
+                  >
+                    <Columns className={styles.columnIcon} />
+                    <div className={styles.columnInfo}>
+                      <span className={styles.columnName}>{column.column_name}</span>
+                      <span className={styles.columnType}>({column.data_type})</span>
+                    </div>
+                    <button className={styles.selectButton}>Selecionar</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div className={styles.error}>
+            <AlertTriangle />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {loading && (
+          <div className={styles.loadingState}>
+            <div className={styles.spinner}></div>
+            <span>Carregando...</span>
+          </div>
+        )}
+
+        <div className={styles.modalFooter}>
+          <button type="button" onClick={onClose} className={styles.footerCloseButton}>
+            <X style={{ marginRight: 8 }} />
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const PAGE_SIZE = 10;
 
@@ -40,6 +384,9 @@ export default function ColumnMappingsSection() {
   const [valueColumnId, setValueColumnId] = useState(null);
   const [expandedMapping, setExpandedMapping] = useState(null);
 
+  // Connection Explorer Modal state
+  const [showConnectionExplorer, setShowConnectionExplorer] = useState(false);
+
   useEffect(() => {
     api_searchColumnGroups({ pagination: { limit: 1000, query_total: false, skip: 0 } })
       .then(g => setGroups(g.items || []))
@@ -60,7 +407,7 @@ export default function ColumnMappingsSection() {
       setMappings(res.items || []);
       setTotal(res.total || 0);
     } catch (e) {
-      setError("Failed to load mappings: " + e.message);
+      setError("Falha ao carregar mapeamentos: " + e.message);
     }
     setLoading(false);
   };
@@ -79,6 +426,7 @@ export default function ColumnMappingsSection() {
         schema_id: group.schema_id,
         table_id: group.table_id,
         exclude_mapped: true,
+        fl_ativo: true, // Add fl_ativo=true flag
       });
       setAvailableColumns(resp.columns || []);
     } catch {
@@ -130,7 +478,7 @@ export default function ColumnMappingsSection() {
       closeModal();
       fetchMappings();
     } catch (e) {
-      setError("Failed to save mapping: " + e.message);
+      setError("Falha ao salvar mapeamento: " + e.message);
       setLoading(false);
     }
   };
@@ -143,7 +491,7 @@ export default function ColumnMappingsSection() {
       setConfirmDelete(null);
       fetchMappings();
     } catch (e) {
-      setError("Failed to delete mapping: " + e.message);
+      setError("Falha ao excluir mapeamento: " + e.message);
       setLoading(false);
     }
   };
@@ -198,7 +546,7 @@ export default function ColumnMappingsSection() {
       const values = await api_getValueMappingsByGroup(valueGroup, valueColumnId);
       setValueMappings(values || []);
     } catch (e) {
-      setError("Failed to save value mapping: " + e.message);
+      setError("Falha ao salvar mapeamento de valor: " + e.message);
       setLoading(false);
     }
   };
@@ -211,7 +559,7 @@ export default function ColumnMappingsSection() {
       const values = await api_getValueMappingsByGroup(valueGroup, valueColumnId);
       setValueMappings(values || []);
     } catch (e) {
-      setError("Failed to delete value mapping: " + e.message);
+      setError("Falha ao excluir mapeamento de valor: " + e.message);
       setLoading(false);
     }
   };
@@ -220,6 +568,32 @@ export default function ColumnMappingsSection() {
     setExpandedMapping(expandedMapping === mappingId ? null : mappingId);
   };
 
+const handleColumnSelect = (selectionData) => {
+  // Handle the selected column data
+  console.log('Selected column data:', selectionData);
+  
+  if (modalMapping && selectionData.column) {
+    setModalMapping(prev => ({
+      ...prev,
+      column_id: selectionData.column.id.toString(), // Convert to string to match the select value format
+      // Optionally, you can also update notes with selection context
+      notes: prev.notes + (prev.notes ? '\n' : '') + 
+             `Selected from: ${selectionData.connectionType?.name} > ${selectionData.connection?.name} > ` +
+             `${selectionData.catalog?.catalog_name} > ${selectionData.schema?.schema_name} > ` +
+             `${selectionData.table?.table_name} > ${selectionData.column.column_name}`
+    }));
+    
+    // Update available columns to include the selected one if it's not already there
+    setAvailableColumns(prev => {
+      const exists = prev.some(col => col.id === selectionData.column.id);
+      if (!exists) {
+        return [...prev, selectionData.column];
+      }
+      return prev;
+    });
+  }
+};
+
   return (
     <div className={styles.container}>
       {/* Header */}
@@ -227,14 +601,14 @@ export default function ColumnMappingsSection() {
         <div className={styles.headerLeft}>
           <h2 className={styles.title}>
             <Database className={styles.titleIcon} />
-            Column Mappings
+            Mapeamentos de Colunas
           </h2>
           <div className={styles.badges}>
             <span className={styles.countBadge}>
-              {total} Mappings
+              {total} Mapeamentos
             </span>
             <span className={styles.groupBadge}>
-              {groups.length} Groups
+              {groups.length} Grupos
             </span>
           </div>
         </div>
@@ -244,7 +618,7 @@ export default function ColumnMappingsSection() {
             onClick={openAdd}
           >
             <Plus className={styles.buttonIcon} />
-            New Mapping
+            Novo Mapeamento
           </button>
         </div>
       </div>
@@ -255,7 +629,7 @@ export default function ColumnMappingsSection() {
           <Search className={styles.searchIcon} />
           <input
             type="text"
-            placeholder="Search mappings..."
+            placeholder="Pesquisar mapeamentos..."
             className={styles.searchInput}
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
@@ -267,7 +641,7 @@ export default function ColumnMappingsSection() {
           value={filterGroup} 
           onChange={e => { setFilterGroup(e.target.value); setPage(0); }}
         >
-          <option value="">All Groups</option>
+          <option value="">Todos os Grupos</option>
           {groups.map(g => (
             <option key={g.id} value={g.id}>
               {g.name}
@@ -280,7 +654,7 @@ export default function ColumnMappingsSection() {
           type="number"
           value={filterColumn}
           onChange={e => { setFilterColumn(e.target.value); setPage(0); }}
-          placeholder="Column ID"
+          placeholder="ID da Coluna"
           min={0}
         />
       </div>
@@ -289,7 +663,7 @@ export default function ColumnMappingsSection() {
       {loading ? (
         <div className={styles.loadingState}>
           <div className={styles.spinner}></div>
-          <p>Loading mappings...</p>
+          <p>Carregando mapeamentos...</p>
         </div>
       ) : error ? (
         <div className={styles.errorState}>
@@ -299,13 +673,13 @@ export default function ColumnMappingsSection() {
       ) : mappings.length === 0 ? (
         <div className={styles.emptyState}>
           <Info className={styles.emptyIcon} />
-          <p>No mappings found</p>
+          <p>Nenhum mapeamento encontrado</p>
           <button 
             className={styles.secondaryButton}
             onClick={openAdd}
           >
             <Plus className={styles.buttonIcon} />
-            Create your first mapping
+            Criar seu primeiro mapeamento
           </button>
         </div>
       ) : (
@@ -323,8 +697,8 @@ export default function ColumnMappingsSection() {
                     <ChevronRight className={styles.chevronIcon} />
                   )}
                   <h3 className={styles.mappingName}>
-                    {groups.find(g => g.id === mapping.group_id)?.name || `Group ${mapping.group_id}`}
-                    <span className={styles.columnId}>Column ID: {mapping.column_id}</span>
+                    {groups.find(g => g.id === mapping.group_id)?.name || `Grupo ${mapping.group_id}`}
+                    <span className={styles.columnId}>ID da Coluna: {mapping.column_id}</span>
                   </h3>
                 </div>
                 <div className={styles.mappingActions}>
@@ -334,7 +708,7 @@ export default function ColumnMappingsSection() {
                       e.stopPropagation();
                       openEdit(mapping);
                     }}
-                    title="Edit"
+                    title="Editar"
                   >
                     <Edit size={16} />
                   </button>
@@ -344,7 +718,7 @@ export default function ColumnMappingsSection() {
                       e.stopPropagation();
                       setConfirmDelete({ id: mapping.id, column_id: mapping.column_id });
                     }}
-                    title="Delete"
+                    title="Excluir"
                   >
                     <Trash2 size={16} />
                   </button>
@@ -354,7 +728,7 @@ export default function ColumnMappingsSection() {
                       e.stopPropagation();
                       openValueMappings(mapping.group_id, mapping.column_id);
                     }}
-                    title="Value Mappings"
+                    title="Mapeamentos de Valores"
                   >
                     <Eye size={16} />
                   </button>
@@ -364,20 +738,20 @@ export default function ColumnMappingsSection() {
               {expandedMapping === mapping.id && (
                 <div className={styles.mappingDetails}>
                   <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Transformation Rule:</span>
+                    <span className={styles.detailLabel}>Regra de Transformação:</span>
                     <span className={styles.detailValue}>
-                      {mapping.transformation_rule || <em>None defined</em>}
+                      {mapping.transformation_rule || <em>Nenhuma definida</em>}
                     </span>
                   </div>
                   <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Confidence:</span>
+                    <span className={styles.detailLabel}>Confiança:</span>
                     <span className={styles.confidenceBadge}>
                       {mapping.confidence_score}
                     </span>
                   </div>
                   {mapping.notes && (
                     <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Notes:</span>
+                      <span className={styles.detailLabel}>Observações:</span>
                       <span className={styles.detailValue}>
                         {mapping.notes}
                       </span>
@@ -395,17 +769,17 @@ export default function ColumnMappingsSection() {
               disabled={page <= 0}
               onClick={() => setPage(p => Math.max(p - 1, 0))}
             >
-              Previous
+              Anterior
             </button>
             <span className={styles.pageInfo}>
-              Page {page + 1} of {pageCount || 1}
+              Página {page + 1} de {pageCount || 1}
             </span>
             <button 
               className={styles.paginationButton}
               disabled={page >= pageCount - 1}
               onClick={() => setPage(p => p + 1)}
             >
-              Next
+              Próxima
             </button>
           </div>
         </div>
@@ -417,7 +791,7 @@ export default function ColumnMappingsSection() {
           <div className={styles.modal}>
             <div className={styles.modalHeader}>
               <h3 className={styles.modalTitle}>
-                {modalMapping.id ? "Edit Mapping" : "Create New Mapping"}
+                {modalMapping.id ? "Editar Mapeamento" : "Criar Novo Mapeamento"}
               </h3>
               <button 
                 className={styles.modalCloseButton}
@@ -429,7 +803,7 @@ export default function ColumnMappingsSection() {
             
             <form onSubmit={handleSubmit} className={styles.modalForm}>
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Group *</label>
+                <label className={styles.formLabel}>Grupo *</label>
                 <select
                   className={styles.formInput}
                   required
@@ -440,7 +814,7 @@ export default function ColumnMappingsSection() {
                   }}
                   disabled={!!modalMapping.id}
                 >
-                  <option value="">Select a group</option>
+                  <option value="">Selecione um grupo</option>
                   {groups.map(g => (
                     <option key={g.id} value={g.id}>{g.name}</option>
                   ))}
@@ -448,36 +822,47 @@ export default function ColumnMappingsSection() {
               </div>
 
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Column *</label>
-                <select
-                  className={styles.formInput}
-                  required
-                  value={modalMapping.column_id || ""}
-                  onChange={e => setModalMapping(mm => ({ ...mm, column_id: e.target.value }))}
-                  disabled={!!modalMapping.id}
-                >
-                  <option value="">Select a column</option>
-                  {availableColumns.map(col => (
-                    <option key={col.id} value={col.id}>
-                      {col.column_name} (ID: {col.id}) [{col.data_type}]
-                    </option>
-                  ))}
-                </select>
+                <label className={styles.formLabel}>Coluna *</label>
+                <div className={styles.columnSelectContainer}>
+                  <select
+                    className={styles.formInput}
+                    required
+                    value={modalMapping.column_id || ""}
+                    onChange={e => setModalMapping(mm => ({ ...mm, column_id: e.target.value }))}
+                    disabled={!!modalMapping.id}
+                  >
+                    <option value="">Selecione uma coluna</option>
+                    {availableColumns.map(col => (
+                      <option key={col.id} value={col.id}>
+                        {col.column_name} (ID: {col.id}) [{col.data_type}]
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className={styles.explorerButton}
+                    onClick={() => setShowConnectionExplorer(true)}
+                    title="Explorar Conexões"
+                  >
+                    <Search size={16} />
+                    Explorar
+                  </button>
+                </div>
               </div>
 
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Transformation Rule</label>
+                <label className={styles.formLabel}>Regra de Transformação</label>
                 <input
                   type="text"
                   className={styles.formInput}
                   value={modalMapping.transformation_rule}
                   onChange={e => setModalMapping(mm => ({ ...mm, transformation_rule: e.target.value }))}
-                  placeholder="e.g. UPPER({column})"
+                  placeholder="ex: UPPER({column})"
                 />
               </div>
 
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Confidence Score (0-1) *</label>
+                <label className={styles.formLabel}>Pontuação de Confiança (0-1) *</label>
                 <input
                   type="number"
                   className={styles.formInput}
@@ -491,7 +876,7 @@ export default function ColumnMappingsSection() {
               </div>
 
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Notes</label>
+                <label className={styles.formLabel}>Observações</label>
                 <textarea
                   className={styles.formTextarea}
                   value={modalMapping.notes}
@@ -506,14 +891,14 @@ export default function ColumnMappingsSection() {
                   className={styles.secondaryButton}
                   onClick={closeModal}
                 >
-                  Cancel
+                  Cancelar
                 </button>
                 <button
                   type="submit"
                   className={styles.primaryButton}
                 >
                   <Save size={16} className={styles.buttonIcon} />
-                  {modalMapping.id ? "Update" : "Create"} Mapping
+                  {modalMapping.id ? "Atualizar" : "Criar"} Mapeamento
                 </button>
               </div>
             </form>
@@ -526,7 +911,7 @@ export default function ColumnMappingsSection() {
         <div className={styles.modalOverlay}>
           <div className={styles.modal}>
             <div className={styles.modalHeader}>
-              <h3 className={styles.modalTitle}>Confirm Deletion</h3>
+              <h3 className={styles.modalTitle}>Confirmar Exclusão</h3>
               <button 
                 className={styles.modalCloseButton}
                 onClick={() => setConfirmDelete(null)}
@@ -539,8 +924,8 @@ export default function ColumnMappingsSection() {
               <div className={styles.alertBox}>
                 <AlertTriangle className={styles.alertIcon} />
                 <p>
-                  Are you sure you want to delete the mapping for column ID <strong>{confirmDelete.column_id}</strong>?
-                  This action cannot be undone.
+                  Tem certeza de que deseja excluir o mapeamento para a coluna ID <strong>{confirmDelete.column_id}</strong>?
+                  Esta ação não pode ser desfeita.
                 </p>
               </div>
             </div>
@@ -550,14 +935,14 @@ export default function ColumnMappingsSection() {
                 className={styles.secondaryButton}
                 onClick={() => setConfirmDelete(null)}
               >
-                Cancel
+                Cancelar
               </button>
               <button
                 className={styles.dangerButton}
                 onClick={handleDelete}
               >
                 <Trash2 size={16} className={styles.buttonIcon} />
-                Delete Mapping
+                Excluir Mapeamento
               </button>
             </div>
           </div>
@@ -569,7 +954,7 @@ export default function ColumnMappingsSection() {
         <div className={styles.modalOverlay}>
           <div className={styles.largeModal}>
             <div className={styles.modalHeader}>
-              <h3 className={styles.modalTitle}>Value Mappings</h3>
+              <h3 className={styles.modalTitle}>Mapeamentos de Valores</h3>
               <button 
                 className={styles.modalCloseButton}
                 onClick={closeValueModal}
@@ -581,10 +966,10 @@ export default function ColumnMappingsSection() {
             <div className={styles.modalBody}>
               <div className={styles.valueMappingsHeader}>
                 <h4 className={styles.subtitle}>
-                  Column ID: {valueColumnId}
+                  ID da Coluna: {valueColumnId}
                   {valueGroup && (
                     <span className={styles.groupName}>
-                      {groups.find(g => g.id === valueGroup)?.name || `Group ${valueGroup}`}
+                      {groups.find(g => g.id === valueGroup)?.name || `Grupo ${valueGroup}`}
                     </span>
                   )}
                 </h4>
@@ -593,29 +978,29 @@ export default function ColumnMappingsSection() {
                   onClick={() => setModalValue({ source_value: "", standard_value: "", description: "" })}
                 >
                   <Plus className={styles.buttonIcon} />
-                  New Value Mapping
+                  Novo Mapeamento de Valor
                 </button>
               </div>
 
               {loading ? (
                 <div className={styles.loadingState}>
                   <div className={styles.spinner}></div>
-                  <p>Loading value mappings...</p>
+                  <p>Carregando mapeamentos de valores...</p>
                 </div>
               ) : valueMappings.length === 0 ? (
                 <div className={styles.emptyState}>
                   <Info className={styles.emptyIcon} />
-                  <p>No value mappings defined for this column</p>
+                  <p>Nenhum mapeamento de valor definido para esta coluna</p>
                 </div>
               ) : (
                 <div className={styles.valueMappingsTable}>
                   <table>
                     <thead>
                       <tr>
-                        <th>Source Value</th>
-                        <th>Standard Value</th>
-                        <th>Description</th>
-                        <th>Actions</th>
+                        <th>Valor de Origem</th>
+                        <th>Valor Padrão</th>
+                        <th>Descrição</th>
+                        <th>Ações</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -655,7 +1040,7 @@ export default function ColumnMappingsSection() {
           <div className={styles.modal}>
             <div className={styles.modalHeader}>
               <h3 className={styles.modalTitle}>
-                {modalValue.id ? "Edit Value Mapping" : "Create Value Mapping"}
+                {modalValue.id ? "Editar Mapeamento de Valor" : "Criar Mapeamento de Valor"}
               </h3>
               <button 
                 className={styles.modalCloseButton}
@@ -667,7 +1052,7 @@ export default function ColumnMappingsSection() {
             
             <form onSubmit={handleValueSubmit} className={styles.modalForm}>
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Source Value *</label>
+                <label className={styles.formLabel}>Valor de Origem *</label>
                 <input
                   type="text"
                   className={styles.formInput}
@@ -678,7 +1063,7 @@ export default function ColumnMappingsSection() {
               </div>
 
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Standard Value *</label>
+                <label className={styles.formLabel}>Valor Padrão *</label>
                 <input
                   type="text"
                   className={styles.formInput}
@@ -689,7 +1074,7 @@ export default function ColumnMappingsSection() {
               </div>
 
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Description</label>
+                <label className={styles.formLabel}>Descrição</label>
                 <textarea
                   className={styles.formTextarea}
                   value={modalValue.description}
@@ -704,20 +1089,27 @@ export default function ColumnMappingsSection() {
                   className={styles.secondaryButton}
                   onClick={() => setModalValue(null)}
                 >
-                  Cancel
+                  Cancelar
                 </button>
                 <button
                   type="submit"
                   className={styles.primaryButton}
                 >
                   <Save size={16} className={styles.buttonIcon} />
-                  {modalValue.id ? "Update" : "Create"} Mapping
+                  {modalValue.id ? "Atualizar" : "Criar"} Mapeamento
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Connection Explorer Modal */}
+      <ConnectionExplorerModal
+        isOpen={showConnectionExplorer}
+        onClose={() => setShowConnectionExplorer(false)}
+        onColumnSelect={handleColumnSelect}
+      />
     </div>
   );
 }

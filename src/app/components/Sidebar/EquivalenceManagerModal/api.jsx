@@ -179,3 +179,20 @@ export async function api_getAvailableColumns(params) {
   if (params.exclude_mapped) url += "&exclude_mapped=true";
   return fetchJson(url);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

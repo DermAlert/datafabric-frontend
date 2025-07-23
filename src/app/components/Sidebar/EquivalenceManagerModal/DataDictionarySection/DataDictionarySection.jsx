@@ -1,16 +1,17 @@
 import { useState, useEffect } from "react";
 import {
-  PlusIcon,
-  PencilSquareIcon,
-  TrashIcon,
-  CheckCircleIcon,
-  XMarkIcon,
-  MagnifyingGlassIcon,
-  InformationCircleIcon,
-  ExclamationTriangleIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon
-} from "@heroicons/react/24/outline";
+  Plus,
+  Edit,
+  Trash2,
+  Save,
+  X,
+  AlertTriangle,
+  Info,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  BookOpen
+} from "lucide-react";
 import styles from "./DataDictionarySection.module.css";
 import {
   api_getDataDictionary,
@@ -56,7 +57,7 @@ export default function DataDictionarySection() {
       setTerms(res.items || []);
       setTotal(res.total || 0);
     } catch (e) {
-      setError("Erro ao carregar termos: " + e.message);
+      setError("Failed to load terms: " + e.message);
     }
     setLoading(false);
   };
@@ -76,6 +77,7 @@ export default function DataDictionarySection() {
     });
     setShowModal(true);
   }
+  
   function openEdit(term) {
     setModalTerm({
       ...term,
@@ -86,7 +88,12 @@ export default function DataDictionarySection() {
     });
     setShowModal(true);
   }
-  function closeModal() { setShowModal(false); setModalTerm(null); setError(null); }
+  
+  function closeModal() { 
+    setShowModal(false); 
+    setModalTerm(null); 
+    setError(null); 
+  }
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -107,7 +114,7 @@ export default function DataDictionarySection() {
       closeModal();
       fetchTerms();
     } catch (e) {
-      setError("Falha ao salvar termo: " + e.message);
+      setError("Failed to save term: " + e.message);
       setLoading(false);
     }
   };
@@ -120,7 +127,7 @@ export default function DataDictionarySection() {
       setConfirmDelete(null);
       fetchTerms();
     } catch (e) {
-      setError("Falha ao remover termo: " + e.message);
+      setError("Failed to delete term: " + e.message);
       setLoading(false);
     }
   };
@@ -128,195 +135,338 @@ export default function DataDictionarySection() {
   const pageCount = Math.ceil(total / PAGE_SIZE);
 
   return (
-    <div className={styles.sectionRoot}>
-      <div className={styles.sectionHeader}>
-        <h3 className={styles.sectionTitle}>
-          <InformationCircleIcon className={styles.sectionInfoIcon} />
-          Dicionário de Dados
-        </h3>
-        <button className={styles.addBtnFloat} onClick={openAdd}>
-          <PlusIcon className={styles.iconSm} /> Novo Termo
-        </button>
+    <div className={styles.container}>
+      {/* Header */}
+      <div className={styles.header}>
+        <div className={styles.headerLeft}>
+          <h2 className={styles.title}>
+            <BookOpen className={styles.titleIcon} />
+            Data Dictionary
+          </h2>
+          <div className={styles.badges}>
+            <span className={styles.countBadge}>
+              {total} Terms
+            </span>
+            <span className={styles.domainBadge}>
+              {domains.length} Domains
+            </span>
+          </div>
+        </div>
+        <div className={styles.actions}>
+          <button 
+            className={styles.primaryButton}
+            onClick={openAdd}
+          >
+            <Plus className={styles.buttonIcon} />
+            New Term
+          </button>
+        </div>
       </div>
-      <div className={styles.sectionSearchRow}>
-        <div className={styles.sectionSearchBlock}>
-          <MagnifyingGlassIcon className={styles.searchIcon} />
+
+      {/* Search and Filters */}
+      <div className={styles.searchRow}>
+        <div className={styles.searchContainer}>
+          <Search className={styles.searchIcon} />
           <input
             type="text"
-            placeholder="Buscar termo por nome..."
-            className={styles.sectionSearchInput}
+            placeholder="Search terms..."
+            className={styles.searchInput}
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
           />
         </div>
-        <select className={styles.sectionSelect} value={filterDomain} onChange={e => { setFilterDomain(e.target.value); setPage(0); }}>
-          <option value="">Todos Domínios</option>
-          {domains.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+        
+        <select 
+          className={styles.filterSelect} 
+          value={filterDomain} 
+          onChange={e => { setFilterDomain(e.target.value); setPage(0); }}
+        >
+          <option value="">All Domains</option>
+          {domains.map(d => (
+            <option key={d.id} value={d.id}>{d.name}</option>
+          ))}
         </select>
-        <select className={styles.sectionSelect} value={filterType} onChange={e => { setFilterType(e.target.value); setPage(0); }}>
-          <option value="">Todos Tipos</option>
-          <option value="string">Texto</option>
-          <option value="integer">Inteiro</option>
-          <option value="float">Decimal</option>
-          <option value="boolean">Booleano</option>
-          <option value="date">Data</option>
-          <option value="datetime">Data e Hora</option>
+        
+        <select 
+          className={styles.filterSelect} 
+          value={filterType} 
+          onChange={e => { setFilterType(e.target.value); setPage(0); }}
+        >
+          <option value="">All Types</option>
+          <option value="string">String</option>
+          <option value="integer">Integer</option>
+          <option value="float">Float</option>
+          <option value="boolean">Boolean</option>
+          <option value="date">Date</option>
+          <option value="datetime">DateTime</option>
         </select>
       </div>
 
-      <div className={styles.dictTableWrapper}>
-        {loading ? (
-          <div className={styles.sectionPlaceholder}>
-            Carregando...
-          </div>
-        ) : error ? (
-          <div className={styles.sectionError}>
-            <ExclamationTriangleIcon className={styles.iconSm} /> {error}
-          </div>
-        ) : terms.length === 0 ? (
-          <div className={styles.sectionPlaceholder}>
-            <ExclamationTriangleIcon className={styles.iconSm} /> Nenhum termo encontrado.
-          </div>
-        ) : (
-          <div className={styles.responsiveTable}>
-            <table className={styles.dictTable}>
+      {/* Content */}
+      {loading ? (
+        <div className={styles.emptyState}>
+          <Info className={styles.emptyIcon} />
+          <p>Loading terms...</p>
+        </div>
+      ) : error ? (
+        <div className={styles.errorState}>
+          <AlertTriangle className={styles.errorIcon} />
+          <p>{error}</p>
+        </div>
+      ) : terms.length === 0 ? (
+        <div className={styles.emptyState}>
+          <Info className={styles.emptyIcon} />
+          <p>No terms found</p>
+          <button 
+            className={styles.secondaryButton}
+            onClick={openAdd}
+          >
+            <Plus className={styles.buttonIcon} />
+            Create your first term
+          </button>
+        </div>
+      ) : (
+        <div className={styles.termsContainer}>
+          <div className={styles.tableContainer}>
+            <table className={styles.termsTable}>
               <thead>
                 <tr>
-                  <th>Nome</th>
-                  <th>Exibição</th>
-                  <th>Descrição</th>
-                  <th>Tipo</th>
-                  <th>Domínio</th>
-                  <th>Sinônimos</th>
-                  <th>Ações</th>
+                  <th>Name</th>
+                  <th>Display Name</th>
+                  <th>Description</th>
+                  <th>Type</th>
+                  <th>Domain</th>
+                  <th>Synonyms</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {terms.map(term => (
                   <tr key={term.id}>
-                    <td>{term.name}</td>
+                    <td>
+                      <span className={styles.termName}>{term.name}</span>
+                    </td>
                     <td>{term.display_name}</td>
                     <td>
-                      <span title={term.description} className={styles.cellEllipsis}>
+                      <span className={styles.description} title={term.description}>
                         {term.description}
                       </span>
                     </td>
-                    <td>{term.data_type}</td>
-                    <td>{domains.find(d => d.id === term.semantic_domain_id)?.name || "-"}</td>
-                    <td>{(term.synonyms || []).join(", ")}</td>
                     <td>
-                      <button className={styles.dictActionBtn} title="Editar" onClick={() => openEdit(term)}>
-                        <PencilSquareIcon className={styles.iconXs} />
-                      </button>
-                      <button className={styles.dictActionBtn} title="Remover" onClick={() => setConfirmDelete({ id: term.id, name: term.name })}>
-                        <TrashIcon className={styles.iconXs} />
-                      </button>
+                      <span className={styles.dataType}>{term.data_type}</span>
+                    </td>
+                    <td>
+                      {domains.find(d => d.id === term.semantic_domain_id)?.name || "-"}
+                    </td>
+                    <td>
+                      <div className={styles.synonyms}>
+                        {(term.synonyms || []).slice(0, 2).map((synonym, i) => (
+                          <span key={i} className={styles.synonym}>{synonym}</span>
+                        ))}
+                        {(term.synonyms || []).length > 2 && (
+                          <span className={styles.synonymMore}>
+                            +{(term.synonyms || []).length - 2} more
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <div className={styles.actions}>
+                        <button 
+                          className={styles.iconButton}
+                          onClick={() => openEdit(term)}
+                          title="Edit"
+                        >
+                          <Edit size={16} />
+                        </button>
+                        <button 
+                          className={styles.iconButton}
+                          onClick={() => setConfirmDelete({ id: term.id, name: term.name })}
+                          title="Delete"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
-        <div className={styles.sectionPagination}>
-          <button disabled={page <= 0} onClick={() => setPage(p => Math.max(p - 1, 0))}>
-            <ChevronLeftIcon className={styles.iconSm} />
-          </button>
-          <span>Página {page + 1} de {pageCount || 1}</span>
-          <button disabled={page >= pageCount - 1} onClick={() => setPage(p => p + 1)}>
-            <ChevronRightIcon className={styles.iconSm} />
-          </button>
-        </div>
-      </div>
 
+          {/* Pagination */}
+          <div className={styles.pagination}>
+            <button 
+              className={styles.paginationButton}
+              disabled={page <= 0}
+              onClick={() => setPage(p => Math.max(p - 1, 0))}
+            >
+              <ChevronLeft size={16} />
+              Previous
+            </button>
+            <span className={styles.pageInfo}>
+              Page {page + 1} of {pageCount || 1}
+            </span>
+            <button 
+              className={styles.paginationButton}
+              disabled={page >= pageCount - 1}
+              onClick={() => setPage(p => p + 1)}
+            >
+              Next
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Modal */}
       {showModal && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modalContainerSmall}>
-            <form onSubmit={handleSubmit}>
-              <div className={styles.modalHeader}>
-                <h4 className={styles.modalTitle}>{modalTerm.id ? "Editar Termo" : "Novo Termo"}</h4>
-                <button className={styles.modalCloseButton} onClick={closeModal} type="button">
-                  <XMarkIcon className={styles.iconSm} />
-                </button>
+          <div className={styles.modal}>
+            <div className={styles.modalHeader}>
+              <h3 className={styles.modalTitle}>
+                {modalTerm.id ? "Edit Term" : "Create New Term"}
+              </h3>
+              <button 
+                className={styles.modalCloseButton}
+                onClick={closeModal}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmit} className={styles.modalForm}>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Name *</label>
+                <input
+                  type="text"
+                  className={styles.formInput}
+                  required
+                  value={modalTerm.name}
+                  onChange={e => setModalTerm(mt => ({ ...mt, name: e.target.value }))}
+                  placeholder="Enter term name"
+                />
               </div>
-              <div className={styles.modalBody}>
-                <div className={styles.formField}>
-                  <label>Nome *</label>
-                  <input required value={modalTerm.name} onChange={e => setModalTerm(mt => ({ ...mt, name: e.target.value }))} />
-                </div>
-                <div className={styles.formField}>
-                  <label>Nome de Exibição *</label>
-                  <input required value={modalTerm.display_name} onChange={e => setModalTerm(mt => ({ ...mt, display_name: e.target.value }))} />
-                </div>
-                <div className={styles.formField}>
-                  <label>Descrição</label>
-                  <textarea value={modalTerm.description} onChange={e => setModalTerm(mt => ({ ...mt, description: e.target.value }))} />
-                </div>
-                <div className={styles.formField}>
-                  <label>Tipo de Dado</label>
-                  <select value={modalTerm.data_type} onChange={e => setModalTerm(mt => ({ ...mt, data_type: e.target.value }))}>
-                    <option value="string">Texto</option>
-                    <option value="integer">Inteiro</option>
-                    <option value="float">Decimal</option>
-                    <option value="boolean">Booleano</option>
-                    <option value="date">Data</option>
-                    <option value="datetime">Data e Hora</option>
-                  </select>
-                </div>
-                <div className={styles.formField}>
-                  <label>Domínio Semântico</label>
-                  <select value={modalTerm.semantic_domain_id || ""} onChange={e => setModalTerm(mt => ({ ...mt, semantic_domain_id: e.target.value }))}>
-                    <option value="">Nenhum</option>
-                    {domains.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
-                </div>
-                <div className={styles.formField}>
-                  <label>Sinônimos (vírgula)</label>
-                  <input value={modalTerm.synonyms?.join(", ") || ""} onChange={e => setModalTerm(mt => ({ ...mt, synonyms: e.target.value.split(",").map(s => s.trim()).filter(Boolean) }))} />
-                </div>
-                <div className={styles.formField}>
-                  <label>Validação (JSON)</label>
-                  <textarea
-                    value={JSON.stringify(modalTerm.validation_rules ?? {}, null, 2)}
-                    onChange={e => {
-                      try {
-                        const val = JSON.parse(e.target.value);
-                        setModalTerm(mt => ({ ...mt, validation_rules: val }));
-                        setError(null);
-                      } catch (err) {
-                        setError("Validação: JSON inválido");
-                      }
-                    }}
-                    rows={2}
-                  />
-                </div>
-                <div className={styles.formField}>
-                  <label>Exemplos (JSON)</label>
-                  <textarea
-                    value={JSON.stringify(modalTerm.example_values ?? {}, null, 2)}
-                    onChange={e => {
-                      try {
-                        const val = JSON.parse(e.target.value);
-                        setModalTerm(mt => ({ ...mt, example_values: val }));
-                        setError(null);
-                      } catch (err) {
-                        setError("Exemplos: JSON inválido");
-                      }
-                    }}
-                    rows={2}
-                  />
-                </div>
-                {error && error.startsWith("Validação") && (
-                  <div className={styles.formError}><ExclamationTriangleIcon className={styles.iconXs} /> {error}</div>
-                )}
-                {error && error.startsWith("Exemplos") && (
-                  <div className={styles.formError}><ExclamationTriangleIcon className={styles.iconXs} /> {error}</div>
-                )}
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Display Name *</label>
+                <input
+                  type="text"
+                  className={styles.formInput}
+                  required
+                  value={modalTerm.display_name}
+                  onChange={e => setModalTerm(mt => ({ ...mt, display_name: e.target.value }))}
+                  placeholder="Enter display name"
+                />
               </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Description</label>
+                <textarea
+                  className={styles.formTextarea}
+                  value={modalTerm.description}
+                  onChange={e => setModalTerm(mt => ({ ...mt, description: e.target.value }))}
+                  placeholder="Enter description"
+                  rows={3}
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Data Type</label>
+                <select
+                  className={styles.formInput}
+                  value={modalTerm.data_type}
+                  onChange={e => setModalTerm(mt => ({ ...mt, data_type: e.target.value }))}
+                >
+                  <option value="string">String</option>
+                  <option value="integer">Integer</option>
+                  <option value="float">Float</option>
+                  <option value="boolean">Boolean</option>
+                  <option value="date">Date</option>
+                  <option value="datetime">DateTime</option>
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Semantic Domain</label>
+                <select
+                  className={styles.formInput}
+                  value={modalTerm.semantic_domain_id || ""}
+                  onChange={e => setModalTerm(mt => ({ ...mt, semantic_domain_id: e.target.value }))}
+                >
+                  <option value="">Select a domain</option>
+                  {domains.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Synonyms (comma separated)</label>
+                <input
+                  type="text"
+                  className={styles.formInput}
+                  value={modalTerm.synonyms?.join(", ") || ""}
+                  onChange={e => setModalTerm(mt => ({ 
+                    ...mt, 
+                    synonyms: e.target.value.split(",").map(s => s.trim()).filter(Boolean) 
+                  }))}
+                  placeholder="synonym1, synonym2, synonym3"
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Validation Rules (JSON)</label>
+                <textarea
+                  className={styles.formTextarea}
+                  value={JSON.stringify(modalTerm.validation_rules ?? {}, null, 2)}
+                  onChange={e => {
+                    try {
+                      const val = JSON.parse(e.target.value);
+                      setModalTerm(mt => ({ ...mt, validation_rules: val }));
+                      setError(null);
+                    } catch (err) {
+                      setError("Invalid JSON format in validation rules");
+                    }
+                  }}
+                  placeholder='{"min_length": 1, "max_length": 100}'
+                  rows={3}
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Example Values (JSON)</label>
+                <textarea
+                  className={styles.formTextarea}
+                  value={JSON.stringify(modalTerm.example_values ?? {}, null, 2)}
+                  onChange={e => {
+                    try {
+                      const val = JSON.parse(e.target.value);
+                      setModalTerm(mt => ({ ...mt, example_values: val }));
+                      setError(null);
+                    } catch (err) {
+                      setError("Invalid JSON format in example values");
+                    }
+                  }}
+                  placeholder='{"examples": ["value1", "value2"]}'
+                  rows={3}
+                />
+              </div>
+
               <div className={styles.modalFooter}>
-                <button type="button" className={styles.cancelButton} onClick={closeModal}>Cancelar</button>
-                <button type="submit" className={styles.submitButton}>
-                  <CheckCircleIcon className={styles.iconXs} /> Salvar
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={closeModal}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={styles.primaryButton}
+                >
+                  <Save size={16} className={styles.buttonIcon} />
+                  {modalTerm.id ? "Update" : "Create"} Term
                 </button>
               </div>
             </form>
@@ -324,35 +474,49 @@ export default function DataDictionarySection() {
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
       {confirmDelete && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modalContainerSmall}>
+          <div className={styles.modal}>
             <div className={styles.modalHeader}>
-              <h4 className={styles.modalTitle}>Remover Termo</h4>
-              <button className={styles.modalCloseButton} onClick={() => setConfirmDelete(null)}>
-                <XMarkIcon className={styles.iconSm} />
+              <h3 className={styles.modalTitle}>Confirm Deletion</h3>
+              <button 
+                className={styles.modalCloseButton}
+                onClick={() => setConfirmDelete(null)}
+              >
+                <X size={20} />
               </button>
             </div>
+            
             <div className={styles.modalBody}>
-              <p>
-                Tem certeza que deseja remover o termo <b>{confirmDelete.name}</b>?<br />
-                Esta ação não pode ser desfeita.
-              </p>
+              <div className={styles.alertBox}>
+                <AlertTriangle className={styles.alertIcon} />
+                <p>
+                  Are you sure you want to delete the term <strong>{confirmDelete.name}</strong>?
+                  This action cannot be undone.
+                </p>
+              </div>
             </div>
+
             <div className={styles.modalFooter}>
-              <button className={styles.cancelButton} onClick={() => setConfirmDelete(null)}>Cancelar</button>
-              <button className={styles.submitButton} onClick={handleDelete}>
-                <TrashIcon className={styles.iconXs} /> Remover
+              <button
+                className={styles.secondaryButton}
+                onClick={() => setConfirmDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className={styles.dangerButton}
+                onClick={handleDelete}
+              >
+                <Trash2 size={16} className={styles.buttonIcon} />
+                Delete Term
               </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* Floating Add Button for mobile */}
-      <button className={styles.addBtnMobile} onClick={openAdd} title="Novo Termo">
-        <PlusIcon className={styles.iconSm} />
-      </button>
     </div>
   );
 }
+

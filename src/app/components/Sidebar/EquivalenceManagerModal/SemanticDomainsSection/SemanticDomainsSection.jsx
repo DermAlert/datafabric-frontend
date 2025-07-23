@@ -1,16 +1,17 @@
 import { useState, useEffect, useMemo } from "react";
 import {
-  ChevronDownIcon,
-  ChevronRightIcon,
-  PlusIcon,
-  PencilSquareIcon,
-  TrashIcon,
-  XMarkIcon,
-  ArrowPathIcon,
-  ExclamationTriangleIcon,
-  InformationCircleIcon,
-  CheckCircleIcon
-} from "@heroicons/react/24/outline";
+  ChevronDown,
+  ChevronRight,
+  Plus,
+  Edit,
+  Trash2,
+  X,
+  AlertTriangle,
+  Info,
+  Save,
+  Search,
+  Layers
+} from "lucide-react";
 import styles from "./SemanticDomainsSection.module.css";
 import {
   api_getSemanticDomains,
@@ -60,7 +61,7 @@ export default function SemanticDomainsSection() {
         setDomains(data);
       }
     } catch (e) {
-      setError("Erro ao carregar domínios: " + e.message);
+      setError("Failed to load domains: " + e.message);
     }
     setLoading(false);
   };
@@ -70,14 +71,25 @@ export default function SemanticDomainsSection() {
   const toggleExpand = id => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
 
   function openAdd(parent_domain_id = null) {
-    setModalDomain({ name: "", description: "", parent_domain_id, domain_rules: {} });
+    setModalDomain({ 
+      name: "", 
+      description: "", 
+      parent_domain_id, 
+      domain_rules: {} 
+    });
     setShowModal(true);
   }
+  
   function openEdit(domain) {
     setModalDomain(domain);
     setShowModal(true);
   }
-  function closeModal() { setShowModal(false); setModalDomain(null); setError(null); }
+  
+  function closeModal() { 
+    setShowModal(false); 
+    setModalDomain(null); 
+    setError(null); 
+  }
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -102,7 +114,7 @@ export default function SemanticDomainsSection() {
       closeModal();
       fetchDomains();
     } catch (e) {
-      setError("Falha ao salvar domínio: " + e.message);
+      setError("Failed to save domain: " + e.message);
       setLoading(false);
     }
   };
@@ -115,7 +127,7 @@ export default function SemanticDomainsSection() {
       setConfirmDelete(null);
       fetchDomains();
     } catch (e) {
-      setError("Falha ao remover domínio: " + e.message);
+      setError("Failed to delete domain: " + e.message);
       setLoading(false);
     }
   };
@@ -123,26 +135,55 @@ export default function SemanticDomainsSection() {
   function renderNode(node, level = 0) {
     return (
       <div key={node.id} style={{ marginLeft: level * 18 }}>
-        <div className={styles.domainNode}>
-          {node.children.length > 0 ? (
-            <button className={styles.domainExpandBtn} onClick={() => toggleExpand(node.id)} tabIndex={0}>
-              {expanded[node.id] ? <ChevronDownIcon className={styles.iconSm} /> : <ChevronRightIcon className={styles.iconSm} />}
-            </button>
-          ) : (
-            <span style={{ width: 22, display: "inline-block" }} />
-          )}
-          <span className={styles.domainName}>{node.name}</span>
-          <span className={styles.domainDesc}>{node.description}</span>
-          <div className={styles.domainActions}>
-            <button className={styles.domainActionBtn} title="Editar" onClick={() => openEdit(node)}>
-              <PencilSquareIcon className={styles.iconXs} />
-            </button>
-            <button className={styles.domainActionBtn} title="Adicionar subdomínio" onClick={() => openAdd(node.id)}>
-              <PlusIcon className={styles.iconXs} />
-            </button>
-            <button className={styles.domainActionBtn} title="Remover" onClick={() => setConfirmDelete({ id: node.id, name: node.name })}>
-              <TrashIcon className={styles.iconXs} />
-            </button>
+        <div className={styles.domainCard}>
+          <div className={styles.domainHeader}>
+            <div className={styles.domainTitle}>
+              {node.children.length > 0 ? (
+                <button 
+                  className={styles.expandButton} 
+                  onClick={() => toggleExpand(node.id)}
+                >
+                  {expanded[node.id] ? (
+                    <ChevronDown className={styles.chevronIcon} />
+                  ) : (
+                    <ChevronRight className={styles.chevronIcon} />
+                  )}
+                </button>
+              ) : (
+                <span className={styles.spacer} />
+              )}
+              <div className={styles.domainInfo}>
+                <h3 className={styles.domainName}>{node.name}</h3>
+                {node.description && (
+                  <span className={styles.domainDescription}>
+                    {node.description}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className={styles.domainActions}>
+              <button 
+                className={styles.iconButton}
+                onClick={() => openEdit(node)}
+                title="Edit"
+              >
+                <Edit size={16} />
+              </button>
+              <button 
+                className={styles.iconButton}
+                onClick={() => openAdd(node.id)}
+                title="Add subdomain"
+              >
+                <Plus size={16} />
+              </button>
+              <button 
+                className={styles.iconButton}
+                onClick={() => setConfirmDelete({ id: node.id, name: node.name })}
+                title="Delete"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
         </div>
         {expanded[node.id] && node.children.map(child => renderNode(child, level + 1))}
@@ -153,100 +194,167 @@ export default function SemanticDomainsSection() {
   const tree = useMemo(() => buildDomainTree(domains), [domains]);
 
   return (
-    <div className={styles.sectionRoot}>
-      <div className={styles.sectionHeader}>
-        <h3 className={styles.sectionTitle}><InformationCircleIcon className={styles.sectionInfoIcon} /> Domínios Semânticos</h3>
-        <button className={styles.addBtnFloat} onClick={() => openAdd()}>
-          <PlusIcon className={styles.iconSm} /> Novo Domínio
-        </button>
-      </div>
-      <div className={styles.sectionSearchBlock}>
-        <input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar domínios por nome..."
-          className={styles.sectionSearchInput}
-        />
-      </div>
-      <div className={styles.domainListWrapper}>
-        {loading ? (
-          <div className={styles.sectionPlaceholder}><ArrowPathIcon className={styles.spin} /> Carregando...</div>
-        ) : error ? (
-          <div className={styles.sectionError}><ExclamationTriangleIcon className={styles.iconSm} /> {error}</div>
-        ) : domains.length === 0 ? (
-          <div className={styles.sectionPlaceholder}><ExclamationTriangleIcon className={styles.iconSm} /> Nenhum domínio encontrado.</div>
-        ) : (
-          <div className={styles.domainTree}>
-            {tree.map(node => renderNode(node))}
+    <div className={styles.container}>
+      {/* Header */}
+      <div className={styles.header}>
+        <div className={styles.headerLeft}>
+          <h2 className={styles.title}>
+            <Layers className={styles.titleIcon} />
+            Semantic Domains
+          </h2>
+          <div className={styles.badges}>
+            <span className={styles.countBadge}>
+              {domains.length} Domains
+            </span>
+            <span className={styles.treeBadge}>
+              {tree.length} Root Domains
+            </span>
           </div>
-        )}
+        </div>
+        <div className={styles.actions}>
+          <button 
+            className={styles.primaryButton}
+            onClick={() => openAdd()}
+          >
+            <Plus className={styles.buttonIcon} />
+            New Domain
+          </button>
+        </div>
       </div>
+
+      {/* Search */}
+      <div className={styles.searchRow}>
+        <div className={styles.searchContainer}>
+          <Search className={styles.searchIcon} />
+          <input
+            type="text"
+            placeholder="Search domains..."
+            className={styles.searchInput}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Content */}
+      {loading ? (
+        <div className={styles.emptyState}>
+          <Info className={styles.emptyIcon} />
+          <p>Loading domains...</p>
+        </div>
+      ) : error ? (
+        <div className={styles.errorState}>
+          <AlertTriangle className={styles.errorIcon} />
+          <p>{error}</p>
+        </div>
+      ) : domains.length === 0 ? (
+        <div className={styles.emptyState}>
+          <Info className={styles.emptyIcon} />
+          <p>No domains found</p>
+          <button 
+            className={styles.secondaryButton}
+            onClick={() => openAdd()}
+          >
+            <Plus className={styles.buttonIcon} />
+            Create your first domain
+          </button>
+        </div>
+      ) : (
+        <div className={styles.domainsContainer}>
+          {tree.map(node => renderNode(node))}
+        </div>
+      )}
 
       {/* Add/Edit Modal */}
       {showModal && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modalContainerSmall}>
-            <form onSubmit={handleSubmit}>
-              <div className={styles.modalHeader}>
-                <h4 className={styles.modalTitle}>{modalDomain.id ? "Editar Domínio" : "Novo Domínio"}</h4>
-                <button className={styles.modalCloseButton} onClick={closeModal} type="button">
-                  <XMarkIcon className={styles.iconSm} />
-                </button>
+          <div className={styles.modal}>
+            <div className={styles.modalHeader}>
+              <h3 className={styles.modalTitle}>
+                {modalDomain.id ? "Edit Domain" : "Create New Domain"}
+              </h3>
+              <button 
+                className={styles.modalCloseButton}
+                onClick={closeModal}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmit} className={styles.modalForm}>
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Name *</label>
+                <input
+                  type="text"
+                  className={styles.formInput}
+                  required
+                  value={modalDomain.name}
+                  onChange={e => setModalDomain(md => ({ ...md, name: e.target.value }))}
+                  placeholder="Enter domain name"
+                />
               </div>
-              <div className={styles.modalBody}>
-                <div className={styles.formField}>
-                  <label>Nome *</label>
-                  <input
-                    required
-                    value={modalDomain.name}
-                    onChange={e => setModalDomain(md => ({ ...md, name: e.target.value }))}
-                  />
-                </div>
-                <div className={styles.formField}>
-                  <label>Descrição</label>
-                  <textarea
-                    value={modalDomain.description}
-                    onChange={e => setModalDomain(md => ({ ...md, description: e.target.value }))}
-                  />
-                </div>
-                <div className={styles.formField}>
-                  <label>Domínio Pai</label>
-                  <select
-                    value={modalDomain.parent_domain_id ?? ""}
-                    onChange={e => setModalDomain(md => ({ ...md, parent_domain_id: e.target.value ? Number(e.target.value) : null }))}
-                  >
-                    <option value="">Nenhum</option>
-                    {domains.filter(d => d.id !== modalDomain.id).map(d => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className={styles.formField}>
-                  <label>Regras (JSON)</label>
-                  <textarea
-                    value={JSON.stringify(modalDomain.domain_rules ?? {}, null, 2)}
-                    onChange={e => {
-                      try {
-                        const val = JSON.parse(e.target.value);
-                        setModalDomain(md => ({ ...md, domain_rules: val }));
-                        setError(null);
-                      } catch (err) {
-                        setError("Regras: JSON inválido");
-                      }
-                    }}
-                    rows={3}
-                    className={error && error.startsWith("Regras") ? styles.inputError : ""}
-                  />
-                </div>
-                {error && error.startsWith("Regras") && (
-                  <div className={styles.formError}><ExclamationTriangleIcon className={styles.iconXs} /> {error}</div>
-                )}
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Description</label>
+                <textarea
+                  className={styles.formTextarea}
+                  value={modalDomain.description}
+                  onChange={e => setModalDomain(md => ({ ...md, description: e.target.value }))}
+                  placeholder="Enter domain description"
+                  rows={3}
+                />
               </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Parent Domain</label>
+                <select
+                  className={styles.formInput}
+                  value={modalDomain.parent_domain_id ?? ""}
+                  onChange={e => setModalDomain(md => ({ 
+                    ...md, 
+                    parent_domain_id: e.target.value ? Number(e.target.value) : null 
+                  }))}
+                >
+                  <option value="">None (Root Domain)</option>
+                  {domains.filter(d => d.id !== modalDomain.id).map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel}>Domain Rules (JSON)</label>
+                <textarea
+                  className={styles.formTextarea}
+                  value={JSON.stringify(modalDomain.domain_rules ?? {}, null, 2)}
+                  onChange={e => {
+                    try {
+                      const val = JSON.parse(e.target.value);
+                      setModalDomain(md => ({ ...md, domain_rules: val }));
+                      setError(null);
+                    } catch (err) {
+                      setError("Invalid JSON format in domain rules");
+                    }
+                  }}
+                  placeholder='{"validation": "rules", "constraints": []}'
+                  rows={4}
+                />
+              </div>
+
               <div className={styles.modalFooter}>
-                <button type="button" className={styles.cancelButton} onClick={closeModal}>Cancelar</button>
-                <button type="submit" className={styles.submitButton}>
-                  <CheckCircleIcon className={styles.iconXs} /> Salvar
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={closeModal}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={styles.primaryButton}
+                >
+                  <Save size={16} className={styles.buttonIcon} />
+                  {modalDomain.id ? "Update" : "Create"} Domain
                 </button>
               </div>
             </form>
@@ -254,36 +362,49 @@ export default function SemanticDomainsSection() {
         </div>
       )}
 
-      {/* Delete Confirm */}
+      {/* Delete Confirmation Modal */}
       {confirmDelete && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modalContainerSmall}>
+          <div className={styles.modal}>
             <div className={styles.modalHeader}>
-              <h4 className={styles.modalTitle}>Remover Domínio</h4>
-              <button className={styles.modalCloseButton} onClick={() => setConfirmDelete(null)}>
-                <XMarkIcon className={styles.iconSm} />
+              <h3 className={styles.modalTitle}>Confirm Deletion</h3>
+              <button 
+                className={styles.modalCloseButton}
+                onClick={() => setConfirmDelete(null)}
+              >
+                <X size={20} />
               </button>
             </div>
+            
             <div className={styles.modalBody}>
-              <p>
-                Tem certeza que deseja remover o domínio <b>{confirmDelete.name}</b>?<br />
-                Esta ação não pode ser desfeita.
-              </p>
+              <div className={styles.alertBox}>
+                <AlertTriangle className={styles.alertIcon} />
+                <p>
+                  Are you sure you want to delete the domain <strong>{confirmDelete.name}</strong>?
+                  This action cannot be undone.
+                </p>
+              </div>
             </div>
+
             <div className={styles.modalFooter}>
-              <button className={styles.cancelButton} onClick={() => setConfirmDelete(null)}>Cancelar</button>
-              <button className={styles.submitButton} onClick={handleDelete}>
-                <TrashIcon className={styles.iconXs} /> Remover
+              <button
+                className={styles.secondaryButton}
+                onClick={() => setConfirmDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className={styles.dangerButton}
+                onClick={handleDelete}
+              >
+                <Trash2 size={16} className={styles.buttonIcon} />
+                Delete Domain
               </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* Floating Add Button for mobile */}
-      <button className={styles.addBtnMobile} onClick={() => openAdd()} title="Novo Domínio">
-        <PlusIcon className={styles.iconSm} />
-      </button>
     </div>
   );
 }
+

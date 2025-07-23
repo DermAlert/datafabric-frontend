@@ -487,8 +487,19 @@ function GroupMappingsPreview({ groupId }) {
     );
   }
 
+  // Group value mappings by source column for better organization
+  const valuesByColumn = (group.value_mappings || []).reduce((acc, mapping) => {
+    const columnId = mapping.source_column_id;
+    if (!acc[columnId]) {
+      acc[columnId] = [];
+    }
+    acc[columnId].push(mapping);
+    return acc;
+  }, {});
+
   return (
     <div className={styles.previewContainer}>
+      {/* Column Mappings Section */}
       <div className={styles.previewSection}>
         <h4 className={styles.previewTitle}>
           <Database size={16} />
@@ -497,27 +508,42 @@ function GroupMappingsPreview({ groupId }) {
         {(group.column_mappings || []).length === 0 ? (
           <p className={styles.previewEmpty}>No column mappings defined</p>
         ) : (
-          <div className={styles.previewList}>
-            {(group.column_mappings || []).slice(0, 3).map((m, i) => (
-              <div key={m.id || i} className={styles.previewItem}>
-                <span className={styles.previewLabel}>Column {m.column_id}</span>
-                {m.transformation_rule && (
-                  <span className={styles.previewDetail}>Rule: {m.transformation_rule}</span>
+          <div className={styles.mappingsList}>
+            {(group.column_mappings || []).map((mapping) => (
+              <div key={mapping.id} className={styles.columnMappingCard}>
+                <div className={styles.mappingHeader}>
+                  <span className={styles.columnId}>Column ID: {mapping.column_id}</span>
+                  {mapping.confidence_score && (
+                    <span className={`${styles.confidenceBadge} ${
+                      parseFloat(mapping.confidence_score) >= 0.9 ? styles.highConfidence :
+                      parseFloat(mapping.confidence_score) >= 0.7 ? styles.mediumConfidence :
+                      styles.lowConfidence
+                    }`}>
+                      {Math.round(parseFloat(mapping.confidence_score) * 100)}% confidence
+                    </span>
+                  )}
+                </div>
+                
+                {mapping.transformation_rule && (
+                  <div className={styles.mappingDetail}>
+                    <span className={styles.detailLabel}>Transformation Rule:</span>
+                    <code className={styles.ruleCode}>{mapping.transformation_rule}</code>
+                  </div>
                 )}
-                {m.confidence_score && (
-                  <span className={styles.confidenceBadge}>{m.confidence_score}</span>
+                
+                {mapping.notes && (
+                  <div className={styles.mappingDetail}>
+                    <span className={styles.detailLabel}>Notes:</span>
+                    <span className={styles.detailValue}>{mapping.notes}</span>
+                  </div>
                 )}
               </div>
             ))}
-            {(group.column_mappings || []).length > 3 && (
-              <p className={styles.previewMore}>
-                +{(group.column_mappings || []).length - 3} more mappings
-              </p>
-            )}
           </div>
         )}
       </div>
 
+      {/* Value Mappings Section */}
       <div className={styles.previewSection}>
         <h4 className={styles.previewTitle}>
           <Eye size={16} />
@@ -526,24 +552,65 @@ function GroupMappingsPreview({ groupId }) {
         {(group.value_mappings || []).length === 0 ? (
           <p className={styles.previewEmpty}>No value mappings defined</p>
         ) : (
-          <div className={styles.previewList}>
-            {(group.value_mappings || []).slice(0, 3).map((v, i) => (
-              <div key={v.id || i} className={styles.previewItem}>
-                <span className={styles.sourceValue}>{v.source_value}</span>
-                <span className={styles.arrow}>→</span>
-                <span className={styles.standardValue}>{v.standard_value}</span>
-                {v.description && (
-                  <span className={styles.previewDetail}>{v.description}</span>
-                )}
+          <div className={styles.valueMapsList}>
+            {Object.entries(valuesByColumn).map(([columnId, mappings]) => (
+              <div key={columnId} className={styles.columnValueGroup}>
+                <h5 className={styles.columnHeader}>
+                  Column {columnId} ({mappings.length} mapping{mappings.length !== 1 ? 's' : ''})
+                </h5>
+                <div className={styles.valueMappingsGrid}>
+                  {mappings.map((mapping) => (
+                    <div key={mapping.id} className={styles.valueMappingCard}>
+                      <div className={styles.valueTransformation}>
+                        <span className={styles.sourceValue} title="Source Value">
+                          "{mapping.source_value}"
+                        </span>
+                        <span className={styles.transformArrow}>→</span>
+                        <span className={styles.standardValue} title="Standard Value">
+                          "{mapping.standard_value}"
+                        </span>
+                      </div>
+                      {mapping.description && (
+                        <div className={styles.valueDescription}>
+                          {mapping.description}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
-            {(group.value_mappings || []).length > 3 && (
-              <p className={styles.previewMore}>
-                +{(group.value_mappings || []).length - 3} more mappings
-              </p>
-            )}
           </div>
         )}
+      </div>
+
+      {/* Summary Stats */}
+      <div className={styles.summarySection}>
+        <div className={styles.summaryStats}>
+          <div className={styles.statItem}>
+            <span className={styles.statNumber}>{group.column_mappings?.length || 0}</span>
+            <span className={styles.statLabel}>Columns Mapped</span>
+          </div>
+          <div className={styles.statItem}>
+            <span className={styles.statNumber}>{group.value_mappings?.length || 0}</span>
+            <span className={styles.statLabel}>Value Transformations</span>
+          </div>
+          <div className={styles.statItem}>
+            <span className={styles.statNumber}>{Object.keys(valuesByColumn).length}</span>
+            <span className={styles.statLabel}>Columns with Values</span>
+          </div>
+          {group.column_mappings?.length > 0 && (
+            <div className={styles.statItem}>
+              <span className={styles.statNumber}>
+                {Math.round(
+                  (group.column_mappings.reduce((sum, m) => sum + (parseFloat(m.confidence_score) || 0), 0) / 
+                   group.column_mappings.length) * 100
+                )}%
+              </span>
+              <span className={styles.statLabel}>Avg. Confidence</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
