@@ -1,0 +1,177 @@
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  animation: fadeIn 0.18s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.modalContainer {
+  background: #fff;
+  border-radius: 0.5rem;
+  width: 90vw;
+  max-width: 1200px;
+  min-width: 800px;
+  min-height: 600px;
+  max-height: 96vh;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.13);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding: 10px;
+  border-radius: 14px;
+  
+}
+
+.modalHeader {
+  padding: 1.25rem 2rem 1.25rem 2rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f3f4f6;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-left: 10px;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+
+}
+
+.modalIcon {
+  width: 2rem;
+  height: 2rem;
+  color: #4f46e5;
+}
+
+.closeIcon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.modalTitle {
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.modalNavTabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.modalNavTabs button {
+  background: none;
+  border: none;
+  color: #374151;
+  font-weight: 500;
+  font-size: 1rem;
+  padding: 0.5rem 1.1rem 0.5rem 1.1rem;
+  border-radius: 0.5rem 0.5rem 0 0;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  outline: none;
+}
+
+.modalNavTabs button:hover,
+.modalNavTabs .activeTab {
+  background: #fff;
+  color: #4f46e5;
+}
+
+.activeTab {
+  background: #fff;
+  color: #4f46e5;
+  border-bottom: 2.5px solid #4f46e5;
+  font-weight: 600;
+  z-index: 2;
+}
+
+.modalCloseButton {
+  background: none;
+  border: none;
+  color: #6b7280;
+  border-radius: 9999px;
+  width: 2.3rem;
+  height: 2.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.14s;
+}
+
+.modalCloseButton:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.modalContent {
+  flex: 1;
+  padding: 0;
+  overflow-y: auto;
+  background: #f9fafb;
+}
+
+.modalFooter {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 1.25rem 2rem 1.05rem 2rem;
+  background: #f3f4f6;
+  border-top: 1px solid #e5e7eb;
+}
+
+.secondaryButton {
+  padding: 0.5rem 1.5rem;
+  font-size: 1rem;
+  color: #374151;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: background 0.13s;
+}
+
+.secondaryButton:hover {
+  background-color: #f9fafb;
+}
+
+@media (max-width: 1024px) {
+  .modalContainer {
+    min-width: 0;
+    width: 98vw;
+    max-width: 99vw;
+  }
+  .modalHeader, .modalFooter {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
+@media (max-width: 700px) {
+  .modalContainer {
+    min-width: 0;
+    width: 100vw;
+    border-radius: 0;
+    min-height: 100vh;
+    max-height: 100vh;
+  }
+}

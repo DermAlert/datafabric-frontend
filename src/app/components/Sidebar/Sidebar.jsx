@@ -5,6 +5,7 @@ import ConnectionExplorerModal from './ConnectionExplorerModal/ConnectionExplore
 import DataDefineModal from './AddDatasetModal/AddDatasetModal';
 import MetadataEquivalenceModal from './MetadataEquivalenceModal/MetadataEquivalenceModal';
 import DataSetFilterModal from './DataSetFilterModal/DataSetFilterModal';
+import EquivalenceManagerModal from './EquivalenceManagerModal/EquivalenceManagerModal';
 import styles from './Sidebar.module.css';
 
 export default function Sidebar({
@@ -19,6 +20,7 @@ export default function Sidebar({
   const [metadataEquivalenceOpen, setMetadataEquivalenceOpen] = useState(false);
   const [dataSetFilterOpen, setDataSetFilterOpen] = useState(false);
   const [dataDefineModalOpen, setDataDefineModalOpen] = useState(false);
+  const [EquivalenceManagerOpen, setEquivalenceManagerOpen] = useState(false);
 
   // Fix: Use local modal state to control DataDefineModal visibility
   const handleOpenDataDefineModal = () => setDataDefineModalOpen(true);
@@ -114,6 +116,14 @@ export default function Sidebar({
             <PlusCircle className={styles.addSourceIcon} />
             <span>Filtrar Dataset</span>  
           </div>
+          <div
+            className={styles.addSourceButton}
+            onClick={() => setEquivalenceManagerOpen(true)}
+            style={{ cursor: 'pointer' }}
+          >
+            <PlusCircle className={styles.addSourceIcon} />
+            <span>Gerenciar Equivalência</span> 
+        </div>
         </div>
         <DataDefineModal isOpen={dataDefineModalOpen} onClose={handleCloseDataDefineModal} /> 
         <ConnectionExplorerModal isOpen={explorerOpen} onClose={() => setExplorerOpen(false)} />
@@ -121,6 +131,11 @@ export default function Sidebar({
           isOpen={metadataEquivalenceOpen}
           onClose={() => setMetadataEquivalenceOpen(false)}
         />
+        <EquivalenceManagerModal
+          isOpen={EquivalenceManagerOpen}
+          onClose={() => setEquivalenceManagerOpen(false)}
+        />
+        
         <DataSetFilterModal
           isOpen={dataSetFilterOpen}
           onClose={() => setDataSetFilterOpen(false)}
