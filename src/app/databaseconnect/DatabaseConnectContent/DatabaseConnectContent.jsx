@@ -23,61 +23,73 @@ export default function DatabaseConnectContent({ returnToDashboard, currentUser 
   // Add this for ConnectionTypeView selection!
   const [selectedTypeId, setSelectedTypeId] = useState(null);
 
-  const connections = [
-    {
-      id: "postgres-analytics",
-      name: "PostgreSQL Analytics",
-      type: "PostgreSQL",
-      host: "db-1.example.com",
-      port: 5432,
-      database: "analytics_db",
-      username: "analytics_user",
-      status: "connected",
-      lastConnected: "2025-04-15 04:15:23",
-      tables: 42,
-      usedBy: ["ETL - Dados Clinicos", "Exportação de Dados - Hospital"]
-    },
-    {
-      id: "mysql-patients",
-      name: "MySQL Pacientes",
-      type: "MySQL",
-      host: "mysql.example.com",
-      port: 3306,
-      database: "patients_db",
-      username: "medical_user",
-      status: "connected",
-      lastConnected: "2025-04-15 03:45:12",
-      tables: 28,
-      usedBy: ["Análise de Métricas de Pacientes"]
-    },
-    {
-      id: "mssql-legacy",
-      name: "MSSQL Legado",
-      type: "SQL Server",
-      host: "legacy-sql.example.com",
-      port: 1433,
-      database: "legacy_records",
-      username: "admin",
-      status: "disconnected",
-      lastConnected: "2025-04-14 18:30:45",
-      tables: 15,
-      usedBy: []
-    },
-    {
-      id: "oracle-finance",
-      name: "Oracle Financeiro",
-      type: "Oracle",
-      host: "oracle.example.com",
-      port: 1521,
-      database: "FINDB",
-      username: "finance_read",
-      status: "error",
-      lastConnected: "2025-04-15 01:12:33",
-      tables: 64,
-      usedBy: []
-    }
-  ];
-
+const connections = [
+  {
+    id: "pg-local",
+    name: "PostgreSQL Local",
+    type: "PostgreSQL",
+    host: "localhost",
+    port: 5432,
+    database: "demo_analytics",
+    username: "postgres",
+    status: "connected",
+    lastConnected: "2025-07-23 22:17:01",
+    tables: 18,
+    usedBy: ["Local ETL", "Data Science Sandbox"]
+  },
+  {
+    id: "mysql-local",
+    name: "MySQL Local",
+    type: "MySQL",
+    host: "127.0.0.1",
+    port: 3306,
+    database: "patients_demo",
+    username: "root",
+    status: "connected",
+    lastConnected: "2025-07-23 21:43:25",
+    tables: 12,
+    usedBy: ["Dev Patient App"]
+  },
+  {
+    id: "sqlite-main",
+    name: "SQLite Main File",
+    type: "SQLite",
+    host: "localhost",
+    port: null,
+    database: "/home/user/code/app/db/main.sqlite",
+    username: null,
+    status: "connected",
+    lastConnected: "2025-07-23 20:15:10",
+    tables: 5,
+    usedBy: ["Local App"]
+  },
+  {
+    id: "mssql-local",
+    name: "SQL Server Local",
+    type: "SQL Server",
+    host: "localhost",
+    port: 1433,
+    database: "legacy_demo",
+    username: "sa",
+    status: "disconnected",
+    lastConnected: "2025-07-21 17:30:45",
+    tables: 9,
+    usedBy: []
+  },
+  {
+    id: "oracle-local",
+    name: "Oracle XE Local",
+    type: "Oracle",
+    host: "localhost",
+    port: 1521,
+    database: "XE",
+    username: "system",
+    status: "connected",
+    lastConnected: "2025-07-22 09:12:33",
+    tables: 21,
+    usedBy: []
+  }
+];
   // Database connection types for ConnectionModal (static)
   const connectionTypes = [
     { value: "postgresql", label: "PostgreSQL", icon: <Database className={dbStyles.dbTypeIcon} /> },
