@@ -42,7 +42,7 @@ export default function Sidebar({
         <div className={styles.sourcesList}>
           <SourceItem
             id="minio-1"
-            name="MinIO Principal"
+            name="MinIO Local"
             type="MinIO"
             iconColor="Minio"
             expanded={expandedSources["minio-1"]}
@@ -50,13 +50,12 @@ export default function Sidebar({
             openAddDatasetModal={openAddDatasetModal}
             openDatasetExplorer={openDatasetExplorer}
             datasets={[
-              { name: "Imagens - Câncer de Pele (Pele Branca)" },
-              { name: "Imagens - Câncer de Pele (Pele Negra)" }
+           
             ]}
           />
           <SourceItem
             id="postgres-1"
-            name="PostgreSQL Analytics"
+            name="PostgreSQL Local"
             type="PostgreSQL"
             iconColor="Postgres"
             expanded={expandedSources["postgres-1"]}
@@ -64,14 +63,13 @@ export default function Sidebar({
             openAddDatasetModal={openAddDatasetModal}
             openDatasetExplorer={openDatasetExplorer}
             datasets={[
-              { name: "Dados Pacientes - Hospital A", isTable: true },
-              { name: "Dados Pacientes - Hospital B", isTable: true }
+              
             ]}
           />
           <SourceItem
-            id="airflow-1"
-            name="Airflow Pipeline"
-            type="Airflow"
+            id="delta lake-1"
+            name="Delta Lake Local"
+            type="delta lake"
             iconColor="Airflow"
             expanded={expandedSources["airflow-1"]}
             toggleSource={() => toggleSource("airflow-1")}
@@ -79,7 +77,7 @@ export default function Sidebar({
             openDatasetExplorer={openDatasetExplorer}
             openAirflowView={openAirflowView}
             datasets={[
-              { name: "ETL - Dados Clinicos" }
+              
             ]}
             isPipeline={true}
           />

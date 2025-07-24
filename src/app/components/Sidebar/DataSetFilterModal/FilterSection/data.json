@@ -1,0 +1,128 @@
+{
+    "semantic_groups": [
+        {
+            "name": "Grupo Semântico Principal",
+            "description": "Este é o grupo semântico principal para organização de dados.",
+            "parent_domain_id": null,
+            "domain_rules": {
+                "rule_type": "regex",
+                "pattern": "^[A-Za-z0-9_]+$"
+            },
+            "id": 101
+        },
+        {
+            "name": "Subgrupo de Categorias",
+            "description": "Um subgrupo para categorização de itens relacionados.",
+            "parent_domain_id": 101,
+            "domain_rules": {},
+            "id": 102
+        }
+    ],
+    "dictionary": [
+        {
+            "name": "termo_dicionario_1",
+            "display_name": "Termo do Dicionário Um",
+            "description": "Descrição detalhada do termo do dicionário um.",
+            "semantic_domain_id": 101,
+            "data_type": "string",
+            "validation_rules": {
+                "min_length": 5,
+                "max_length": 50
+            },
+            "example_values": {
+                "exemplo_1": "Valor de Exemplo A",
+                "exemplo_2": "Outro Valor B"
+            },
+            "synonyms": [
+                "sinonimo_um",
+                "termo_alternativo"
+            ],
+            "id": 201
+        },
+        {
+            "name": "termo_dicionario_2",
+            "display_name": "Termo do Dicionário Dois",
+            "description": "Descrição para o segundo termo do dicionário.",
+            "semantic_domain_id": 102,
+            "data_type": "integer",
+            "validation_rules": {
+                "min_value": 0,
+                "max_value": 100
+            },
+            "example_values": {
+                "exemplo_1": 10,
+                "exemplo_2": 75
+            },
+            "synonyms": [
+                "numero_dois",
+                "segundo_termo"
+            ],
+            "id": 202
+        }
+    ],
+    "groups": [
+        {
+            "name": "Grupo de Usuários Ativos",
+            "description": "Este grupo contém usuários que estão atualmente ativos no sistema.",
+            "semantic_domain_id": null,
+            "data_dictionary_term_id": 201,
+            "properties": {
+                "status": "ativo",
+                "tipo": "interno"
+            },
+            "id": 301
+        },
+        {
+            "name": "Grupo de Clientes Premium",
+            "description": "Clientes com acesso a recursos premium.",
+            "semantic_domain_id": 101,
+            "data_dictionary_term_id": 202,
+            "properties": {
+                "nivel": "premium",
+                "regiao": "sudeste"
+            },
+            "id": 302
+        }
+    ],
+    "standard_value": {
+        "name": "Valor Padrão de Configuração",
+        "description": "Configuração padrão para o sistema.",
+        "semantic_domain_id": 101,
+        "data_dictionary_term_id": 201,
+        "properties": {
+            "versao": "1.0.0",
+            "ambiente": "producao"
+        },
+        "id": 401,
+        "column_mappings": [
+            {
+                "group_id": 301,
+                "column_id": 5001,
+                "transformation_rule": "TRIM(UPPER(valor))",
+                "confidence_score": "0.95",
+                "notes": "Mapeamento da coluna de email de usuários ativos.",
+                "id": 501,
+                "column_name": "email_usuario"
+            },
+            {
+                "group_id": 302,
+                "column_id": 5002,
+                "transformation_rule": "CONCAT(prefixo, id_cliente)",
+                "confidence_score": "0.88",
+                "notes": "Mapeamento do ID de clientes premium.",
+                "id": 502,
+                "column_name": "id_cliente_premium"
+            }
+        ],
+        "value_mappings": [
+            {
+                "original_value": "sim",
+                "mapped_value": "verdadeiro"
+            },
+            {
+                "original_value": "nao",
+                "mapped_value": "falso"
+            }
+        ]
+    }
+}
