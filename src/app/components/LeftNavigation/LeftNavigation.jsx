@@ -30,7 +30,7 @@ export default function LeftNavigation() {
       <div className={styles.navLinksContainer}>
         <button
           className={`${styles.navButton} ${activeSidebar === "home" ? styles.navButtonActive : ""}`}
-          onClick={() => router.push('/')}
+          onClick={() => router.push('/deltasharing')}
           aria-label="Home"
         >
           <Home className={styles.navIcon} />

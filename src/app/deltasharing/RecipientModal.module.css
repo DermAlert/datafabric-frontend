@@ -1,0 +1,23 @@
+.modalOverlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background-color: rgba(0, 0, 0, 0.5); z-index: 50; }
+.modalContainer { background-color: white; border-radius: 0.5rem; width: 75%; max-width: 56rem; max-height: 75%; overflow: auto; }
+.modalHeader { padding: 1rem; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+.modalTitle { font-size: 1.125rem; font-weight: 500; color: #1f2937; }
+.closeButton { color: #9ca3af; background: none; border: none; cursor: pointer; }
+.closeButton:hover { color: #4b5563; }
+.closeIcon { height: 1.25rem; width: 1.25rem; }
+.modalBody { padding: 1.5rem; }
+.modalFooter { display: flex; justify-content: flex-end; gap: 0.75rem; padding: 1rem 1.5rem; border-top: 1px solid #e5e7eb; }
+.formSection { margin-bottom: 2rem; }
+.formSectionTitle { font-size: 0.875rem; font-weight: 600; color: #4b5563; margin: 0 0 1rem 0; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb; }
+.formField { margin-bottom: 1.5rem; }
+.formLabel { display: block; font-size: 0.875rem; font-weight: 500; color: #374151; margin-bottom: 0.25rem; }
+.formInput { border: 1px solid #d1d5db; border-radius: 0.25rem; padding: 0.5rem 0.75rem; font-size: 0.875rem; width: 100%; }
+.formTextarea { border: 1px solid #d1d5db; border-radius: 0.25rem; padding: 0.5rem 0.75rem; font-size: 0.875rem; width: 100%; resize: vertical; }
+.formError { color: #dc2626; font-size: 0.875rem; margin-top: 0.5rem; }
+.twoColGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; }
+.secondaryButton { padding: 0.5rem 1rem; font-size: 0.875rem; color: #374151; border: 1px solid #d1d5db; border-radius: 0.375rem; background-color: white; cursor: pointer; }
+.secondaryButton:hover { background-color: #f9fafb; }
+.primaryButton { padding: 0.5rem 1rem; font-size: 0.875rem; color: white; background-color: #4f46e5; border: none; border-radius: 0.375rem; cursor: pointer; }
+.primaryButton:hover { background-color: #4338ca; }
+.primaryButton:disabled { opacity: 0.6; cursor: not-allowed; }
+
