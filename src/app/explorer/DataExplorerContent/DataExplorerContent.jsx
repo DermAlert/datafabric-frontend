@@ -1,182 +1,289 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, Star, Share2, Download, Folder, BarChart2, Code, FileText, Search, Grid, Table, Filter, Info, PlusCircle, X, Eye, Image, PieChart, BarChart, AreaChart, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  ArrowLeft, Star, Share2, Download, Folder, BarChart2, Code, FileText, Search as SearchIcon, Grid, Table, Filter, Info, PlusCircle, X, Eye, Image, PieChart, BarChart, AreaChart, RefreshCw
+} from 'lucide-react';
 import styles from '../explorer.module.css';
 import explorerStyles from './DataExplorerContent.module.css';
 
+const API_BASE = 'http://localhost:8004/api';
+
+// ---------- Modal for searching datasets ----------
+function SearchDatasetsModal({ onClose, onSelectDataset }) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [results, setResults] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setIsLoading(true);
+    fetch(`${API_BASE}/datasets/search`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'accept': 'application/json'
+      },
+      body: JSON.stringify({
+        page,
+        size: 10,
+      })
+    })
+      .then(res => res.json())
+      .then(data => {
+        setResults(data.items || []);
+        setTotal(data.total || 0);
+        setIsLoading(false);
+      })
+      .catch(() => {
+        setResults([]);
+        setTotal(0);
+        setIsLoading(false);
+      });
+  }, [searchTerm, page]);
+
+  const handleSearchInput = (e) => {
+    setSearchTerm(e.target.value);
+    setPage(1);
+  };
+
+  const handleSelect = (dataset) => {
+    if (onSelectDataset) onSelectDataset(dataset);
+    if (onClose) onClose();
+  };
+
+  return (
+    <div className={explorerStyles.modalOverlay}>
+      <div className={explorerStyles.modal}>
+        <div className={explorerStyles.modalHeader}>
+          <h2 className={explorerStyles.modalTitle}>Buscar Datasets</h2>
+          <button onClick={onClose} className={explorerStyles.closeModalButton}>
+            <X />
+          </button>
+        </div>
+        <div className={explorerStyles.modalContent}>
+          <div className={explorerStyles.modalSearchBar}>
+            <SearchIcon className={explorerStyles.searchIcon} />
+            <input
+              type="text"
+              placeholder="Digite o nome do dataset..."
+              value={searchTerm}
+              onChange={handleSearchInput}
+              className={explorerStyles.searchInput}
+              disabled={isLoading}
+            />
+          </div>
+          <div className={explorerStyles.modalResults}>
+            {isLoading ? (
+              <div className={explorerStyles.loadingSpinner}>
+                <div className={explorerStyles.spinner}></div>
+                <span className={explorerStyles.loadingText}>Buscando datasets...</span>
+              </div>
+            ) : results.length === 0 ? (
+              <div className={explorerStyles.noResults}>
+                <SearchIcon className={explorerStyles.noResultsIcon} />
+                <h3 className={explorerStyles.noResultsTitle}>Nenhum dataset encontrado</h3>
+                <p className={explorerStyles.noResultsText}>
+                  Tente um termo diferente.
+                </p>
+              </div>
+            ) : (
+              <ul className={explorerStyles.datasetList}>
+                {results.map(ds => (
+                  <li
+                    key={ds.id}
+                    className={explorerStyles.datasetListItem}
+                    onClick={() => handleSelect(ds)}
+                  >
+                    <div className={explorerStyles.datasetListName}>{ds.name}</div>
+                    <div className={explorerStyles.datasetListDescription}>{ds.description}</div>
+                    <div className={explorerStyles.datasetListMeta}>
+                      <span>Tipo: {ds.storage_type}</span>
+                      <span>Status: {ds.status}</span>
+                      <span>Versão: {ds.version}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className={explorerStyles.paginationControls}>
+            <button
+              className={explorerStyles.pageButton}
+              onClick={() => setPage(page - 1)}
+              disabled={page === 1 || isLoading}
+            >
+              Anterior
+            </button>
+            <span className={explorerStyles.pageIndicator}>
+              Página {page} de {Math.ceil(total / 10) || 1}
+            </span>
+            <button
+              className={explorerStyles.pageButton}
+              onClick={() => setPage(page + 1)}
+              disabled={isLoading || page * 10 >= total}
+            >
+              Próxima
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Main Explorer Content ----------
 export default function DataExplorerContent({ dataset, returnToDashboard }) {
+  // Only show modal if dataset is not provided or has no id
+  const [showSearchModal, setShowSearchModal] = useState(!dataset || !dataset.id);
+  const [selectedDataset, setSelectedDataset] = useState(dataset);
+
+  // Tabs and explorer state
   const [activeTab, setActiveTab] = useState("browse");
   const [currentView, setCurrentView] = useState("grid");
   const [zoomLevel, setZoomLevel] = useState(1);
   const [showMetadataPanel, setShowMetadataPanel] = useState(true);
   const [selectedFile, setSelectedFile] = useState(null);
   const [isStarred, setIsStarred] = useState(false);
-  
-  // Loading states
+
+  // API states
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredFiles, setFilteredFiles] = useState([]);
   const [files, setFiles] = useState([]);
   const [analyticsData, setAnalyticsData] = useState(null);
-  
-  // Dataset metadata - in a real app, this would come from props or API
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalFiles, setTotalFiles] = useState(0);
+
+  // Dataset metadata
   const datasetDetails = {
-    id: dataset.id || "dataset-id",
-    name: dataset.name || "Dataset Name",
-    type: dataset.type || "Dataset Type",
-    source: dataset.source || "Source",
-    created: "2024-12-10",
-    updated: "2025-04-13",
-    owner: "Dr. Ana Silva",
-    size: "5.3 GB",
-    files: 1245,
-    description: "Conjunto de imagens dermatológicas para detecção de câncer de pele em pacientes com pele clara. Inclui imagens de melanoma, carcinoma basocelular e lesões benignas.",
-    tags: ["cancer", "dermatologia", "imagens", "medicina", "pele clara"],
-    access: "Restrito - Equipe de Pesquisa"
+    id: (selectedDataset && selectedDataset.id) || "dataset-id",
+    name: (selectedDataset && selectedDataset.name) || "Dataset Name",
+    type: (selectedDataset && selectedDataset.storage_type) || "Dataset Type",
+    source: "MinIO Storage",
+    created: (selectedDataset && selectedDataset.data_criacao) || "2024-12-10",
+    updated: (selectedDataset && selectedDataset.data_atualizacao) || "2025-04-13",
+    owner: "Research Team",
+    size: "Calculating...",
+    files: totalFiles,
+    description: (selectedDataset && selectedDataset.description) || "No description available",
+    tags: ["medical", "images", "dermatology"],
+    access: "Restricted - Research Team"
   };
 
-  // Sample image files for the dataset
-  const imageFiles = [
-    { id: 1, name: "IMG_001_benign.jpg", size: "2.4 MB", type: "image/jpeg", lastModified: "2025-03-15", tags: ["benigno", "processed"] },
-    { id: 2, name: "IMG_002_melanoma.jpg", size: "3.1 MB", type: "image/jpeg", lastModified: "2025-03-15", tags: ["melanoma", "stage-2"] },
-    { id: 3, name: "IMG_003_basal.jpg", size: "2.8 MB", type: "image/jpeg", lastModified: "2025-03-16", tags: ["carcinoma", "basal"] },
-    { id: 4, name: "IMG_004_benign.jpg", size: "2.2 MB", type: "image/jpeg", lastModified: "2025-03-16", tags: ["benigno"] },
-    { id: 5, name: "IMG_005_melanoma.jpg", size: "3.5 MB", type: "image/jpeg", lastModified: "2025-03-17", tags: ["melanoma", "stage-1"] },
-    { id: 6, name: "IMG_006_melanoma.jpg", size: "2.9 MB", type: "image/jpeg", lastModified: "2025-03-17", tags: ["melanoma", "stage-3"] },
-    { id: 7, name: "IMG_007_benign.jpg", size: "2.3 MB", type: "image/jpeg", lastModified: "2025-03-18", tags: ["benigno", "processed"] },
-    { id: 8, name: "IMG_008_basal.jpg", size: "2.7 MB", type: "image/jpeg", lastModified: "2025-03-18", tags: ["carcinoma", "basal"] },
-    { id: 9, name: "IMG_009_melanoma.jpg", size: "3.0 MB", type: "image/jpeg", lastModified: "2025-03-19", tags: ["melanoma", "stage-2"] },
-    { id: 10, name: "IMG_010_benign.jpg", size: "2.5 MB", type: "image/jpeg", lastModified: "2025-03-19", tags: ["benigno"] },
-    { id: 11, name: "IMG_011_basal.jpg", size: "2.8 MB", type: "image/jpeg", lastModified: "2025-03-20", tags: ["carcinoma", "basal"] },
-    { id: 12, name: "IMG_012_melanoma.jpg", size: "3.2 MB", type: "image/jpeg", lastModified: "2025-03-20", tags: ["melanoma", "stage-1"] },
-    { id: 13, name: "IMG_013_benign.jpg", size: "2.1 MB", type: "image/jpeg", lastModified: "2025-03-21", tags: ["benigno", "processed"] },
-    { id: 14, name: "IMG_014_melanoma.jpg", size: "3.4 MB", type: "image/jpeg", lastModified: "2025-03-21", tags: ["melanoma", "stage-3"] },
-    { id: 15, name: "IMG_015_basal.jpg", size: "2.6 MB", type: "image/jpeg", lastModified: "2025-03-22", tags: ["carcinoma", "basal"] },
-    { id: 16, name: "IMG_016_benign.jpg", size: "2.3 MB", type: "image/jpeg", lastModified: "2025-03-22", tags: ["benigno"] },
-  ];
+  // When a dataset is selected from modal, update state and close modal
+  const handleSelectDataset = (ds) => {
+    setSelectedDataset(ds);
+    setShowSearchModal(false);
+    setCurrentPage(1); // Reset pagination/search if you want
+    setSearchQuery('');
+    setSelectedFile(null);
+  };
 
-  // Simulate data fetching on component mount and tab changes
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 1200 + Math.random() * 800));
-      
-      setFiles(imageFiles);
-      setFilteredFiles(imageFiles);
-      
-      // Calculate analytics data from actual files
-      const analytics = calculateAnalytics(imageFiles);
-      setAnalyticsData(analytics);
-      
+  // Fetch images from API for the selected dataset
+  const fetchImages = async (page = 1, size = pageSize) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/datasets/${datasetDetails.id}/images`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'accept': 'application/json'
+        },
+        body: JSON.stringify({
+          page: page,
+          size: size
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch images');
+      }
+
+      const data = await response.json();
+      setFiles(data.items);
+      setFilteredFiles(data.items);
+      setTotalFiles(data.total);
+
+      // Calculate size for dataset details
+      const totalSizeBytes = data.items.reduce((acc, file) => acc + (file.metadata.file_size || 0), 0);
+      const totalSizeGB = (totalSizeBytes / (1024 * 1024 * 1024)).toFixed(2);
+      datasetDetails.size = `${totalSizeGB} GB`;
+      datasetDetails.files = data.total;
+
       setIsLoading(false);
-    };
+      return data;
+    } catch (error) {
+      console.error('Error fetching images:', error);
+      setIsLoading(false);
+      return { items: [], total: 0 };
+    }
+  };
 
-    fetchData();
-  }, [dataset.id]);
+  // Fetch data on component mount and whenever dataset or pagination changes
+  useEffect(() => {
+    if (!selectedDataset || showSearchModal) return;
+    fetchImages(currentPage, pageSize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDataset, currentPage, pageSize, showSearchModal]);
 
-  // Simulate data refresh
+  // Handle refresh
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    
-    // Simulate network delay for refresh
-    await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 400));
-    
-    // Simulate slight data changes
-    const updatedFiles = imageFiles.map(file => ({
-      ...file,
-      lastModified: new Date().toISOString().split('T')[0]
-    }));
-    
-    setFiles(updatedFiles);
-    setFilteredFiles(updatedFiles.filter(file => 
-      file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      file.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-    ));
-    
-    const analytics = calculateAnalytics(updatedFiles);
-    setAnalyticsData(analytics);
-    
+    await fetchImages(currentPage, pageSize);
     setIsRefreshing(false);
   };
 
-  // Calculate analytics from file data
-  const calculateAnalytics = (fileData) => {
-    const typeCount = {};
-    const stageCount = {};
-    
-    fileData.forEach(file => {
-      file.tags.forEach(tag => {
-        if (tag.includes('melanoma') || tag.includes('carcinoma') || tag.includes('benigno')) {
-          const type = tag.includes('melanoma') ? 'Melanoma' : 
-                      tag.includes('carcinoma') ? 'Carcinoma Basocelular' : 'Benigno';
-          typeCount[type] = (typeCount[type] || 0) + 1;
-        }
-        
-        if (tag.includes('stage-')) {
-          const stage = `Estágio ${tag.split('-')[1]}`;
-          stageCount[stage] = (stageCount[stage] || 0) + 1;
-        }
-      });
-    });
-
-    return {
-      byType: [
-        { name: "Melanoma", count: typeCount['Melanoma'] || 0, color: "#f97316" },
-        { name: "Carcinoma Basocelular", count: typeCount['Carcinoma Basocelular'] || 0, color: "#8b5cf6" },
-        { name: "Benigno", count: typeCount['Benigno'] || 0, color: "#22c55e" },
-      ],
-      byStage: [
-        { name: "Estágio 1", count: stageCount['Estágio 1'] || 0, color: "#22c55e" },
-        { name: "Estágio 2", count: stageCount['Estágio 2'] || 0, color: "#eab308" },
-        { name: "Estágio 3", count: stageCount['Estágio 3'] || 0, color: "#ef4444" },
-        { name: "Não classificado", count: fileData.length - Object.values(stageCount).reduce((a, b) => a + b, 0), color: "#94a3b8" },
-      ]
-    };
-  };
-
-  // Handle search with debouncing effect
+  // Handle search
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      if (searchQuery.trim() === '') {
-        setFilteredFiles(files);
-      } else {
-        const filtered = files.filter(file => 
-          file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          file.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-        );
-        setFilteredFiles(filtered);
-      }
-    }, 300);
-
-    return () => clearTimeout(timeoutId);
+    if (searchQuery.trim() === '') {
+      setFilteredFiles(files);
+    } else {
+      const filtered = files.filter(file =>
+        file.image_name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredFiles(filtered);
+    }
   }, [searchQuery, files]);
 
   // Toggle starred status
-  const toggleStarred = () => {
-    setIsStarred(!isStarred);
-  };
+  const toggleStarred = () => setIsStarred(!isStarred);
 
   // Toggle metadata panel
-  const toggleMetadataPanel = () => {
-    setShowMetadataPanel(!showMetadataPanel);
-  };
-  
+  const toggleMetadataPanel = () => setShowMetadataPanel(!showMetadataPanel);
+
   // Zoom control
-  const handleZoomChange = (newZoom) => {
-    setZoomLevel(newZoom);
-  };
+  const handleZoomChange = (newZoom) => setZoomLevel(newZoom);
 
   // Handle file selection
   const handleFileSelect = (fileId) => {
-    const file = filteredFiles.find(f => f.id === fileId);
+    const file = filteredFiles.find(f => f.image_id === fileId);
     setSelectedFile(file);
   };
 
   // Handle search input
-  const handleSearchChange = (e) => {
-    setSearchQuery(e.target.value);
+  const handleSearchChange = (e) => setSearchQuery(e.target.value);
+
+  // Handle page change
+  const handlePageChange = (newPage) => setCurrentPage(newPage);
+
+  // Handle page size change
+  const handlePageSizeChange = (e) => {
+    const newSize = parseInt(e.target.value);
+    setPageSize(newSize);
+    setCurrentPage(1);
+  };
+
+  // Format file size
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   // Skeleton loader component
@@ -196,7 +303,6 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
         </div>
       );
     }
-    
     return (
       <div className={explorerStyles.skeletonTable}>
         {Array.from({ length: 8 }).map((_, index) => (
@@ -212,8 +318,56 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
     );
   };
 
+  // Pagination controls
+  const PaginationControls = () => {
+    const totalPages = Math.ceil(totalFiles / pageSize);
+    return (
+      <div className={explorerStyles.paginationControls}>
+        <div className={explorerStyles.paginationInfo}>
+          Showing {(currentPage - 1) * pageSize + 1} - 
+          {Math.min(currentPage * pageSize, totalFiles)} of {totalFiles} files
+        </div>
+        <div className={explorerStyles.pageSizeSelector}>
+          <span>Show:</span>
+          <select
+            value={pageSize}
+            onChange={handlePageSizeChange}
+            className={explorerStyles.pageSizeSelect}
+          >
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+        </div>
+        <div className={explorerStyles.pageNavigation}>
+          <button
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className={explorerStyles.pageButton}
+          >Previous</button>
+          <span className={explorerStyles.pageIndicator}>
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage >= totalPages}
+            className={explorerStyles.pageButton}
+          >Next</button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={styles.mainContent}>
+      {showSearchModal && (
+        <SearchDatasetsModal
+          onClose={() => setShowSearchModal(false)}
+          onSelectDataset={handleSelectDataset}
+        />
+      )}
+
       {/* Header */}
       <div className={styles.header}>
         <div className={styles.headerTitle}>
@@ -227,18 +381,17 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
             <div className={explorerStyles.datasetSource}>{datasetDetails.source} • {datasetDetails.type}</div>
           </div>
         </div>
-        
         <div className={explorerStyles.datasetActions}>
           <div className={explorerStyles.actionGroup}>
-            <button 
+            <button
               className={`${explorerStyles.actionButton} ${isRefreshing ? explorerStyles.actionButtonLoading : ''}`}
               onClick={handleRefresh}
               disabled={isRefreshing}
             >
               <RefreshCw className={`${explorerStyles.actionIcon} ${isRefreshing ? explorerStyles.spinning : ''}`} />
             </button>
-            <button 
-              className={`${explorerStyles.actionButton} ${isStarred ? explorerStyles.actionButtonActive : ''}`} 
+            <button
+              className={`${explorerStyles.actionButton} ${isStarred ? explorerStyles.actionButtonActive : ''}`}
               onClick={toggleStarred}
             >
               <Star className={explorerStyles.actionIcon} />
@@ -250,38 +403,37 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
               <Download className={explorerStyles.actionIcon} />
             </button>
           </div>
-          
           <div className={styles.userAvatar}>
             <span className={styles.userInitials}>US</span>
           </div>
         </div>
       </div>
-      
+
       {/* Tab Navigation */}
       <div className={explorerStyles.tabsContainer}>
         <div className={explorerStyles.tabs}>
-          <button 
+          <button
             className={`${explorerStyles.tab} ${activeTab === "browse" ? explorerStyles.tabActive : ""}`}
             onClick={() => setActiveTab("browse")}
           >
             <Folder className={explorerStyles.tabIcon} />
             <span>Explorar</span>
           </button>
-          <button 
+          <button
             className={`${explorerStyles.tab} ${activeTab === "analytics" ? explorerStyles.tabActive : ""}`}
             onClick={() => setActiveTab("analytics")}
           >
             <BarChart2 className={explorerStyles.tabIcon} />
             <span>Análise</span>
           </button>
-          <button 
+          <button
             className={`${explorerStyles.tab} ${activeTab === "query" ? explorerStyles.tabActive : ""}`}
             onClick={() => setActiveTab("query")}
           >
             <Code className={explorerStyles.tabIcon} />
             <span>Consulta</span>
           </button>
-          <button 
+          <button
             className={`${explorerStyles.tab} ${activeTab === "docs" ? explorerStyles.tabActive : ""}`}
             onClick={() => setActiveTab("docs")}
           >
@@ -289,7 +441,6 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
             <span>Documentação</span>
           </button>
         </div>
-        
         <div className={explorerStyles.metaInfo}>
           <div className={explorerStyles.metaDetail}>
             <span className={explorerStyles.metaLabel}>Atualizado</span>
@@ -301,11 +452,11 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
           </div>
           <div className={explorerStyles.metaDetail}>
             <span className={explorerStyles.metaLabel}>Arquivos</span>
-            <span className={explorerStyles.metaValue}>{isLoading ? '...' : filteredFiles.length}</span>
+            <span className={explorerStyles.metaValue}>{isLoading ? '...' : totalFiles}</span>
           </div>
         </div>
       </div>
-      
+
       {/* Main content area based on active tab */}
       <div className={explorerStyles.mainContentArea}>
         {activeTab === "browse" && (
@@ -313,27 +464,26 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
             {/* Toolbar */}
             <div className={explorerStyles.explorerToolbar}>
               <div className={explorerStyles.toolbarSearch}>
-                <Search className={explorerStyles.searchIcon} />
-                <input 
-                  type="text" 
-                  placeholder="Buscar arquivos..." 
+                <SearchIcon className={explorerStyles.searchIcon} />
+                <input
+                  type="text"
+                  placeholder="Buscar arquivos..."
                   className={explorerStyles.searchInput}
                   value={searchQuery}
                   onChange={handleSearchChange}
                   disabled={isLoading}
                 />
               </div>
-              
               <div className={explorerStyles.toolbarActions}>
                 <div className={explorerStyles.viewToggle}>
-                  <button 
+                  <button
                     className={`${explorerStyles.viewButton} ${currentView === "grid" ? explorerStyles.viewButtonActive : ""}`}
                     onClick={() => setCurrentView("grid")}
                     disabled={isLoading}
                   >
                     <Grid className={explorerStyles.viewIcon} />
                   </button>
-                  <button 
+                  <button
                     className={`${explorerStyles.viewButton} ${currentView === "table" ? explorerStyles.viewButtonActive : ""}`}
                     onClick={() => setCurrentView("table")}
                     disabled={isLoading}
@@ -341,44 +491,35 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
                     <Table className={explorerStyles.viewIcon} />
                   </button>
                 </div>
-                
                 {currentView === "grid" && (
                   <div className={explorerStyles.zoomControls}>
-                    <button 
+                    <button
                       className={explorerStyles.zoomButton}
                       onClick={() => handleZoomChange(Math.max(0.5, zoomLevel - 0.25))}
                       disabled={zoomLevel <= 0.5 || isLoading}
-                    >
-                      -
-                    </button>
+                    >-</button>
                     <span className={explorerStyles.zoomLevel}>{Math.round(zoomLevel * 100)}%</span>
-                    <button 
+                    <button
                       className={explorerStyles.zoomButton}
                       onClick={() => handleZoomChange(Math.min(2, zoomLevel + 0.25))}
                       disabled={zoomLevel >= 2 || isLoading}
-                    >
-                      +
-                    </button>
+                    >+</button>
                   </div>
                 )}
-                
-                <button 
+                <button
                   className={`${explorerStyles.infoButton} ${showMetadataPanel ? explorerStyles.infoButtonActive : ""}`}
                   onClick={toggleMetadataPanel}
                 >
                   <Info className={explorerStyles.infoIcon} />
                 </button>
-                
                 <button className={explorerStyles.filterButton} disabled={isLoading}>
                   <Filter className={explorerStyles.filterIcon} />
                   <span>Filtros</span>
                 </button>
               </div>
             </div>
-            
             {/* Content container */}
             <div className={explorerStyles.contentContainer}>
-              {/* Loading overlay */}
               {isLoading && (
                 <div className={explorerStyles.loadingOverlay}>
                   <div className={explorerStyles.loadingSpinner}>
@@ -387,34 +528,37 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
                   </div>
                 </div>
               )}
-              
               {/* Files grid/table */}
               <div className={`${explorerStyles.filesContainer} ${isLoading ? explorerStyles.contentLoading : ''}`}>
                 {isLoading ? (
                   <SkeletonLoader type={currentView} />
                 ) : currentView === "grid" ? (
-                  // Grid view
                   <div className={explorerStyles.gridView} style={{ '--zoom-level': zoomLevel }}>
                     {filteredFiles.map(file => (
-                      <div 
-                        key={file.id} 
-                        className={`${explorerStyles.gridItem} ${selectedFile && selectedFile.id === file.id ? explorerStyles.gridItemSelected : ''}`}
-                        onClick={() => handleFileSelect(file.id)}
+                      <div
+                        key={file.image_id}
+                        className={`${explorerStyles.gridItem} ${selectedFile && selectedFile.image_id === file.image_id ? explorerStyles.gridItemSelected : ''}`}
+                        onClick={() => handleFileSelect(file.image_id)}
                       >
                         <div className={explorerStyles.gridItemImageContainer}>
                           <div className={explorerStyles.gridItemImage}>
-                            <Image className={explorerStyles.placeholderIcon} />
+                            <img
+                              src={file.presigned_url}
+                              alt={file.image_name}
+                              className={explorerStyles.actualImage}
+                            />
                           </div>
                         </div>
                         <div className={explorerStyles.gridItemInfo}>
-                          <div className={explorerStyles.gridItemName}>{file.name}</div>
-                          <div className={explorerStyles.gridItemMeta}>{file.size}</div>
+                          <div className={explorerStyles.gridItemName}>{file.image_name}</div>
+                          <div className={explorerStyles.gridItemMeta}>
+                            {formatFileSize(file.metadata.file_size || 0)}
+                          </div>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  // Table view
                   <div className={explorerStyles.tableViewContainer}>
                     <table className={styles.table}>
                       <thead className={styles.tableHeader}>
@@ -423,31 +567,37 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
                           <th className={styles.tableHeaderCell}>Tamanho</th>
                           <th className={styles.tableHeaderCell}>Tipo</th>
                           <th className={styles.tableHeaderCell}>Última Modificação</th>
-                          <th className={styles.tableHeaderCell}>Tags</th>
+                          <th className={styles.tableHeaderCell}>ID</th>
                         </tr>
                       </thead>
                       <tbody className={styles.tableBody}>
                         {filteredFiles.map(file => (
-                          <tr 
-                            key={file.id} 
-                            className={`${styles.tableRow} ${selectedFile && selectedFile.id === file.id ? explorerStyles.tableRowSelected : ''}`}
-                            onClick={() => handleFileSelect(file.id)}
+                          <tr
+                            key={file.image_id}
+                            className={`${styles.tableRow} ${selectedFile && selectedFile.image_id === file.image_id ? explorerStyles.tableRowSelected : ''}`}
+                            onClick={() => handleFileSelect(file.image_id)}
                           >
                             <td className={styles.tableCell}>
                               <div className={explorerStyles.fileNameCell}>
-                                <Image className={explorerStyles.fileIcon} />
-                                {file.name}
+                                <img
+                                  src={file.presigned_url}
+                                  alt={file.image_name}
+                                  className={explorerStyles.fileThumbnail}
+                                />
+                                {file.image_name}
                               </div>
                             </td>
-                            <td className={styles.tableCellMuted}>{file.size}</td>
-                            <td className={styles.tableCellMuted}>{file.type}</td>
-                            <td className={styles.tableCellMuted}>{file.lastModified}</td>
-                            <td className={styles.tableCell}>
-                              <div className={explorerStyles.tagsList}>
-                                {file.tags.map((tag, index) => (
-                                  <span key={index} className={explorerStyles.tagBadge}>{tag}</span>
-                                ))}
-                              </div>
+                            <td className={styles.tableCellMuted}>
+                              {formatFileSize(file.metadata.file_size || 0)}
+                            </td>
+                            <td className={styles.tableCellMuted}>
+                              {file.metadata.content_type || 'image/jpeg'}
+                            </td>
+                            <td className={styles.tableCellMuted}>
+                              {new Date(file.metadata.data_atualizacao).toLocaleDateString()}
+                            </td>
+                            <td className={styles.tableCellMuted}>
+                              {file.image_id.slice(0, 8)}...
                             </td>
                           </tr>
                         ))}
@@ -455,19 +605,19 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
                     </table>
                   </div>
                 )}
-                
-                {/* No results message */}
                 {!isLoading && filteredFiles.length === 0 && searchQuery && (
                   <div className={explorerStyles.noResults}>
-                    <Search className={explorerStyles.noResultsIcon} />
+                    <SearchIcon className={explorerStyles.noResultsIcon} />
                     <h3 className={explorerStyles.noResultsTitle}>Nenhum arquivo encontrado</h3>
                     <p className={explorerStyles.noResultsText}>
                       Tente ajustar sua busca ou limpar os filtros.
                     </p>
                   </div>
                 )}
+                {!isLoading && filteredFiles.length > 0 && (
+                  <PaginationControls />
+                )}
               </div>
-              
               {/* Metadata panel */}
               {showMetadataPanel && (
                 <div className={explorerStyles.metadataPanel}>
@@ -475,84 +625,88 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
                     <h3 className={explorerStyles.metadataPanelTitle}>
                       {selectedFile ? 'Detalhes do Arquivo' : 'Detalhes do Dataset'}
                     </h3>
-                    <button 
+                    <button
                       className={explorerStyles.closeMetadataButton}
                       onClick={toggleMetadataPanel}
                     >
                       <X className={explorerStyles.closeMetadataIcon} />
                     </button>
                   </div>
-                  
                   <div className={explorerStyles.metadataPanelContent}>
                     {selectedFile ? (
-                      // File metadata
                       <div className={explorerStyles.fileDetails}>
                         <div className={explorerStyles.filePreview}>
-                          <Image className={explorerStyles.filePreviewIcon} />
+                          <img
+                            src={selectedFile.presigned_url}
+                            alt={selectedFile.image_name}
+                            className={explorerStyles.filePreviewImage}
+                          />
                         </div>
-                        
                         <div className={explorerStyles.fileInfo}>
-                          <h4 className={explorerStyles.fileName}>{selectedFile.name}</h4>
-                          
+                          <h4 className={explorerStyles.fileName}>{selectedFile.image_name}</h4>
                           <div className={explorerStyles.fileProperty}>
                             <span className={explorerStyles.propertyLabel}>Tipo</span>
-                            <span className={explorerStyles.propertyValue}>{selectedFile.type}</span>
+                            <span className={explorerStyles.propertyValue}>
+                              {selectedFile.metadata.content_type || 'image/jpeg'}
+                            </span>
                           </div>
-                          
                           <div className={explorerStyles.fileProperty}>
                             <span className={explorerStyles.propertyLabel}>Tamanho</span>
-                            <span className={explorerStyles.propertyValue}>{selectedFile.size}</span>
+                            <span className={explorerStyles.propertyValue}>
+                              {formatFileSize(selectedFile.metadata.file_size || 0)}
+                            </span>
                           </div>
-                          
                           <div className={explorerStyles.fileProperty}>
                             <span className={explorerStyles.propertyLabel}>Última Modificação</span>
-                            <span className={explorerStyles.propertyValue}>{selectedFile.lastModified}</span>
+                            <span className={explorerStyles.propertyValue}>
+                              {new Date(selectedFile.metadata.data_atualizacao).toLocaleString()}
+                            </span>
                           </div>
-                          
                           <div className={explorerStyles.fileProperty}>
-                            <span className={explorerStyles.propertyLabel}>Tags</span>
-                            <div className={explorerStyles.propertyTags}>
-                              {selectedFile.tags.map((tag, index) => (
-                                <span key={index} className={explorerStyles.tagBadge}>{tag}</span>
-                              ))}
-                            </div>
+                            <span className={explorerStyles.propertyLabel}>ID</span>
+                            <span className={explorerStyles.propertyValue}>
+                              {selectedFile.image_id}
+                            </span>
                           </div>
                         </div>
-                        
                         <div className={explorerStyles.fileActions}>
-                          <button className={explorerStyles.fileActionButton}>
+                          <a
+                            href={selectedFile.presigned_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={explorerStyles.fileActionButton}
+                          >
                             <Eye className={explorerStyles.fileActionIcon} />
                             <span>Visualizar</span>
-                          </button>
-                          <button className={explorerStyles.fileActionButton}>
+                          </a>
+                          <a
+                            href={selectedFile.presigned_url}
+                            download={selectedFile.image_name}
+                            className={explorerStyles.fileActionButton}
+                          >
                             <Download className={explorerStyles.fileActionIcon} />
                             <span>Baixar</span>
-                          </button>
+                          </a>
                         </div>
                       </div>
                     ) : (
-                      // Dataset metadata
                       <div className={explorerStyles.datasetDetails}>
                         <div className={explorerStyles.datasetProperty}>
                           <span className={explorerStyles.propertyLabel}>Descrição</span>
                           <p className={explorerStyles.propertyDescription}>{datasetDetails.description}</p>
                         </div>
-                        
                         <div className={explorerStyles.datasetProperty}>
-                          <span className={explorerStyles.propertyLabel}>Proprietário</span>
-                          <span className={explorerStyles.propertyValue}>{datasetDetails.owner}</span>
+                          <span className={explorerStyles.propertyLabel}>ID do Dataset</span>
+                          <span className={explorerStyles.propertyValue}>{datasetDetails.id}</span>
                         </div>
-                        
                         <div className={explorerStyles.datasetProperty}>
                           <span className={explorerStyles.propertyLabel}>Data de Criação</span>
                           <span className={explorerStyles.propertyValue}>{datasetDetails.created}</span>
                         </div>
-                        
                         <div className={explorerStyles.datasetProperty}>
                           <span className={explorerStyles.propertyLabel}>Acesso</span>
                           <span className={explorerStyles.propertyValue}>{datasetDetails.access}</span>
                         </div>
-                        
                         <div className={explorerStyles.datasetProperty}>
                           <span className={explorerStyles.propertyLabel}>Tags</span>
                           <div className={explorerStyles.propertyTags}>
@@ -561,14 +715,21 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
                             ))}
                           </div>
                         </div>
-                        
                         <div className={explorerStyles.datasetUsage}>
-                          <span className={explorerStyles.propertyLabel}>Uso de Armazenamento</span>
+                          <span className={explorerStyles.propertyLabel}>Arquivos</span>
                           <div className={explorerStyles.usageBarContainer}>
-                            <div className={explorerStyles.usageBar} style={{ width: '65%' }}></div>
+                            <div
+                              className={explorerStyles.usageBar}
+                              style={{
+                                width: `${Math.min(100, (files.length / totalFiles) * 100)}%`,
+                                backgroundColor: '#3b82f6'
+                              }}
+                            ></div>
                           </div>
                           <div className={explorerStyles.usageDetails}>
-                            <span>{datasetDetails.size} usado de 8.0 GB alocado</span>
+                            <span>
+                              {files.length} de {totalFiles} arquivos carregados
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -579,8 +740,6 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
             </div>
           </div>
         )}
-        
-        {/* Analytics tab content */}
         {activeTab === "analytics" && (
           <div className={explorerStyles.analyticsContainer}>
             {isLoading ? (
@@ -599,46 +758,24 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
                     </div>
                   </div>
                   <div className={explorerStyles.chartContainer}>
-                    <div className={explorerStyles.chartLegend}>
-                      {analyticsData?.byType.map((item, index) => (
-                        <div key={index} className={explorerStyles.legendItem}>
-                          <div 
-                            className={explorerStyles.legendColor} 
-                            style={{ backgroundColor: item.color }}
-                          ></div>
-                          <span className={explorerStyles.legendLabel}>{item.name}</span>
-                          <span className={explorerStyles.legendValue}>{item.count}</span>
-                        </div>
-                      ))}
+                    <div className={explorerStyles.chartPlaceholder}>
+                      <BarChart2 className={explorerStyles.chartPlaceholderIcon} />
+                      <p>Dados de análise não disponíveis</p>
                     </div>
                   </div>
                 </div>
-                
                 <div className={explorerStyles.analyticsCard}>
                   <div className={explorerStyles.analyticsCardHeader}>
-                    <h3 className={explorerStyles.analyticsCardTitle}>Distribuição por Estágio</h3>
+                    <h3 className={explorerStyles.analyticsCardTitle}>Distribuição por Tamanho</h3>
                     <div className={explorerStyles.analyticsTypeSelector}>
                       <button className={explorerStyles.analyticsTypeButton}><BarChart className={explorerStyles.analyticsTypeIcon} /></button>
                       <button className={explorerStyles.analyticsTypeButton}><AreaChart className={explorerStyles.analyticsTypeIcon} /></button>
                     </div>
                   </div>
                   <div className={explorerStyles.chartContainer}>
-                    <div className={explorerStyles.barChartContainer}>
-                      {analyticsData?.byStage.map((item, index) => (
-                        <div key={index} className={explorerStyles.barChartItem}>
-                          <div className={explorerStyles.barLabel}>{item.name}</div>
-                          <div className={explorerStyles.barContainer}>
-                            <div 
-                              className={explorerStyles.barValue} 
-                              style={{ 
-                                backgroundColor: item.color,
-                                width: `${(item.count / Math.max(...analyticsData.byStage.map(i => i.count))) * 100}%`
-                              }}
-                            ></div>
-                          </div>
-                          <div className={explorerStyles.barCount}>{item.count}</div>
-                        </div>
-                      ))}
+                    <div className={explorerStyles.chartPlaceholder}>
+                      <PieChart className={explorerStyles.chartPlaceholderIcon} />
+                      <p>Dados de análise não disponíveis</p>
                     </div>
                   </div>
                 </div>
@@ -646,8 +783,6 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
             )}
           </div>
         )}
-        
-        {/* Query tab content */}
         {activeTab === "query" && (
           <div className={explorerStyles.queryContainer}>
             <div className={explorerStyles.queryHeader}>
@@ -661,7 +796,6 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
                 </select>
               </div>
             </div>
-            
             <div className={explorerStyles.queryEditor}>
               <div className={explorerStyles.codeEditorHeader}>
                 <div className={explorerStyles.codeEditorTabs}>
@@ -678,55 +812,49 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
                   </button>
                 </div>
               </div>
-              
               <div className={explorerStyles.codeEditorContent}>
                 <pre className={explorerStyles.codeBlock}>
 {`SELECT 
-  name,
-  size,
-  tags,
-  lastModified
+  image_name,
+  file_size,
+  content_type,
+  data_atualizacao
 FROM dataset_files 
-WHERE tags LIKE '%melanoma%'
-ORDER BY lastModified DESC
+WHERE dataset_id = '${datasetDetails.id}'
+ORDER BY data_atualizacao DESC
 LIMIT 10;`}
                 </pre>
               </div>
             </div>
-            
             <div className={explorerStyles.queryResultsHeader}>
               <h3 className={explorerStyles.queryResultsTitle}>Resultados</h3>
               <span className={explorerStyles.queryResultsMeta}>
-                {filteredFiles.filter(f => f.tags.some(tag => tag.includes('melanoma'))).length} linhas retornadas
+                {files.length} linhas retornadas
               </span>
             </div>
-            
             <div className={explorerStyles.queryResults}>
               <table className={`${styles.table} ${explorerStyles.resultsTable}`}>
                 <thead className={styles.tableHeader}>
                   <tr>
                     <th className={styles.tableHeaderCell}>Nome</th>
                     <th className={styles.tableHeaderCell}>Tamanho</th>
-                    <th className={styles.tableHeaderCell}>Tags</th>
+                    <th className={styles.tableHeaderCell}>Tipo</th>
                     <th className={styles.tableHeaderCell}>Última Modificação</th>
                   </tr>
                 </thead>
                 <tbody className={styles.tableBody}>
-                  {filteredFiles
-                    .filter(f => f.tags.some(tag => tag.includes('melanoma')))
-                    .slice(0, 10)
-                    .map(file => (
-                    <tr key={file.id} className={styles.tableRow}>
-                      <td className={styles.tableCell}>{file.name}</td>
-                      <td className={styles.tableCellMuted}>{file.size}</td>
-                      <td className={styles.tableCell}>
-                        <div className={explorerStyles.tagsList}>
-                          {file.tags.map((tag, index) => (
-                            <span key={index} className={explorerStyles.tagBadge}>{tag}</span>
-                          ))}
-                        </div>
+                  {files.slice(0, 10).map(file => (
+                    <tr key={file.image_id} className={styles.tableRow}>
+                      <td className={styles.tableCell}>{file.image_name}</td>
+                      <td className={styles.tableCellMuted}>
+                        {formatFileSize(file.metadata.file_size || 0)}
                       </td>
-                      <td className={styles.tableCellMuted}>{file.lastModified}</td>
+                      <td className={styles.tableCellMuted}>
+                        {file.metadata.content_type || 'image/jpeg'}
+                      </td>
+                      <td className={styles.tableCellMuted}>
+                        {new Date(file.metadata.data_atualizacao).toLocaleDateString()}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -734,49 +862,43 @@ LIMIT 10;`}
             </div>
           </div>
         )}
-        
-        {/* Documentation tab content */}
         {activeTab === "docs" && (
           <div className={explorerStyles.docsContainer}>
             <div className={explorerStyles.docsHeader}>
               <h2 className={explorerStyles.docsTitle}>Documentação do Dataset</h2>
-              <span className={explorerStyles.docsVersion}>v2.1.0</span>
+              <span className={explorerStyles.docsVersion}>v{selectedDataset.version || '1.0'}</span>
             </div>
-            
             <div className={explorerStyles.docsContent}>
               <div className={explorerStyles.docsSection}>
                 <h3 className={explorerStyles.docsSectionTitle}>Visão Geral</h3>
                 <div className={explorerStyles.docsSectionContent}>
-                  <p>Este dataset contém imagens dermatológicas para detecção de câncer de pele, especificamente focado em pacientes com pele clara. As imagens foram coletadas e anotadas por especialistas em dermatologia.</p>
+                  <p>{selectedDataset.description || 'Este dataset contém imagens médicas para pesquisa e análise.'}</p>
                 </div>
               </div>
-              
               <div className={explorerStyles.docsSection}>
                 <h3 className={explorerStyles.docsSectionTitle}>Estrutura dos Dados</h3>
                 <div className={explorerStyles.docsSectionContent}>
                   <p>Cada arquivo de imagem possui as seguintes propriedades:</p>
                   <ul>
-                    <li><code>name</code>: Nome do arquivo da imagem</li>
-                    <li><code>size</code>: Tamanho do arquivo em MB</li>
-                    <li><code>type</code>: Tipo MIME do arquivo</li>
-                    <li><code>lastModified</code>: Data da última modificação</li>
-                    <li><code>tags</code>: Array de tags descritivas</li>
+                    <li><code>image_id</code>: Identificador único da imagem</li>
+                    <li><code>image_name</code>: Nome do arquivo da imagem</li>
+                    <li><code>file_size</code>: Tamanho do arquivo em bytes</li>
+                    <li><code>content_type</code>: Tipo MIME do arquivo</li>
+                    <li><code>data_atualizacao</code>: Data da última modificação</li>
                   </ul>
                 </div>
               </div>
-              
               <div className={explorerStyles.docsSection}>
-                <h3 className={explorerStyles.docsSectionTitle}>Classificações</h3>
+                <h3 className={explorerStyles.docsSectionTitle}>Acesso aos Dados</h3>
                 <div className={explorerStyles.docsSectionContent}>
-                  <p>As imagens são classificadas em três categorias principais:</p>
+                  <p>Os dados podem ser acessados através de:</p>
                   <ul>
-                    <li><strong>Melanoma</strong>: Lesões malignas com diferentes estágios</li>
-                    <li><strong>Carcinoma Basocelular</strong>: Tipo mais comum de câncer de pele</li>
-                    <li><strong>Benigno</strong>: Lesões não cancerígenas</li>
+                    <li>Interface web (atual)</li>
+                    <li>API REST: <code>{API_BASE}/datasets/{datasetDetails.id}/images</code></li>
+                    <li>MinIO: <code>{selectedDataset.storage_type === 'copy_to_minio' ? 'Disponível' : 'Não disponível'}</code></li>
                   </ul>
                 </div>
               </div>
-              
               <div className={explorerStyles.docsSection}>
                 <h3 className={explorerStyles.docsSectionTitle}>Uso e Licenciamento</h3>
                 <div className={explorerStyles.docsSectionContent}>
@@ -790,4 +912,3 @@ LIMIT 10;`}
     </div>
   );
 }
-

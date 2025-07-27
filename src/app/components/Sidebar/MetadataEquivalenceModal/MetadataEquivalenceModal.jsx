@@ -1,34 +1,40 @@
 import { useState } from 'react';
-import { X, PlusCircle } from 'lucide-react';
-import FilterSection from './FilterSection/FilterSection';
+import { X, Database } from 'lucide-react';
 import styles from './MetadataEquivalenceModal.module.css';
+import DynamicFilterSection from './DynamicFilterSection/DynamicFilterSection';
 
 export default function MetadataEquivalenceModal({ isOpen, onClose }) {
-  const [filterExpanded, setFilterExpanded] = useState(true);
-
   if (!isOpen) return null;
 
   return (
     <div className={styles.modalOverlay}>
-      <div className={styles.modalContainer}>
-        <div className={styles.modalHeader}>
-          <h2 className={styles.modalTitle}>Camada de Equivalência</h2>
-          <button className={styles.closeButton} onClick={onClose}>
+      <div className={styles.modalContainer} role="dialog" aria-modal="true">
+        <header className={styles.modalHeader} tabIndex={-1}>
+          <div className={styles.headerLeft}>
+            <Database className={styles.modalIcon} />
+            <h2 className={styles.modalTitle}>Metadata Equivalence Manager</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className={styles.modalCloseButton}
+            aria-label="Close"
+          >
             <X className={styles.closeIcon} />
           </button>
-        </div>
-        <div className={styles.modalBody}>
-          <FilterSection expanded={filterExpanded} toggleFilter={() => setFilterExpanded(!filterExpanded)} />
-          <div className={styles.modalFooter}>
-            <button className={styles.secondaryButton} onClick={onClose}>
-              Cancelar
-            </button>
-            <button className={styles.primaryButton}>
-              Adicionar Dataset
-            </button>
-          </div>
-        </div>
+        </header>
+
+        <section className={styles.modalContent}>
+          <DynamicFilterSection />
+        </section>
+
+        <footer className={styles.modalFooter}>
+          <button type="button" onClick={onClose} className={styles.secondaryButton}>
+            <X style={{ marginRight: 8 }} /> Close
+          </button>
+        </footer>
       </div>
     </div>
   );
 }
+
