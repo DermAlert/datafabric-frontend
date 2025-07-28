@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { 
   Search, ChevronDown, ChevronRight, Plus, 
   Trash2, Save, Info, Edit, PlusCircle, X, 
-  ArrowRight, AlertTriangle, CheckCircle, Database 
+  ArrowRight, AlertTriangle, CheckCircle, Database,
+  Loader
 } from 'lucide-react';
 import styles from './DynamicFilterSection.module.css';
 import ConnectionExplorer from '../ConnectionExplorer/ConnectionExplorer';
@@ -69,27 +70,47 @@ export default function DynamicFilterSection() {
 
   // Loading and error states
   const [loading, setLoading] = useState(true);
+  const [loadingItems, setLoadingItems] = useState({});
   const [error, setError] = useState(null);
+  const [saveStatus, setSaveStatus] = useState(null);
 
   // Load initial data
   useEffect(() => {
     loadInitialData();
   }, []);
 
+  const setItemLoading = (itemKey, isLoading) => {
+    setLoadingItems(prev => ({
+      ...prev,
+      [itemKey]: isLoading
+    }));
+  };
+
+  const isItemLoading = (itemKey) => {
+    return !!loadingItems[itemKey];
+  };
+
   const loadInitialData = async () => {
     setLoading(true);
     setError(null);
     try {
       // Load semantic domains and dictionary terms
-      const [domainsData, dictData] = await Promise.all([
-        api_getSemanticDomains().catch(() => []),
-        api_searchDataDictionary({ 
-          pagination: { limit: 1000, query_total: false, skip: 0 } 
-        }).then(d => d.items || []).catch(() => [])
-      ]);
+      const domainsPromise = api_getSemanticDomains().catch(err => {
+        console.error('Failed to load domains:', err);
+        return [];
+      });
+      
+      const dictPromise = api_searchDataDictionary({ 
+        pagination: { limit: 1000, query_total: false, skip: 0 } 
+      }).catch(err => {
+        console.error('Failed to load dictionary terms:', err);
+        return { items: [] };
+      });
+
+      const [domainsData, dictData] = await Promise.all([domainsPromise, dictPromise]);
       
       setDomains(domainsData);
-      setDictTerms(dictData);
+      setDictTerms(dictData.items || []);
 
       // Create data sources from domains and dictionary terms
       const sources = [
@@ -136,45 +157,51 @@ export default function DynamicFilterSection() {
       setSearchTerms(initialSearchTerms);
 
       // Load field definitions
-      await loadFieldDefinitions(sources);
+      await loadFieldDefinitions(sources, domainsData, dictData.items || []);
       
-      // Load column groups
+      // Load column groups and existing mappings
       await loadColumnGroups();
+      await loadExistingMappings();
 
     } catch (e) {
+      console.error('Failed to load initial data:', e);
       setError('Failed to load initial data: ' + e.message);
     }
     setLoading(false);
   };
 
-  const loadFieldDefinitions = async (sources) => {
+  const loadFieldDefinitions = async (sources, domainsData, dictTermsData) => {
     const definitions = {};
 
     // Semantic domains fields
-    definitions['semantic_domains'] = domains.map(domain => ({
+    definitions['semantic_domains'] = domainsData.map(domain => ({
       name: domain.name || `domain_${domain.id}`,
       description: domain.description || 'Semantic domain',
-      type: 'string',
+      type: 'domain',
       id: domain.id
     }));
 
     // Dictionary terms fields
-    definitions['dictionary_terms'] = dictTerms.map(term => ({
+    definitions['dictionary_terms'] = dictTermsData.map(term => ({
       name: term.name || `term_${term.id}`,
       description: term.description || 'Dictionary term',
-      type: 'string',
+      type: term.data_type || 'string',
       id: term.id
     }));
 
-    // Column groups fields
-    const groups = await api_getColumnGroups().catch(() => []);
-    definitions['column_groups'] = groups.map(group => ({
-      name: group.name || `group_${group.id}`,
-      description: group.description || 'Column group',
-      type: 'group',
-      id: group.id,
-      userDefined: true
-    }));
+    try {
+      // Column groups fields
+      const groups = await api_getColumnGroups().catch(() => []);
+      definitions['column_groups'] = groups.map(group => ({
+        name: group.name || `group_${group.id}`,
+        description: group.description || 'Column group',
+        type: group.properties?.type || 'group',
+        id: group.id,
+        userDefined: true
+      }));
+    } catch (e) {
+      console.error('Failed to load column groups for field definitions:', e);
+    }
 
     // Available columns fields (initially empty)
     definitions['available_columns'] = [];
@@ -183,12 +210,168 @@ export default function DynamicFilterSection() {
   };
 
   const loadColumnGroups = async () => {
+    setItemLoading('columnGroups', true);
     try {
       const groups = await api_getColumnGroups();
       setColumnGroups(groups);
+      
+      // Update field definitions for column groups
+      setFieldDefinitions(prev => ({
+        ...prev,
+        'column_groups': groups.map(group => ({
+          name: group.name || `group_${group.id}`,
+          description: group.description || 'Column group',
+          type: group.properties?.type || 'group',
+          id: group.id,
+          userDefined: true
+        }))
+      }));
+      
     } catch (e) {
       console.error('Failed to load column groups:', e);
     }
+    setItemLoading('columnGroups', false);
+  };
+
+  const loadExistingMappings = async () => {
+    setItemLoading('mappings', true);
+    try {
+      // Get all column mappings
+      const response = await api_searchColumnMappings({
+        pagination: { limit: 1000, query_total: false, skip: 0 }
+      });
+      
+      const mappings = response.items || [];
+      
+      const newEquivalences = {};
+      
+      for (const mapping of mappings) {
+        try {
+          // Get column group details
+          const groupId = mapping.group_id;
+          if (!groupId) continue;
+          
+          const group = columnGroups.find(g => g.id === groupId) || 
+                        await api_getColumnGroup(groupId).catch(() => null);
+                        
+          if (!group) continue;
+          
+          const sourceKey = `column_groups.${group.name || `group_${group.id}`}`;
+          
+          // Handle column mapping
+          if (mapping.column_id) {
+            // Find column details in available columns
+            const columnId = mapping.column_id;
+            let column = availableColumns.find(c => c.id === columnId);
+            
+            if (!column && selectedTable) {
+              // Try to get column details from the API
+              try {
+                const columnsResponse = await fetch(`http://localhost:8004/api/metadata/columns/${columnId}`);
+                if (columnsResponse.ok) {
+                  column = await columnsResponse.json();
+                }
+              } catch (err) {
+                console.warn(`Could not fetch column ${columnId} details:`, err);
+              }
+            }
+            
+            if (column) {
+              // Add column <-> group equivalence
+              const columnKey = `available_columns.${column.column_name || `column_${column.id}`}`;
+              
+              // Group -> Column mapping
+              if (!newEquivalences[sourceKey]) {
+                newEquivalences[sourceKey] = [];
+              }
+              newEquivalences[sourceKey].push({
+                sourceId: 'available_columns',
+                fieldName: column.column_name || `column_${column.id}`,
+                id: column.id
+              });
+              
+              // Column -> Group mapping
+              if (!newEquivalences[columnKey]) {
+                newEquivalences[columnKey] = [];
+              }
+              newEquivalences[columnKey].push({
+                sourceId: 'column_groups',
+                fieldName: group.name || `group_${group.id}`,
+                id: group.id
+              });
+            }
+          }
+          
+          // Handle semantic domain mapping
+          if (mapping.semantic_domain_id) {
+            const domainId = mapping.semantic_domain_id;
+            const domain = domains.find(d => d.id === domainId);
+            
+            if (domain) {
+              const domainKey = `semantic_domains.${domain.name || `domain_${domain.id}`}`;
+              
+              // Group -> Domain mapping
+              if (!newEquivalences[sourceKey]) {
+                newEquivalences[sourceKey] = [];
+              }
+              newEquivalences[sourceKey].push({
+                sourceId: 'semantic_domains',
+                fieldName: domain.name || `domain_${domain.id}`,
+                id: domain.id
+              });
+              
+              // Domain -> Group mapping
+              if (!newEquivalences[domainKey]) {
+                newEquivalences[domainKey] = [];
+              }
+              newEquivalences[domainKey].push({
+                sourceId: 'column_groups',
+                fieldName: group.name || `group_${group.id}`,
+                id: group.id
+              });
+            }
+          }
+          
+          // Handle data dictionary term mapping
+          if (mapping.data_dictionary_term_id) {
+            const termId = mapping.data_dictionary_term_id;
+            const term = dictTerms.find(t => t.id === termId);
+            
+            if (term) {
+              const termKey = `dictionary_terms.${term.name || `term_${term.id}`}`;
+              
+              // Group -> Term mapping
+              if (!newEquivalences[sourceKey]) {
+                newEquivalences[sourceKey] = [];
+              }
+              newEquivalences[sourceKey].push({
+                sourceId: 'dictionary_terms',
+                fieldName: term.name || `term_${term.id}`,
+                id: term.id
+              });
+              
+              // Term -> Group mapping
+              if (!newEquivalences[termKey]) {
+                newEquivalences[termKey] = [];
+              }
+              newEquivalences[termKey].push({
+                sourceId: 'column_groups',
+                fieldName: group.name || `group_${group.id}`,
+                id: group.id
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Error processing mapping:', err);
+        }
+      }
+      
+      setEquivalences(newEquivalences);
+      
+    } catch (e) {
+      console.error('Failed to load existing mappings:', e);
+    }
+    setItemLoading('mappings', false);
   };
 
   const loadAvailableColumns = async () => {
@@ -196,12 +379,14 @@ export default function DynamicFilterSection() {
       return;
     }
 
+    setItemLoading('availableColumns', true);
     try {
       const response = await api_getAvailableColumns({
         connection_id: selectedConnection.id,
         schema_id: selectedSchema.id,
         table_id: selectedTable.id,
-        exclude_mapped: true
+        exclude_mapped: false, // We want to see all columns now
+        fl_ativo: true // Add active flag to match API pattern
       });
       
       const columns = response.columns || [];
@@ -210,7 +395,10 @@ export default function DynamicFilterSection() {
         description: column.description || `Column from ${selectedTable.table_name}`,
         type: column.data_type,
         id: column.id,
-        nullable: column.is_nullable
+        nullable: column.is_nullable,
+        connection_id: selectedConnection.id,
+        schema_id: selectedSchema.id,
+        table_id: selectedTable.id
       }));
 
       setFieldDefinitions(prev => ({
@@ -219,22 +407,32 @@ export default function DynamicFilterSection() {
       }));
 
       setAvailableColumns(columns);
+
+      // Reload mappings to update with the newly loaded columns
+      await loadExistingMappings();
+      
     } catch (e) {
       console.error('Failed to load available columns:', e);
     }
+    setItemLoading('availableColumns', false);
   };
 
   // Effect to load columns when connection changes
   useEffect(() => {
-    loadAvailableColumns();
+    if (selectedConnection && selectedSchema && selectedTable) {
+      loadAvailableColumns();
+    }
   }, [selectedConnection, selectedSchema, selectedTable]);
 
   // Compute all equivalences (transitive closure)
   const allEquivalences = useMemo(() => {
     let result = { ...equivalences };
     let changed = true;
+    let iterations = 0;
+    const MAX_ITERATIONS = 10; // Safety limit to prevent infinite loops
     
-    while (changed) {
+    while (changed && iterations < MAX_ITERATIONS) {
+      iterations++;
       changed = false;
       
       Object.entries(result).forEach(([sourceFieldKey, targetFields]) => {
@@ -262,7 +460,7 @@ export default function DynamicFilterSection() {
           }
           
           if (!result[targetKey]) {
-            result[targetKey] = [{ sourceId, fieldName }];
+            result[targetKey] = [{ sourceId, fieldName, id: sourceId === 'column_groups' ? fieldDefinitions[sourceId]?.find(f => f.name === fieldName)?.id : undefined }];
             changed = true;
           } else {
             const exists = result[targetKey].some(
@@ -272,7 +470,7 @@ export default function DynamicFilterSection() {
             if (!exists) {
               result[targetKey] = [
                 ...result[targetKey],
-                { sourceId, fieldName }
+                { sourceId, fieldName, id: sourceId === 'column_groups' ? fieldDefinitions[sourceId]?.find(f => f.name === fieldName)?.id : undefined }
               ];
               changed = true;
             }
@@ -282,9 +480,9 @@ export default function DynamicFilterSection() {
     }
     
     return result;
-  }, [equivalences]);
+  }, [equivalences, fieldDefinitions]);
 
-  // UI interaction handlers (matching original FilterSection)
+  // UI interaction handlers
   const toggleSourceExpanded = (sourceId) => {
     setExpandedSources(prev => ({
       ...prev,
@@ -308,56 +506,263 @@ export default function DynamicFilterSection() {
     const term = searchTerms[sourceId]?.toLowerCase() || '';
     return (fieldDefinitions[sourceId] || []).filter(field => 
       field.name.toLowerCase().includes(term) || 
-      field.description.toLowerCase().includes(term)
+      (field.description || '').toLowerCase().includes(term) ||
+      (field.type || '').toLowerCase().includes(term)
     );
   };
-  
-  const addEquivalence = (sourceId, fieldName, targetSourceId, targetFieldName) => {
-    const sourceKey = `${sourceId}.${fieldName}`;
+
+  /**
+   * Creates a new equivalence between two fields
+   * Fixed to properly handle API request parameters
+   */
+  const addEquivalence = async (sourceId, fieldName, targetSourceId, targetFieldName) => {
+    // Find the field objects
+    const sourceField = fieldDefinitions[sourceId]?.find(f => f.name === fieldName);
+    const targetField = fieldDefinitions[targetSourceId]?.find(f => f.name === targetFieldName);
     
-    setEquivalences(prev => {
-      const newEquivalences = { ...prev };
+    if (!sourceField || !targetField) {
+      console.error('Could not find fields to create equivalence');
+      return;
+    }
+    
+    try {
+      setItemLoading('addEquivalence', true);
       
-      if (!newEquivalences[sourceKey]) {
-        newEquivalences[sourceKey] = [{ sourceId: targetSourceId, fieldName: targetFieldName }];
-      } else {
-        const exists = newEquivalences[sourceKey].some(
-          existing => existing.sourceId === targetSourceId && existing.fieldName === targetFieldName
-        );
+      // Determine which side is the column group
+      let groupId = null;
+      let columnId = null;
+      let semanticDomainId = null;
+      let dataDictionaryTermId = null;
+      
+      if (sourceId === 'column_groups') {
+        groupId = sourceField.id;
         
-        if (!exists) {
-          newEquivalences[sourceKey] = [
-            ...newEquivalences[sourceKey],
-            { sourceId: targetSourceId, fieldName: targetFieldName }
-          ];
+        if (targetSourceId === 'available_columns') {
+          columnId = targetField.id;
+        } else if (targetSourceId === 'semantic_domains') {
+          semanticDomainId = targetField.id;
+        } else if (targetSourceId === 'dictionary_terms') {
+          dataDictionaryTermId = targetField.id;
         }
+      } else if (targetSourceId === 'column_groups') {
+        groupId = targetField.id;
+        
+        if (sourceId === 'available_columns') {
+          columnId = sourceField.id;
+        } else if (sourceId === 'semantic_domains') {
+          semanticDomainId = sourceField.id;
+        } else if (sourceId === 'dictionary_terms') {
+          dataDictionaryTermId = sourceField.id;
+        }
+      } else {
+        // For now, we're only supporting equivalences that involve column groups
+        console.error('Equivalences must involve a column group');
+        return;
       }
       
-      return newEquivalences;
-    });
+      // Only proceed if we have a column group involved
+      if (!groupId) {
+        console.error('No column group found for equivalence');
+        return;
+      }
+      
+      // Create API request body with proper parameter names
+      const requestBody = {
+        group_id: groupId  // Using group_id as expected by the API
+      };
+      
+      if (columnId) requestBody.column_id = columnId;
+      if (semanticDomainId) requestBody.semantic_domain_id = semanticDomainId;
+      if (dataDictionaryTermId) requestBody.data_dictionary_term_id = dataDictionaryTermId;
+      
+      // Call the API with the proper request body
+      await api_postColumnMapping(requestBody);
+      
+      // Update the UI state
+      const sourceKey = `${sourceId}.${fieldName}`;
+      
+      setEquivalences(prev => {
+        const newEquivalences = { ...prev };
+        
+        if (!newEquivalences[sourceKey]) {
+          newEquivalences[sourceKey] = [{ 
+            sourceId: targetSourceId, 
+            fieldName: targetFieldName,
+            id: targetField.id 
+          }];
+        } else {
+          const exists = newEquivalences[sourceKey].some(
+            existing => existing.sourceId === targetSourceId && existing.fieldName === targetFieldName
+          );
+          
+          if (!exists) {
+            newEquivalences[sourceKey] = [
+              ...newEquivalences[sourceKey],
+              { 
+                sourceId: targetSourceId, 
+                fieldName: targetFieldName,
+                id: targetField.id 
+              }
+            ];
+          }
+        }
+        
+        // Add the reverse direction
+        const targetKey = `${targetSourceId}.${targetFieldName}`;
+        
+        if (!newEquivalences[targetKey]) {
+          newEquivalences[targetKey] = [{ 
+            sourceId, 
+            fieldName,
+            id: sourceField.id 
+          }];
+        } else {
+          const exists = newEquivalences[targetKey].some(
+            existing => existing.sourceId === sourceId && existing.fieldName === fieldName
+          );
+          
+          if (!exists) {
+            newEquivalences[targetKey] = [
+              ...newEquivalences[targetKey],
+              { 
+                sourceId, 
+                fieldName,
+                id: sourceField.id 
+              }
+            ];
+          }
+        }
+        
+        return newEquivalences;
+      });
+      
+    } catch (e) {
+      console.error('Failed to create mapping:', e);
+      alert('Failed to create mapping: ' + e.message);
+    } finally {
+      setItemLoading('addEquivalence', false);
+    }
   };
   
-  const removeEquivalence = (sourceId, fieldName, targetSourceId, targetFieldName) => {
-    const sourceKey = `${sourceId}.${fieldName}`;
+  /**
+   * Removes an equivalence between two fields
+   * Fixed to properly handle API request parameters
+   */
+  const removeEquivalence = async (sourceId, fieldName, targetSourceId, targetFieldName) => {
+    // Find the field objects
+    const sourceField = fieldDefinitions[sourceId]?.find(f => f.name === fieldName);
+    const targetField = fieldDefinitions[targetSourceId]?.find(f => f.name === targetFieldName);
     
-    setEquivalences(prev => {
-      if (!prev[sourceKey]) return prev;
+    if (!sourceField || !targetField) {
+      console.error('Could not find fields to remove equivalence');
+      return;
+    }
+    
+    try {
+      setItemLoading('removeEquivalence', true);
       
-      const updatedEquivalences = prev[sourceKey].filter(
-        item => !(item.sourceId === targetSourceId && item.fieldName === targetFieldName)
+      // Determine which side is the column group
+      let groupId = null;
+      let columnId = null;
+      let semanticDomainId = null;
+      let dataDictionaryTermId = null;
+      
+      if (sourceId === 'column_groups') {
+        groupId = sourceField.id;
+        
+        if (targetSourceId === 'available_columns') {
+          columnId = targetField.id;
+        } else if (targetSourceId === 'semantic_domains') {
+          semanticDomainId = targetField.id;
+        } else if (targetSourceId === 'dictionary_terms') {
+          dataDictionaryTermId = targetField.id;
+        }
+      } else if (targetSourceId === 'column_groups') {
+        groupId = targetField.id;
+        
+        if (sourceId === 'available_columns') {
+          columnId = sourceField.id;
+        } else if (sourceId === 'semantic_domains') {
+          semanticDomainId = sourceField.id;
+        } else if (sourceId === 'dictionary_terms') {
+          dataDictionaryTermId = sourceField.id;
+        }
+      } else {
+        // We only support equivalences involving column groups
+        console.error('Equivalences must involve a column group');
+        return;
+      }
+      
+      // Create search parameters for finding the mapping
+      const searchParams = {
+        pagination: { limit: 1000, query_total: false, skip: 0 }
+      };
+      
+      // Add the correct parameters for the search
+      if (groupId) searchParams.group_id = groupId;
+      if (columnId) searchParams.column_id = columnId;
+      if (semanticDomainId) searchParams.semantic_domain_id = semanticDomainId;
+      if (dataDictionaryTermId) searchParams.data_dictionary_term_id = dataDictionaryTermId;
+      
+      // Get mappings to find the one to delete
+      const response = await api_searchColumnMappings(searchParams);
+      const mappings = response.items || [];
+      
+      // Find the exact mapping to delete
+      const mappingToDelete = mappings.find(mapping => 
+        (mapping.group_id === groupId) && 
+        (
+          (columnId && mapping.column_id === columnId) ||
+          (semanticDomainId && mapping.semantic_domain_id === semanticDomainId) ||
+          (dataDictionaryTermId && mapping.data_dictionary_term_id === dataDictionaryTermId)
+        )
       );
       
-      if (updatedEquivalences.length === 0) {
-        const newEquivalences = { ...prev };
-        delete newEquivalences[sourceKey];
-        return newEquivalences;
+      if (mappingToDelete) {
+        await api_deleteColumnMapping(mappingToDelete.id);
       } else {
-        return {
-          ...prev,
-          [sourceKey]: updatedEquivalences
-        };
+        console.error('No mapping found to delete');
+        return;
       }
-    });
+      
+      // Update the UI state
+      const sourceKey = `${sourceId}.${fieldName}`;
+      
+      setEquivalences(prev => {
+        const newEquivalences = { ...prev };
+        
+        // Remove target from source equivalences
+        if (newEquivalences[sourceKey]) {
+          newEquivalences[sourceKey] = newEquivalences[sourceKey].filter(
+            item => !(item.sourceId === targetSourceId && item.fieldName === targetFieldName)
+          );
+          
+          if (newEquivalences[sourceKey].length === 0) {
+            delete newEquivalences[sourceKey];
+          }
+        }
+        
+        // Remove source from target equivalences
+        const targetKey = `${targetSourceId}.${targetFieldName}`;
+        if (newEquivalences[targetKey]) {
+          newEquivalences[targetKey] = newEquivalences[targetKey].filter(
+            item => !(item.sourceId === sourceId && item.fieldName === fieldName)
+          );
+          
+          if (newEquivalences[targetKey].length === 0) {
+            delete newEquivalences[targetKey];
+          }
+        }
+        
+        return newEquivalences;
+      });
+      
+    } catch (e) {
+      console.error('Failed to delete mapping:', e);
+      alert('Failed to delete mapping: ' + e.message);
+    } finally {
+      setItemLoading('removeEquivalence', false);
+    }
   };
   
   const isEquivalent = (sourceId, fieldName, targetSourceId, targetFieldName) => {
@@ -387,6 +792,7 @@ export default function DynamicFilterSection() {
       return;
     }
 
+    setItemLoading('addField', true);
     try {
       if (sourceId === 'column_groups') {
         // Create a new column group
@@ -404,7 +810,7 @@ export default function DynamicFilterSection() {
             { 
               name, 
               description, 
-              type: 'group', 
+              type: type || 'group', 
               id: newGroup.id,
               userDefined: true 
             }
@@ -423,17 +829,18 @@ export default function DynamicFilterSection() {
           ]
         }));
       }
+
+      setNewFieldForm({
+        name: '',
+        description: '',
+        type: 'string',
+        isModalOpen: false
+      });
     } catch (e) {
+      console.error('Failed to create field:', e);
       alert('Failed to create field: ' + e.message);
-      return;
     }
-    
-    setNewFieldForm({
-      name: '',
-      description: '',
-      type: 'string',
-      isModalOpen: false
-    });
+    setItemLoading('addField', false);
   };
 
   // Add new source
@@ -487,18 +894,28 @@ export default function DynamicFilterSection() {
   // Save equivalences
   const saveEquivalences = async () => {
     try {
-      // Here you would save the equivalences using your APIs
-      // For now, just log them
-      console.log('Saving equivalences:', allEquivalences);
-      alert('Equivalences saved successfully!');
+      setSaveStatus('saving');
+      
+      // We don't need to do anything here since we're saving individual equivalences
+      // as they're created or removed, but we could implement a batch save here
+      
+      // For now, just reload all mappings to ensure UI is in sync with backend
+      await loadExistingMappings();
+      
+      setSaveStatus('success');
+      setTimeout(() => setSaveStatus(null), 3000);
     } catch (e) {
-      alert('Failed to save equivalences: ' + e.message);
+      console.error('Failed to save equivalences:', e);
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus(null), 5000);
     }
   };
 
   // Remove user field
   const removeUserField = async (sourceId, fieldName) => {
     try {
+      setItemLoading(`removeField-${fieldName}`, true);
+      
       // Find the field to get its ID
       const field = fieldDefinitions[sourceId]?.find(f => f.name === fieldName);
       
@@ -536,7 +953,10 @@ export default function DynamicFilterSection() {
         return newEquivalences;
       });
     } catch (e) {
+      console.error('Failed to remove field:', e);
       alert('Failed to remove field: ' + e.message);
+    } finally {
+      setItemLoading(`removeField-${fieldName}`, false);
     }
   };
 
@@ -546,13 +966,20 @@ export default function DynamicFilterSection() {
     setSelectedSchema(selectionData.schema);
     setSelectedTable(selectionData.table);
     setShowConnectionExplorer(false);
+    
+    // Ensure that the available_columns source is expanded
+    setExpandedSources(prev => ({
+      ...prev,
+      available_columns: true
+    }));
   };
 
   if (loading) {
     return (
       <div className={styles.metadataEquivalenceContainer}>
-        <div style={{ textAlign: 'center', padding: '2rem' }}>
-          <div>Loading...</div>
+        <div className={styles.loadingState}>
+          <Loader className={styles.loadingIcon} />
+          <div className={styles.loadingText}>Loading metadata and equivalences...</div>
         </div>
       </div>
     );
@@ -561,10 +988,13 @@ export default function DynamicFilterSection() {
   if (error) {
     return (
       <div className={styles.metadataEquivalenceContainer}>
-        <div style={{ textAlign: 'center', padding: '2rem', color: 'red' }}>
-          <AlertTriangle size={24} />
-          <div>{error}</div>
-          <button onClick={loadInitialData} style={{ marginTop: '1rem' }}>
+        <div className={styles.errorState}>
+          <AlertTriangle className={styles.errorIcon} />
+          <div className={styles.errorText}>{error}</div>
+          <button 
+            onClick={loadInitialData} 
+            className={styles.retryButton}
+          >
             Retry
           </button>
         </div>
@@ -591,6 +1021,7 @@ export default function DynamicFilterSection() {
           <button 
             className={styles.addSourceButton}
             onClick={() => setShowConnectionExplorer(true)}
+            disabled={isItemLoading('any')}
           >
             <Database className={styles.actionIcon} />
             <span>Explore Connections</span>
@@ -598,16 +1029,28 @@ export default function DynamicFilterSection() {
           <button 
             className={styles.addSourceButton}
             onClick={() => setNewSourceForm(prev => ({ ...prev, isModalOpen: true }))}
+            disabled={isItemLoading('any')}
           >
-            <Database className={styles.actionIcon} />
+            <PlusCircle className={styles.actionIcon} />
             <span>New Source</span>
           </button>
           <button 
-            className={styles.saveButton}
+            className={`${styles.saveButton} ${saveStatus ? styles[saveStatus] : ''}`}
             onClick={saveEquivalences}
+            disabled={saveStatus === 'saving' || isItemLoading('any')}
           >
-            <Save className={styles.actionIcon} />
-            <span>Save Equivalences</span>
+            {saveStatus === 'saving' ? (
+              <Loader className={`${styles.actionIcon} ${styles.spinningIcon}`} />
+            ) : saveStatus === 'success' ? (
+              <CheckCircle className={styles.actionIcon} />
+            ) : (
+              <Save className={styles.actionIcon} />
+            )}
+            <span>
+              {saveStatus === 'saving' ? 'Saving...' : 
+               saveStatus === 'success' ? 'Saved!' : 
+               saveStatus === 'error' ? 'Failed to Save' : 'Save Equivalences'}
+            </span>
           </button>
         </div>
       </div>
@@ -680,19 +1123,45 @@ export default function DynamicFilterSection() {
                     <button 
                       className={styles.addFieldButton}
                       onClick={() => setNewFieldForm(prev => ({ ...prev, isModalOpen: true }))}
+                      disabled={isItemLoading('addField')}
                     >
-                      <Plus className={styles.addFieldIcon} />
+                      {isItemLoading('addField') ? (
+                        <Loader className={`${styles.addFieldIcon} ${styles.spinningIcon}`} />
+                      ) : (
+                        <Plus className={styles.addFieldIcon} />
+                      )}
                       <span>Add Field</span>
                     </button>
                   )}
                 </div>
                 
                 <div className={styles.fieldsList}>
+                  {source.id === 'available_columns' && !selectedConnection && (
+                    <div className={styles.noFieldsMessage}>
+                      <Database className={styles.noFieldsIcon} />
+                      <p>Select a connection to view available columns</p>
+                      <button 
+                        className={styles.selectConnectionButton}
+                        onClick={() => setShowConnectionExplorer(true)}
+                      >
+                        Select Connection
+                      </button>
+                    </div>
+                  )}
+                  
+                  {isItemLoading('availableColumns') && source.id === 'available_columns' && (
+                    <div className={styles.loadingFields}>
+                      <Loader className={`${styles.loadingFieldsIcon} ${styles.spinningIcon}`} />
+                      <p>Loading columns...</p>
+                    </div>
+                  )}
+                  
                   {getFilteredFields(source.id).length > 0 ? (
                     getFilteredFields(source.id).map(field => {
                       const isSelected = selectedSource === source.id && selectedField === field.name;
                       const equivalentFields = getEquivalentFields(source.id, field.name);
                       const hasEquivalences = equivalentFields.length > 0;
+                      const isFieldLoading = isItemLoading(`removeField-${field.name}`);
                       
                       return (
                         <div 
@@ -714,8 +1183,13 @@ export default function DynamicFilterSection() {
                                   removeUserField(source.id, field.name);
                                 }}
                                 title="Remove field"
+                                disabled={isFieldLoading}
                               >
-                                <Trash2 className={styles.removeIcon} />
+                                {isFieldLoading ? (
+                                  <Loader className={`${styles.removeIcon} ${styles.spinningIcon}`} size={14} />
+                                ) : (
+                                  <Trash2 className={styles.removeIcon} />
+                                )}
                               </button>
                             )}
                           </div>
@@ -725,7 +1199,7 @@ export default function DynamicFilterSection() {
                           {hasEquivalences && (
                             <div className={styles.equivalencesList}>
                               {equivalentFields.map((equiv, index) => (
-                                <div key={`${equiv.sourceId}-${equiv.fieldName}`} className={styles.equivalenceItem}>
+                                <div key={`${equiv.sourceId}-${equiv.fieldName}-${index}`} className={styles.equivalenceItem}>
                                   <span className={styles.equivalenceSourceName}>
                                     {dataSources.find(s => s.id === equiv.sourceId)?.name || equiv.sourceId}
                                   </span>
@@ -739,8 +1213,13 @@ export default function DynamicFilterSection() {
                                       removeEquivalence(source.id, field.name, equiv.sourceId, equiv.fieldName);
                                     }}
                                     title="Remove equivalence"
+                                    disabled={isItemLoading('removeEquivalence')}
                                   >
-                                    <X className={styles.removeEquivalenceIcon} />
+                                    {isItemLoading('removeEquivalence') ? (
+                                      <Loader className={`${styles.removeEquivalenceIcon} ${styles.spinningIcon}`} size={12} />
+                                    ) : (
+                                      <X className={styles.removeEquivalenceIcon} />
+                                    )}
                                   </button>
                                 </div>
                               ))}
@@ -749,7 +1228,7 @@ export default function DynamicFilterSection() {
                         </div>
                       );
                     })
-                  ) : (
+                  ) : !isItemLoading('availableColumns') && (
                     <div className={styles.noFieldsMessage}>
                       {searchTerms[source.id] ? (
                         <div>
@@ -760,11 +1239,6 @@ export default function DynamicFilterSection() {
                         <div>
                           <PlusCircle className={styles.noFieldsIcon} />
                           <p>Add custom fields using the button above</p>
-                        </div>
-                      ) : source.id === 'available_columns' && !selectedConnection ? (
-                        <div>
-                          <Database className={styles.noFieldsIcon} />
-                          <p>Select a connection to view available columns</p>
                         </div>
                       ) : (
                         <div>
@@ -840,40 +1314,55 @@ export default function DynamicFilterSection() {
                       </div>
                       
                       <div className={styles.equivalenceFieldsList}>
-                        {getFilteredFields(source.id).map(field => {
-                          const isEquiv = isEquivalent(selectedSource, selectedField, source.id, field.name);
-                          
-                          return (
-                            <div 
-                              key={field.name}
-                              className={`${styles.equivalenceFieldItem} ${isEquiv ? styles.equivalenceFieldItemSelected : ''}`}
-                              onClick={() => {
-                                if (isEquiv) {
-                                  removeEquivalence(selectedSource, selectedField, source.id, field.name);
-                                } else {
-                                  addEquivalence(selectedSource, selectedField, source.id, field.name);
-                                }
-                              }}
-                            >
-                              <div className={styles.equivalenceFieldItemContent}>
-                                <div className={styles.equivalenceFieldNameAndType}>
-                                  <span className={styles.equivalenceFieldName}>{field.name}</span>
-                                  <span className={styles.equivalenceFieldType}>{field.type}</span>
+                        {getFilteredFields(source.id).length === 0 ? (
+                          <div className={styles.noEquivalenceFields}>
+                            {searchTerms[source.id] ? (
+                              <p>No fields found for "{searchTerms[source.id]}"</p>
+                            ) : (
+                              <p>No fields available in this source</p>
+                            )}
+                          </div>
+                        ) : (
+                          getFilteredFields(source.id).map(field => {
+                            const isEquiv = isEquivalent(selectedSource, selectedField, source.id, field.name);
+                            const isEquivLoading = isItemLoading('addEquivalence') || isItemLoading('removeEquivalence');
+                            
+                            return (
+                              <div 
+                                key={field.name}
+                                className={`${styles.equivalenceFieldItem} ${isEquiv ? styles.equivalenceFieldItemSelected : ''}`}
+                                onClick={() => {
+                                  if (isEquivLoading) return;
+                                  
+                                  if (isEquiv) {
+                                    removeEquivalence(selectedSource, selectedField, source.id, field.name);
+                                  } else {
+                                    addEquivalence(selectedSource, selectedField, source.id, field.name);
+                                  }
+                                }}
+                              >
+                                <div className={styles.equivalenceFieldItemContent}>
+                                  <div className={styles.equivalenceFieldNameAndType}>
+                                    <span className={styles.equivalenceFieldName}>{field.name}</span>
+                                    <span className={styles.equivalenceFieldType}>{field.type}</span>
+                                  </div>
+                                  
+                                  {isEquivLoading ? (
+                                    <Loader className={`${styles.equivalenceIcon} ${styles.spinningIcon}`} size={16} />
+                                  ) : isEquiv ? (
+                                    <CheckCircle className={styles.equivalenceSelectedIcon} />
+                                  ) : (
+                                    <PlusCircle className={styles.equivalenceAddIcon} />
+                                  )}
                                 </div>
                                 
-                                {isEquiv ? (
-                                  <CheckCircle className={styles.equivalenceSelectedIcon} />
-                                ) : (
-                                  <PlusCircle className={styles.equivalenceAddIcon} />
-                                )}
+                                <div className={styles.equivalenceFieldDescription}>
+                                  {field.description}
+                                </div>
                               </div>
-                              
-                              <div className={styles.equivalenceFieldDescription}>
-                                {field.description}
-                              </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })
+                        )}
                       </div>
                     </div>
                   </div>
@@ -943,14 +1432,20 @@ export default function DynamicFilterSection() {
               <button 
                 className={styles.cancelButton}
                 onClick={() => setNewFieldForm(prev => ({ ...prev, isModalOpen: false }))}
+                disabled={isItemLoading('addField')}
               >
                 Cancel
               </button>
               <button 
                 className={styles.submitButton}
                 onClick={() => addNewField('column_groups')}
+                disabled={isItemLoading('addField')}
               >
-                Add Field
+                {isItemLoading('addField') ? (
+                  <><Loader className={styles.spinningIcon} size={14} /> Adding...</>
+                ) : (
+                  <>Add Field</>
+                )}
               </button>
             </div>
           </div>
@@ -1034,4 +1529,3 @@ export default function DynamicFilterSection() {
     </div>
   );
 }
-

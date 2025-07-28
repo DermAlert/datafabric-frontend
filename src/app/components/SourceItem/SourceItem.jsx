@@ -1,5 +1,5 @@
-// Update to enable navigating to dataset explorer
-import { ChevronRight, ChevronDown, Server, Folder, Table, PlusCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ChevronRight, ChevronDown, Server, Folder, Table, PlusCircle, RefreshCw } from 'lucide-react';
 import styles from './SourceItem.module.css';
 
 export default function SourceItem({ 
@@ -12,8 +12,44 @@ export default function SourceItem({
   datasets = [], 
   isPipeline = false,
   openAddDatasetModal,
-  openDatasetExplorer // New prop to handle dataset navigation
+  openDatasetExplorer 
 }) {
+  const [sourceDatasets, setSourceDatasets] = useState(datasets);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Fetch datasets for this source if expanded
+  useEffect(() => {
+    if (expanded && sourceDatasets.length === 0) {
+      fetchSourceDatasets();
+    }
+  }, [expanded]);
+
+  const fetchSourceDatasets = async () => {
+    if (!id) return;
+    
+    setLoading(true);
+    setError(null);
+    try {
+      // Fetch datasets for this connection - adjust endpoint as needed
+      const response = await fetch(`http://localhost:8004/api/data-connections/${id}/datasets`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch');
+      }
+
+      const data = await response.json();
+      setSourceDatasets(data.map(dataset => ({
+        ...dataset,
+        isTable: dataset.type === 'table' || dataset.type === 'view'
+      })));
+    } catch (err) {
+      console.error(`Error fetching datasets for connection ${id}:`, err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className={styles.sourceItem}>
       <div 
@@ -38,33 +74,54 @@ export default function SourceItem({
           <div className={styles.sourceContentLabel}>
             {isPipeline ? "Pipelines" : "Datasets"}
           </div>
+          
           <div className={styles.datasetList}>
-            {datasets.map((dataset, index) => (
-              <div 
-                key={index} 
-                className={styles.datasetItem}
-                // Added onClick to navigate to the dataset explorer
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openDatasetExplorer({
-                    id: `${id}-dataset-${index}`,
-                    name: dataset.name,
-                    source: name,
-                    type: dataset.isTable ? "Database Table" : "File Collection",
-                    // Include other dataset details as needed
-                  });
-                }}
-              >
-                {dataset.isTable ? 
-                  <Table className={styles.datasetIcon} /> : 
-                  <Folder className={styles.datasetIcon} />
-                }
-                <span>{dataset.name}</span>
+            {loading ? (
+              <div className={styles.loadingIndicator}>
+                <RefreshCw className={styles.spinningIcon} size={16} />
+                <span>Carregando...</span>
               </div>
-            ))}
-            <div className={styles.addDatasetButton} onClick={openAddDatasetModal}>
+            ) : error ? (
+              <div className={styles.errorMessage}>
+                {error}
+              </div>
+            ) : sourceDatasets.length === 0 ? (
+              <div className={styles.emptyMessage}>
+                Nenhum dataset encontrado
+              </div>
+            ) : (
+              sourceDatasets.map((dataset, index) => (
+                <div 
+                  key={dataset.id || index} 
+                  className={styles.datasetItem}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openDatasetExplorer({
+                      id: dataset.id || `${id}-dataset-${index}`,
+                      name: dataset.name,
+                      source: name,
+                      source_id: id,
+                      type: dataset.isTable ? "Database Table" : "File Collection",
+                    });
+                  }}
+                >
+                  {dataset.isTable ? 
+                    <Table className={styles.datasetIcon} /> : 
+                    <Folder className={styles.datasetIcon} />
+                  }
+                  <span>{dataset.name}</span>
+                </div>
+              ))
+            )}
+            <div 
+              className={styles.addDatasetButton} 
+              onClick={(e) => {
+                e.stopPropagation();
+                openAddDatasetModal(id);
+              }}
+            >
               <PlusCircle className={styles.addDatasetIcon} />
-              <span>Adicionar {isPipeline ? "Pipeline" : "Dataset"}</span>
+              {/* <span>Adicionar {isPipeline ? "Pipeline" : "Dataset"}</span> */}
             </div>
           </div>
         </div>

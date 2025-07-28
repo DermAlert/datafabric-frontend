@@ -676,3 +676,104 @@
     padding: 0.5rem 0.5rem;
   }
 }
+
+.imagePathButton {
+  border: none;
+  background: none;
+  color: #6366f1;
+  cursor: pointer;
+  font-size: 1.05rem;
+  margin-left: 0.34rem;
+  opacity: 0.76;
+  transition: opacity 0.13s, color 0.13s;
+}
+.imagePathButton:hover {
+  opacity: 1;
+  color: #2563eb;
+}
+.imagePathForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.imagePathCheckboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: #334155;
+  font-size: 1.01rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.imagePathCheckbox {
+  accent-color: #6366f1;
+  width: 1.1em;
+  height: 1.1em;
+}
+.connectionSelect {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.connectionSelectInput {
+  font-size: 1rem;
+  border: 1.5px solid #e0e7ef;
+  background: #fff;
+  padding: 0.49rem 0.95rem;
+  border-radius: 0.49rem;
+  color: #334155;
+  outline: none;
+  min-width: 200px;
+  transition: border 0.15s, background 0.13s;
+}
+.connectionSelectInput:focus {
+  border-color: #6366f1;
+  background: #eef2ff;
+}
+.imagePathActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+.cancelButton {
+  padding: 0.5rem 1rem;
+  border: 1px solid #e0e7ef;
+  background: #fff;
+  color: #334155;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.cancelButton:hover {
+  background: #f1f5f9;
+}
+.saveButton {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: #6366f1;
+  color: #fff;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.saveButton:hover {
+  background: #4f46e5;
+}
+.saveButton:disabled {
+  background: #a5b4fc;
+  cursor: not-allowed;
+}
+.imagePath {
+  margin-left: 0.25rem;
+  font-size: 0.81rem;
+  background: #818cf8;
+  color: white;
+  border-radius: 0.52rem;
+  padding: 0.10rem 0.52rem;
+  font-weight: 500;
+}
+
+/* Add this to your existing CSS file */

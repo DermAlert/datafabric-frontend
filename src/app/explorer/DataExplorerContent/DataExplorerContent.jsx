@@ -5,6 +5,13 @@ import {
 import styles from '../explorer.module.css';
 import explorerStyles from './DataExplorerContent.module.css';
 
+// --- Helper to get dataset ID from URL as query param (?id=123) ---
+function getDatasetIdFromUrl() {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  return params.get('id');
+}
+
 const API_BASE = 'http://localhost:8004/api';
 
 // ---------- Modal for searching datasets ----------
@@ -26,6 +33,7 @@ function SearchDatasetsModal({ onClose, onSelectDataset }) {
       body: JSON.stringify({
         page,
         size: 10,
+        query: searchTerm
       })
     })
       .then(res => res.json())
@@ -133,10 +141,27 @@ function SearchDatasetsModal({ onClose, onSelectDataset }) {
 
 // ---------- Main Explorer Content ----------
 export default function DataExplorerContent({ dataset, returnToDashboard }) {
-  // Only show modal if dataset is not provided or has no id
-  const [showSearchModal, setShowSearchModal] = useState(!dataset || !dataset.id);
-  const [selectedDataset, setSelectedDataset] = useState(dataset);
+const [showSearchModal, setShowSearchModal] = useState(false);
+const [selectedDataset, setSelectedDataset] = useState(null);
+const [datasetLoaded, setDatasetLoaded] = useState(false);
 
+useEffect(() => {
+  const id = getDatasetIdFromUrl();
+  if (id) {
+    setSelectedDataset({ id });
+    setShowSearchModal(false);
+    setDatasetLoaded(false);
+  } else if (dataset && dataset.id) {
+    setSelectedDataset(dataset);
+    setShowSearchModal(false);
+    setDatasetLoaded(true);
+  } else {
+    setSelectedDataset(null);
+    setShowSearchModal(true);
+    setDatasetLoaded(false);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
   // Tabs and explorer state
   const [activeTab, setActiveTab] = useState("browse");
   const [currentView, setCurrentView] = useState("grid");
@@ -158,7 +183,40 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
   const [pageSize, setPageSize] = useState(20);
   const [totalFiles, setTotalFiles] = useState(0);
 
-  // Dataset metadata
+  // --- Fetch dataset details if only id is available from URL ---
+  useEffect(() => {
+    let ignore = false;
+    async function fetchDatasetDetails() {
+      if (selectedDataset && selectedDataset.id && !selectedDataset.name) {
+        setIsLoading(true);
+        try {
+          const res = await fetch(`${API_BASE}/datasets/${selectedDataset.id}`, {
+            headers: { accept: 'application/json' }
+          });
+          if (!res.ok) throw new Error('Failed to fetch dataset');
+          const data = await res.json();
+          if (!ignore) {
+            setSelectedDataset(data);
+            setDatasetLoaded(true);
+            setShowSearchModal(false);
+          }
+        } catch (err) {
+          // If not found, allow modal to open
+          setShowSearchModal(true);
+        } finally {
+          setIsLoading(false);
+        }
+      } else if (selectedDataset && selectedDataset.id && selectedDataset.name) {
+        setDatasetLoaded(true);
+        setShowSearchModal(false);
+      }
+    }
+    fetchDatasetDetails();
+    return () => { ignore = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDataset && selectedDataset.id]);
+
+  // Dataset metadata (fallbacks if not loaded)
   const datasetDetails = {
     id: (selectedDataset && selectedDataset.id) || "dataset-id",
     name: (selectedDataset && selectedDataset.name) || "Dataset Name",
@@ -170,8 +228,8 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
     size: "Calculating...",
     files: totalFiles,
     description: (selectedDataset && selectedDataset.description) || "No description available",
-    tags: ["medical", "images", "dermatology"],
-    access: "Restricted - Research Team"
+    tags: (selectedDataset && selectedDataset.tags) || ["medical", "images", "dermatology"],
+    access: (selectedDataset && selectedDataset.access) || "Restricted - Research Team"
   };
 
   // When a dataset is selected from modal, update state and close modal
@@ -181,6 +239,7 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
     setCurrentPage(1); // Reset pagination/search if you want
     setSearchQuery('');
     setSelectedFile(null);
+    setDatasetLoaded(true);
   };
 
   // Fetch images from API for the selected dataset
@@ -225,10 +284,10 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
 
   // Fetch data on component mount and whenever dataset or pagination changes
   useEffect(() => {
-    if (!selectedDataset || showSearchModal) return;
+    if (!selectedDataset || !selectedDataset.id || showSearchModal || !datasetLoaded) return;
     fetchImages(currentPage, pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDataset, currentPage, pageSize, showSearchModal]);
+  }, [selectedDataset && selectedDataset.id, currentPage, pageSize, showSearchModal, datasetLoaded]);
 
   // Handle refresh
   const handleRefresh = async () => {
@@ -464,7 +523,6 @@ export default function DataExplorerContent({ dataset, returnToDashboard }) {
             {/* Toolbar */}
             <div className={explorerStyles.explorerToolbar}>
               <div className={explorerStyles.toolbarSearch}>
-                <SearchIcon className={explorerStyles.searchIcon} />
                 <input
                   type="text"
                   placeholder="Buscar arquivos..."
@@ -866,13 +924,13 @@ LIMIT 10;`}
           <div className={explorerStyles.docsContainer}>
             <div className={explorerStyles.docsHeader}>
               <h2 className={explorerStyles.docsTitle}>Documentação do Dataset</h2>
-              <span className={explorerStyles.docsVersion}>v{selectedDataset.version || '1.0'}</span>
+              <span className={explorerStyles.docsVersion}>v{selectedDataset && selectedDataset.version || '1.0'}</span>
             </div>
             <div className={explorerStyles.docsContent}>
               <div className={explorerStyles.docsSection}>
                 <h3 className={explorerStyles.docsSectionTitle}>Visão Geral</h3>
                 <div className={explorerStyles.docsSectionContent}>
-                  <p>{selectedDataset.description || 'Este dataset contém imagens médicas para pesquisa e análise.'}</p>
+                  <p>{selectedDataset && selectedDataset.description || 'Este dataset contém imagens médicas para pesquisa e análise.'}</p>
                 </div>
               </div>
               <div className={explorerStyles.docsSection}>
@@ -895,7 +953,7 @@ LIMIT 10;`}
                   <ul>
                     <li>Interface web (atual)</li>
                     <li>API REST: <code>{API_BASE}/datasets/{datasetDetails.id}/images</code></li>
-                    <li>MinIO: <code>{selectedDataset.storage_type === 'copy_to_minio' ? 'Disponível' : 'Não disponível'}</code></li>
+                    <li>MinIO: <code>{selectedDataset && selectedDataset.storage_type === 'copy_to_minio' ? 'Disponível' : 'Não disponível'}</code></li>
                   </ul>
                 </div>
               </div>
