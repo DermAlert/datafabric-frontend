@@ -73,3 +73,144 @@
     width: 1rem;
     margin-right: 0.5rem;
   }
+
+
+  /* Add these to your Sidebar.module.css file */
+
+.refreshButton {
+  background: none;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.refreshButton:hover {
+  background-color: #f3f4f6;
+  color: #4b5563;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loadingState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  color: #6b7280;
+  gap: 0.5rem;
+}
+
+.spinningIcon {
+  animation: spin 1s linear infinite;
+}
+
+.emptyState {
+  padding: 1rem;
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.errorMessage {
+  padding: 0.75rem;
+  background-color: #fee2e2;
+  color: #b91c1c;
+  border-radius: 0.375rem;
+  margin: 0.5rem;
+  font-size: 0.875rem;
+}/* Add these to your Sidebar.module.css file */
+.loadingState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  color: #6b7280;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.spinningIcon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.emptyState {
+  padding: 1rem;
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.errorMessage {
+  padding: 0.75rem;
+  background-color: #fee2e2;
+  color: #b91c1c;
+  border-radius: 0.375rem;
+  margin: 0.5rem 0;
+  font-size: 0.875rem;
+}
+
+/* Add these to your SourceItem.module.css file */
+.loadingIndicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+.emptyMessage {
+  padding: 0.5rem;
+  color: #6b7280;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.errorMessage {
+  padding: 0.5rem;
+  background-color: #fee2e2;
+  color: #b91c1c;
+  border-radius: 0.25rem;
+  margin: 0.25rem 0;
+  font-size: 0.75rem;
+}
+
+.sourceIconGeneric {
+  height: 1rem;
+  width: 1rem;
+  color: #6b7280;
+  margin-right: 0.5rem;
+}
+
+.sourceBadgeGeneric {
+  font-size: 0.75rem;
+  background-color: #f3f4f6;
+  color: #374151;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+}

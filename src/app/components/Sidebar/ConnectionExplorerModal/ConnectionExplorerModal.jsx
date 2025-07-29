@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   X, Database, Server, Table, Columns, Search, ChevronDown, ChevronRight,
-  Eye, EyeOff, RefreshCw, CheckCircle, XCircle, AlertCircle, Activity, Folder, Cloud, Zap, Info
+  Eye, EyeOff, RefreshCw, CheckCircle, XCircle, AlertCircle, Activity, Folder, Cloud, Zap, Info, Image
 } from "lucide-react";
 import styles from "./ConnectionExplorerModal.module.css";
 
@@ -17,6 +17,19 @@ async function patchFlAtivo(url, fl_ativo) {
     method: "PATCH",
     headers: { "Content-Type": "application/json", accept: "application/json" },
     body: JSON.stringify({ fl_ativo }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function setImagePath(columnId, isImagePath, connectionId) {
+  const res = await fetch(`http://localhost:8004/api/image-paths/columns/${columnId}/image-path`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", accept: "application/json" },
+    body: JSON.stringify({
+      is_image_path: isImagePath,
+      image_connection_id: connectionId
+    }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -61,6 +74,13 @@ export default function ConnectionExplorerModal({ isOpen, onClose }) {
   const [enabledStates, setEnabledStates] = useState({});
   const [modalInfo, setModalInfo] = useState({ open: false, content: null });
   const [refreshKey, setRefreshKey] = useState(Date.now());
+  const [imagePathModal, setImagePathModal] = useState({ 
+    open: false, 
+    columnId: null,
+    columnName: "",
+    isImagePath: false,
+    selectedConnectionId: 0
+  });
 
   const scrollRefs = useRef({});
 
@@ -196,6 +216,24 @@ export default function ConnectionExplorerModal({ isOpen, onClose }) {
     }
   }
 
+  async function handleSaveImagePath() {
+    setLoading(true);
+    try {
+      await setImagePath(
+        imagePathModal.columnId, 
+        imagePathModal.isImagePath, 
+        imagePathModal.isImagePath ? imagePathModal.selectedConnectionId : 0
+      );
+      setImagePathModal({...imagePathModal, open: false});
+      // Refresh column data
+      setRefreshKey(Date.now());
+    } catch (e) {
+      setError(`Falha ao configurar caminho de imagem: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function handleShowTableInfo(tableId) {
     setLoading(true);
     fetchJson(`http://localhost:8004/api/metadata/tables/${tableId}`)
@@ -223,6 +261,16 @@ export default function ConnectionExplorerModal({ isOpen, onClose }) {
         });
       })
       .finally(() => setLoading(false));
+  }
+
+  function handleShowImagePathConfig(column) {
+    setImagePathModal({
+      open: true,
+      columnId: column.id,
+      columnName: column.column_name,
+      isImagePath: column.is_image_path || false,
+      selectedConnectionId: column.image_connection_id || 0
+    });
   }
 
   function handleShowDistinct(columnId, columnName) {
@@ -438,7 +486,7 @@ export default function ConnectionExplorerModal({ isOpen, onClose }) {
               <span>Nenhuma conexão encontrada para os filtros atuais.</span>
             </div>
           ) : (
-            filterList(connections, "name", "connection").map((connection, connIdx) => (
+            filterList(connections, "name", "connection").map((connection) => (
               <div
                 key={connection.id}
                 className={styles.connectionCard}
@@ -672,6 +720,11 @@ export default function ConnectionExplorerModal({ isOpen, onClose }) {
                                                           <span className={column.is_nullable ? styles.nullable : styles.notNull}>
                                                             {column.is_nullable ? "NULL" : "NOT NULL"}
                                                           </span>
+                                                          {column.is_image_path && (
+                                                            <span className={styles.imagePath}>
+                                                              IMAGE PATH
+                                                            </span>
+                                                          )}
                                                         </div>
                                                       </div>
                                                       <div
@@ -701,6 +754,14 @@ export default function ConnectionExplorerModal({ isOpen, onClose }) {
                                                           onClick={() => handleShowDistinct(column.id, column.column_name)}
                                                         >
                                                           <Search size={13} />
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          className={styles.imagePathButton}
+                                                          title="Configurar caminho de imagem"
+                                                          onClick={() => handleShowImagePathConfig(column)}
+                                                        >
+                                                          <Image size={13} />
                                                         </button>
                                                       </div>
                                                     </div>
@@ -749,6 +810,60 @@ export default function ConnectionExplorerModal({ isOpen, onClose }) {
           {distinctModal.values.length === 0
             ? <i>Nenhum valor encontrado.</i>
             : <ul>{distinctModal.values.map((v, i) => <li key={i}>{String(v)}</li>)}</ul>}
+        </div>
+      </InfoModal>
+      <InfoModal
+        isOpen={imagePathModal.open}
+        title={`Configurar Caminho de Imagem: ${imagePathModal.columnName}`}
+        onClose={() => setImagePathModal({ ...imagePathModal, open: false })}
+      >
+        <div className={styles.imagePathForm}>
+          <label className={styles.imagePathCheckboxLabel}>
+            <input
+              type="checkbox"
+              checked={imagePathModal.isImagePath}
+              onChange={e => setImagePathModal({...imagePathModal, isImagePath: e.target.checked})}
+              className={styles.imagePathCheckbox}
+            />
+            Esta coluna contém caminhos de imagens
+          </label>
+          
+          {imagePathModal.isImagePath && (
+            <div className={styles.connectionSelect}>
+              <label htmlFor="connectionSelect">Selecione uma conexão para acesso às imagens:</label>
+              <select
+                id="connectionSelect"
+                value={imagePathModal.selectedConnectionId}
+                onChange={e => setImagePathModal({...imagePathModal, selectedConnectionId: Number(e.target.value)})}
+                className={styles.connectionSelectInput}
+              >
+                <option value={0}>-- Selecione uma Conexão --</option>
+                {connections.map(conn => (
+                  <option key={conn.id} value={conn.id}>
+                    {conn.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          
+          <div className={styles.imagePathActions}>
+            <button
+              type="button"
+              className={styles.cancelButton}
+              onClick={() => setImagePathModal({...imagePathModal, open: false})}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className={styles.saveButton}
+              onClick={handleSaveImagePath}
+              disabled={loading || (imagePathModal.isImagePath && imagePathModal.selectedConnectionId === 0)}
+            >
+              Salvar
+            </button>
+          </div>
         </div>
       </InfoModal>
     </div>
