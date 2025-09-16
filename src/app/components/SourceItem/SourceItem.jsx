@@ -72,7 +72,7 @@ export default function SourceItem({
       {expanded && (
         <div className={styles.sourceContent}>
           <div className={styles.sourceContentLabel}>
-            {isPipeline ? "Pipelines" : "Datasets"}
+            {isPipeline ? "Pipelines" : ""}
           </div>
           
           <div className={styles.datasetList}>
