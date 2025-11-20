@@ -1,0 +1,13 @@
+.mainLayout {
+  display: flex;
+  height: 100vh;
+  background-color: #f3f4f6;
+  overflow: hidden;
+}
+
+.contentWrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}

@@ -22,17 +22,14 @@ export default function Sidebar({
   const [dataDefineModalOpen, setDataDefineModalOpen] = useState(false);
   const [equivalenceManagerOpen, setEquivalenceManagerOpen] = useState(false);
   
-  // State for connections
   const [connections, setConnections] = useState([]);
   const [connectionTypes, setConnectionTypes] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Fix: Use local modal state to control DataDefineModal visibility
   const handleOpenDataDefineModal = () => setDataDefineModalOpen(true);
   const handleCloseDataDefineModal = () => setDataDefineModalOpen(false);
 
-  // Fetch connection types
   const fetchConnectionTypes = async () => {
     try {
       const response = await fetch('http://localhost:8004/api/connection/search', {
@@ -50,7 +47,6 @@ export default function Sidebar({
       }
 
       const data = await response.json();
-      // Convert array to object for easier lookup
       const typesMap = {};
       data.items.forEach(type => {
         typesMap[type.id] = type;
@@ -65,16 +61,13 @@ export default function Sidebar({
     }
   };
 
-  // Fetch all connections
   const fetchAllConnections = async () => {
     setLoading(true);
     setError(null);
     
     try {
-      // First fetch connection types
       const typeMap = await fetchConnectionTypes();
       
-      // Then fetch connections
       const response = await fetch('http://localhost:8004/api/data-connections/search', {
         method: 'POST',
         headers: {
@@ -91,7 +84,6 @@ export default function Sidebar({
 
       const data = await response.json();
       
-      // Enhance connections with their type info
       const enhancedConnections = data.items.map(conn => {
         const connType = typeMap[conn.connection_type_id] || {};
         return {
@@ -112,12 +104,10 @@ export default function Sidebar({
     }
   };
 
-  // Fetch connections on component mount
   useEffect(() => {
     fetchAllConnections();
   }, []);
 
-  // Helper function to map connection type to icon color
   const getIconColorForType = (type) => {
     if (!type) return 'Generic';
     
@@ -138,20 +128,19 @@ export default function Sidebar({
     <div className={styles.mainSidebar}>
       <div className={styles.sidebarHeader}>
         <h2 className={styles.sidebarTitle}>DataFabric</h2>
-        <p className={styles.sidebarSubtitle}>Gerenciador de Fontes de Dados</p>
       </div>
       <div className={styles.sidebarContent}>
         <div className={styles.sidebarSectionHeader}>
           <h3 className={styles.sidebarSectionTitle}>Fontes de Dados</h3>
           <button className={styles.addButton} onClick={handleOpenDataDefineModal}>
-            <PlusCircle className={styles.navIcon} />
+            <PlusCircle size={14} />
           </button>
         </div>
         
         <div className={styles.sourcesList}>
           {loading && (
             <div className={styles.loadingState}>
-              <RefreshCw className={styles.spinningIcon} size={16} />
+              <RefreshCw className={styles.spinningIcon} size={14} />
               <span>Carregando...</span>
             </div>
           )}
@@ -164,7 +153,7 @@ export default function Sidebar({
           
           {!loading && connections.length === 0 && !error && (
             <div className={styles.emptyState}>
-              Nenhuma conexão encontrada. Adicione uma nova fonte.
+              Nenhuma conexão encontrada.
             </div>
           )}
           
@@ -180,49 +169,44 @@ export default function Sidebar({
               openAddDatasetModal={openAddDatasetModal}
               openDatasetExplorer={openDatasetExplorer}
               isPipeline={connection.isPipeline}
-              datasets={[]} // Will be fetched by SourceItem when expanded
+              datasets={[]} 
             />
           ))}
           
           <div
             className={styles.addSourceButton}
             onClick={handleOpenDataDefineModal}
-            style={{ cursor: 'pointer' }}
           >
-            <PlusCircle className={styles.addSourceIcon} />
-            <span>Adicionar Nova Fonte</span>
+            <PlusCircle className={styles.addSourceIcon} size={14} />
+            <span>Nova Fonte</span>
           </div>
           <div
             className={styles.addSourceButton}
             onClick={() => setExplorerOpen(true)}
-            style={{ cursor: 'pointer' }}
           >
-            <PlusCircle className={styles.addSourceIcon} />
-            <span>Explorar Colunas das Conexões</span>
+            <PlusCircle className={styles.addSourceIcon} size={14} />
+            <span>Explorar Colunas</span>
           </div>
           
           <div
             className={styles.addSourceButton}
             onClick={() => setMetadataEquivalenceOpen(true)}
-            style={{ cursor: 'pointer' }}
           >
-            <PlusCircle className={styles.addSourceIcon} />
+            <PlusCircle className={styles.addSourceIcon} size={14} />
             <span>Camada de Equivalência</span>
           </div>
           <div
             className={styles.addSourceButton}
             onClick={() => setDataSetFilterOpen(true)}
-            style={{ cursor: 'pointer' }}
           >
-            <PlusCircle className={styles.addSourceIcon} />
+            <PlusCircle className={styles.addSourceIcon} size={14} />
             <span>Filtrar Dataset</span>  
           </div>
           <div
             className={styles.addSourceButton}
             onClick={() => setEquivalenceManagerOpen(true)}
-            style={{ cursor: 'pointer' }}
           >
-            <PlusCircle className={styles.addSourceIcon} />
+            <PlusCircle className={styles.addSourceIcon} size={14} />
             <span>Gerenciar Equivalência</span> 
           </div>
         </div>

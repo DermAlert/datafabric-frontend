@@ -1,0 +1,67 @@
+.layout {
+  display: flex;
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+  background-color: #f3f4f6;
+}
+
+.workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.topBar {
+  padding: 1.5rem 2rem;
+  background-color: white;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.patientName {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.patientId {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+  display: block;
+  text-transform: uppercase;
+}
+
+.statusContainer {
+  text-align: right;
+}
+
+.statusLabel {
+  display: block;
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-bottom: 0.25rem;
+}
+
+.statusValue {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #f59e0b;
+  background-color: #fffbeb;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid #fcd34d;
+}
+
+.mainArea {
+  flex: 1;
+  padding: 1.5rem;
+  display: flex;
+  gap: 1.5rem;
+  overflow: hidden;
+}

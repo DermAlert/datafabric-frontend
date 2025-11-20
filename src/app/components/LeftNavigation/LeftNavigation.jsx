@@ -1,6 +1,6 @@
 "use client";
 
-import { Database, Home, Grid, BarChart, Users, Settings, LogOut, Server, Activity, Compass } from 'lucide-react';
+import { Database, Home, Grid, LogOut, Server, Activity, Compass, Settings } from 'lucide-react';
 import styles from './LeftNavigation.module.css';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -16,14 +16,13 @@ export default function LeftNavigation() {
     '/maincontent': 'maincontent'
   };
 
-  // Find the active route
   const activeSidebar = routeSidebarMap[pathname.toLowerCase()] || '';
 
   return (
     <div className={styles.leftNav}>
       <div className={styles.logoContainer}>
         <div className={styles.logoIcon}>
-          <Database className={styles.logoIconInner} />
+          <Database size={20} />
         </div>
       </div>
       
@@ -33,44 +32,44 @@ export default function LeftNavigation() {
           onClick={() => router.push('/deltasharing')}
           aria-label="Home"
         >
-          <Home className={styles.navIcon} />
+          <Home size={20} />
         </button>
         <button
           className={`${styles.navButton} ${activeSidebar === "airflow" ? styles.navButtonActive : ""}`}
           onClick={() => router.push('/airflow')}
           aria-label="Airflow"
         >
-          <Activity className={styles.navIcon} />
+          <Activity size={20} />
         </button>
         <button
           className={`${styles.navButton} ${activeSidebar === "databaseconnect" ? styles.navButtonActive : ""}`}
           onClick={() => router.push('/databaseconnect')}
           aria-label="Database Connect"
         >
-          <Server className={styles.navIcon} />
+          <Server size={20} />
         </button>
         <button
           className={`${styles.navButton} ${activeSidebar === "explorer" ? styles.navButtonActive : ""}`}
           onClick={() => router.push('/explorer')}
           aria-label="Explorer"
         >
-          <Compass className={styles.navIcon} />
+          <Compass size={20} />
         </button>
         <button
           className={`${styles.navButton} ${activeSidebar === "maincontent" ? styles.navButtonActive : ""}`}
           onClick={() => router.push('/maincontent')}
           aria-label="Main Content"
         >
-          <Grid className={styles.navIcon} />
+          <Grid size={20} />
         </button>
       </div>
       
       <div className={styles.bottomNavContainer}>
         <button className={styles.bottomNavButton} aria-label="Settings">
-          <Settings className={styles.navIcon} />
+          <Settings size={20} />
         </button>
-        <button className={`${styles.bottomNavButton} ${styles.bottomNavButtonMargin}`} aria-label="Logout">
-          <LogOut className={styles.navIcon} />
+        <button className={styles.bottomNavButton} aria-label="Logout">
+          <LogOut size={20} />
         </button>
       </div>
     </div>

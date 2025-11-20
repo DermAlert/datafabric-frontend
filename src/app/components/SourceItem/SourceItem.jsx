@@ -18,7 +18,6 @@ export default function SourceItem({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Fetch datasets for this source if expanded
   useEffect(() => {
     if (expanded && sourceDatasets.length === 0) {
       fetchSourceDatasets();
@@ -31,7 +30,6 @@ export default function SourceItem({
     setLoading(true);
     setError(null);
     try {
-      // Fetch datasets for this connection - adjust endpoint as needed
       const response = await fetch(`http://localhost:8004/api/data-connections/${id}/datasets`);
       if (!response.ok) {
         throw new Error('Failed to fetch');
@@ -58,10 +56,10 @@ export default function SourceItem({
       >
         <div className={styles.sourceHeaderLeft}>
           {expanded ? 
-            <ChevronDown className={styles.chevron} /> : 
-            <ChevronRight className={styles.chevron} />
+            <ChevronDown className={styles.chevron} size={14} /> : 
+            <ChevronRight className={styles.chevron} size={14} />
           }
-          <Server className={styles[`sourceIcon${iconColor}`]} />
+          <Server className={styles[`sourceIcon${iconColor}`]} size={16} />
           <span className={styles.sourceLabel}>{name}</span>
         </div>
         <div className={styles[`sourceBadge${iconColor}`]}>
@@ -72,13 +70,13 @@ export default function SourceItem({
       {expanded && (
         <div className={styles.sourceContent}>
           <div className={styles.sourceContentLabel}>
-            {isPipeline ? "Pipelines" : ""}
+            {isPipeline ? "Pipelines" : "Datasets"}
           </div>
           
           <div className={styles.datasetList}>
             {loading ? (
               <div className={styles.loadingIndicator}>
-                <RefreshCw className={styles.spinningIcon} size={16} />
+                <RefreshCw className={styles.spinningIcon} size={14} />
                 <span>Carregando...</span>
               </div>
             ) : error ? (
@@ -87,7 +85,7 @@ export default function SourceItem({
               </div>
             ) : sourceDatasets.length === 0 ? (
               <div className={styles.emptyMessage}>
-                Nenhum dataset encontrado
+                Vazio
               </div>
             ) : (
               sourceDatasets.map((dataset, index) => (
@@ -106,8 +104,8 @@ export default function SourceItem({
                   }}
                 >
                   {dataset.isTable ? 
-                    <Table className={styles.datasetIcon} /> : 
-                    <Folder className={styles.datasetIcon} />
+                    <Table className={styles.datasetIcon} size={14} /> : 
+                    <Folder className={styles.datasetIcon} size={14} />
                   }
                   <span>{dataset.name}</span>
                 </div>
@@ -120,8 +118,8 @@ export default function SourceItem({
                 openAddDatasetModal(id);
               }}
             >
-              <PlusCircle className={styles.addDatasetIcon} />
-              {/* <span>Adicionar {isPipeline ? "Pipeline" : "Dataset"}</span> */}
+              <PlusCircle className={styles.addDatasetIcon} size={14} />
+              <span>Adicionar</span>
             </div>
           </div>
         </div>

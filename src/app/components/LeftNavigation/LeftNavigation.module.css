@@ -1,65 +1,84 @@
 .leftNav {
     width: 4rem;
-    background-color: #4338ca;
-    color: white;
+    background-color: #f9f9f9;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding-top: 1.5rem;
-    padding-bottom: 1.5rem;
-  }
-  
-  .logoContainer {
-    margin-bottom: 2rem;
-  }
-  
-  .logoIcon {
+    padding: 1rem 0;
+    height: 100vh;
+    z-index: 50;
+    flex-shrink: 0;
+}
+
+.logoContainer {
+    margin-bottom: 1.5rem;
+    padding: 0.5rem;
+}
+
+.logoIcon {
     height: 2rem;
     width: 2rem;
-    border-radius: 0.5rem;
-    background-color: white;
+    background-color: #3b82f6;
+    border-radius: 0.375rem;
     display: flex;
     align-items: center;
     justify-content: center;
-  }
-  
-  .logoIconInner {
-    height: 1.25rem;
-    width: 1.25rem;
-    color: #4338ca;
-  }
-  
-  .navLinksContainer {
+    color: white;
+}
+
+.navLinksContainer {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1.5rem;
-    flex-grow: 1;
-  }
-  
-  .navButton {
-    padding: 0.5rem;
-    border-radius: 0.5rem;
-  }
-  
-  .navButtonActive {
-    background-color: #4f46e5;
-  }
-  
-  .navIcon {
-    height: 1.25rem;
-    width: 1.25rem;
-  }
-  
-  .bottomNavContainer {
+    width: 100%;
+    gap: 0.5rem;
+    padding: 0 0.5rem;
+}
+
+.navButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.375rem;
+    color: #94a3b8;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+    background: transparent;
+}
+
+.navButton:hover {
+    background-color: #1e293b;
+    color: #f1f5f9;
+}
+
+.navButtonActive {
+    background-color: #1e293b;
+    color: #60a5fa;
+    border: 1px solid #334155;
+}
+
+.bottomNavContainer {
     margin-top: auto;
-  }
-  
-  .bottomNavButton {
-    padding: 0.5rem;
-    border-radius: 0.5rem;
-  }
-  
-  .bottomNavButtonMargin {
-    margin-top: 1rem;
-  }
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0 0.5rem 1rem 0.5rem;
+}
+
+.bottomNavButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.375rem;
+    color: #94a3b8;
+    transition: all 0.2s;
+}
+
+.bottomNavButton:hover {
+    background-color: #1e293b;
+    color: #f1f5f9;
+}
