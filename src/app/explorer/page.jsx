@@ -3,8 +3,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '../components/Sidebar/Sidebar';
 import DataExplorerContent from './DataExplorerContent/DataExplorerContent';
-import styles from './explorer.module.css';
 import LeftNavigation from '../components/LeftNavigation/LeftNavigation';
+import styles from './page.module.css';
 
 export default function MainContentPage() {
   const [expandedSources, setExpandedSources] = useState({
@@ -12,6 +12,11 @@ export default function MainContentPage() {
     "postgres-1": false,
     "airflow-1": false
   });
+
+  const [selectedDataset, setSelectedDataset] = useState([
+    { name: "Imagens - Câncer de Pele (Pele Brancaaaa)" },
+    { name: "Imagens - Câncer de Pele (Pele Negra)" }
+  ]);
 
   const router = useRouter();
 
@@ -26,13 +31,9 @@ export default function MainContentPage() {
     router.push(`/explorer/${encodeURIComponent(dataset.name)}`);
   };
 
-  const openDatabaseConnect = () => router.push('/database');
   const openAirflowView = () => router.push('/analytics');
-  const [selectedDataset, setSelectedDataset] = useState([
-              { name: "Imagens - Câncer de Pele (Pele Brancaaaa)" },
-              { name: "Imagens - Câncer de Pele (Pele Negra)" }
-            ]);
-    const returnToDashboard = () => router.push('/');
+  const returnToDashboard = () => router.push('/');
+  
   const currentUser = {
     username: "hannanhunny01",
     initials: "HH"
@@ -40,8 +41,7 @@ export default function MainContentPage() {
 
   return (
     <div className={styles.mainLayout}>
-        <LeftNavigation />
-    
+      <LeftNavigation />
       <Sidebar
         expandedSources={expandedSources}
         toggleSource={toggleSource}
@@ -50,11 +50,11 @@ export default function MainContentPage() {
         openAirflowView={openAirflowView}
         openDataDefineModal={() => {}}
       />
-        <DataExplorerContent
-          dataset={selectedDataset}
-          returnToDashboard={returnToDashboard}
-          currentUser={currentUser}
-        />
+      <DataExplorerContent
+        dataset={selectedDataset}
+        returnToDashboard={returnToDashboard}
+        currentUser={currentUser}
+      />
     </div>
   );
 }

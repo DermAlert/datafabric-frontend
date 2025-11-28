@@ -1,0 +1,197 @@
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(30, 41, 59, 0.35);
+  z-index: 1050;
+}
+
+.modalContainer {
+  background-color: #fff;
+  border-radius: 0.75rem;
+  width: 95%;
+  max-width: 50rem;
+  max-height: 92vh;
+  box-shadow: 0 10px 40px rgba(30, 41, 59, 0.16);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalFadeIn 0.23s cubic-bezier(.35,1.17,.55,1.02);
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.98);}
+  to   { opacity: 1; transform: none;}
+}
+
+.modalHeader {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f9fafb;
+}
+
+.modalTitle {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+.closeButton {
+  color: #9ca3af;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 0.25rem;
+}
+
+.closeButton:hover {
+  color: #4b5563;
+  background: #f3f4f6;
+}
+
+.closeIcon {
+  height: 1.4rem;
+  width: 1.4rem;
+}
+
+.modalBody {
+  padding: 1.5rem;
+  flex: 1;
+  overflow-y: auto;
+  background: #fff;
+}
+
+.modalSearchBar {
+  display: flex;
+  align-items: center;
+  background: #f3f4f6;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  margin-bottom: 1rem;
+  gap: 10px;
+}
+
+.searchIcon {
+  color: #94a3b8;
+  width: 20px;
+  height: 20px;
+}
+
+.searchInput {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 1rem;
+  color: #1e293b;
+  flex: 1;
+  padding: 4px 0;
+}
+
+.modalResults {
+  min-height: 200px;
+  margin-bottom: 16px;
+}
+
+.datasetList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.datasetListItem {
+  padding: 1rem;
+  border-radius: 0.5rem;
+  background: #f8fafc;
+  margin-bottom: 0.6rem;
+  cursor: pointer;
+  border: 1px solid #f1f5f9;
+  transition: all 0.2s;
+}
+
+.datasetListItem:hover {
+  background: #e0e7ef;
+  box-shadow: 0 2px 10px rgba(30,41,59,0.10);
+}
+
+.datasetListName {
+  font-weight: 600;
+  color: #172554;
+}
+
+.datasetListDescription {
+  font-size: 0.9rem;
+  color: #64748b;
+  margin: 4px 0;
+}
+
+.datasetListMeta {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  display: flex;
+  gap: 12px;
+}
+
+.loadingSpinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 2rem;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 4px solid #cbd5e1;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 10px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg);}
+}
+
+.noResults {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #cbd5e1;
+  padding: 2rem;
+}
+
+.noResultsIcon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 1rem;
+}
+
+.paginationControls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f1f5f9;
+}
+
+.pageButton {
+  background: #f1f5f9;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  color: #3b82f6;
+  cursor: pointer;
+}
+
+.pageButton:disabled {
+  color: #b3bbcc;
+  cursor: not-allowed;
+}
