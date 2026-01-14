@@ -1,14 +1,67 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+import { defineConfig, globalIgnores } from 'eslint/config';
+import nextVitals from 'eslint-config-next/core-web-vitals';
+import nextTs from 'eslint-config-next/typescript';
+import prettier from 'eslint-config-prettier';
+import simpleImportSort from 'eslint-plugin-simple-import-sort';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
 
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
+  // Prettier - deve vir depois das outras configs para desabilitar regras conflitantes
+  prettier,
 
-const eslintConfig = [...compat.extends("next/core-web-vitals")];
+  // Configuração de ordenação de imports
+  {
+    plugins: {
+      'simple-import-sort': simpleImportSort,
+    },
+    rules: {
+      'simple-import-sort/imports': [
+        'error',
+        {
+          groups: [
+            // React e Next primeiro
+            ['^react', '^next'],
+            // Pacotes externos (node_modules)
+            ['^@?\\w'],
+            // Imports internos com alias (@/)
+            ['^@/'],
+            // Imports relativos (../ e ./)
+            ['^\\.\\./'],
+            ['^\\./'],
+            // Imports de estilos
+            ['^.+\\.css$'],
+          ],
+        },
+      ],
+      'simple-import-sort/exports': 'error',
+    },
+  },
+
+  // Regras customizadas TypeScript
+  {
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+        },
+      ],
+      '@typescript-eslint/consistent-type-imports': [
+        'error',
+        {
+          prefer: 'type-imports',
+          fixStyle: 'inline-type-imports',
+        },
+      ],
+      '@typescript-eslint/no-empty-object-type': 'off',
+    },
+  },
+
+  // Ignores globais
+  globalIgnores(['.next/**', 'out/**', 'build/**', 'next-env.d.ts', 'node_modules/**']),
+]);
 
 export default eslintConfig;
