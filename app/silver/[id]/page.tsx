@@ -22,15 +22,15 @@ import {
   Loader2,
   Code2,
   Database,
-  Radio,
   Timer,
-  Info
+  Info,
+  Share2
 } from 'lucide-react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
 
 // Types
-type DatasetType = 'transform' | 'virtualized';
+type DatasetType = 'persistent' | 'virtualized';
 
 interface Column {
   key: string;
@@ -53,13 +53,13 @@ interface DatasetInfo {
   sourceQuery?: string;
 }
 
-// Mock datasets - Transform (materialized data)
+// Mock datasets - Persistent (materialized data)
 const MOCK_DATASETS: Record<string, DatasetInfo> = {
   'silver_1': {
     id: 'silver_1',
     name: 'patients_normalized',
     description: 'Normalized patient data with CPF formatting and gender unification',
-    datasetType: 'transform',
+    datasetType: 'persistent',
     sourceBronzeDataset: 'patients_raw',
     columns: [
       { key: 'id', label: 'ID', type: 'number', width: 80 },
@@ -88,7 +88,7 @@ const MOCK_DATASETS: Record<string, DatasetInfo> = {
     id: 'silver_3',
     name: 'customer_360_silver',
     description: 'Clean customer data with phone normalization',
-    datasetType: 'transform',
+    datasetType: 'persistent',
     sourceBronzeDataset: 'customer_360',
     columns: [
       { key: 'id', label: 'ID', type: 'number', width: 80 },
@@ -114,7 +114,7 @@ const MOCK_DATASETS: Record<string, DatasetInfo> = {
     id: 'silver_5',
     name: 'transactions_clean',
     description: 'Transaction data with value formatting',
-    datasetType: 'transform',
+    datasetType: 'persistent',
     sourceBronzeDataset: 'orders_unified',
     columns: [
       { key: 'id', label: 'TX ID', type: 'string', width: 120 },
@@ -325,10 +325,6 @@ const VirtualizedPreview = ({
           <div className="flex-1">
             <h4 className="font-medium text-cyan-900 dark:text-cyan-200 flex items-center gap-2">
               Live Query Preview
-              <span className="flex items-center gap-1 text-xs font-normal text-cyan-600 dark:text-cyan-400">
-                <Radio className="w-3 h-3 animate-pulse" />
-                Real-time via Trino
-              </span>
             </h4>
             <p className="text-sm text-cyan-700 dark:text-cyan-300 mt-1">
               This is a virtualized dataset. Data is queried on-demand from source systems — no data is stored in this layer.
@@ -385,7 +381,7 @@ const VirtualizedPreview = ({
       {isLoading ? (
         <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-700">
           <Loader2 className="w-10 h-10 text-cyan-500 animate-spin mb-4" />
-          <p className="text-gray-600 dark:text-gray-400">Executing query via Trino...</p>
+          <p className="text-gray-600 dark:text-gray-400">Executing query...</p>
         </div>
       ) : (
         <DataTable columns={dataset.columns} data={dataset.data} />
@@ -488,7 +484,7 @@ export default function SilverDatasetViewPage() {
                         ? "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300"
                         : "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
                     )}>
-                      {isVirtualized ? 'Virtualized' : 'Transform'}
+                      {isVirtualized ? 'Virtualized' : 'Persistent'}
                     </span>
                   </div>
                   <p className="text-sm text-gray-500 dark:text-gray-400">{dataset.description}</p>
@@ -496,6 +492,15 @@ export default function SilverDatasetViewPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {!isVirtualized && (
+                <Link
+                  href={`/sharing?dataset=silver.${dataset.name}`}
+                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 hover:bg-violet-200 dark:hover:bg-violet-900/50 rounded-lg transition-colors"
+                >
+                  <Share2 className="w-4 h-4" />
+                  Share
+                </Link>
+              )}
               {!isVirtualized && (
                 <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-lg transition-colors">
                   <Download className="w-4 h-4" />
@@ -523,7 +528,7 @@ export default function SilverDatasetViewPage() {
             </div>
           </div>
 
-          {/* Stats - only for Transform */}
+          {/* Stats - only for Persistent */}
           {!isVirtualized && (
             <div className="flex items-center gap-6 text-sm">
               <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
@@ -550,7 +555,7 @@ export default function SilverDatasetViewPage() {
           )}
         </div>
 
-        {/* Toolbar - only for Transform */}
+        {/* Toolbar - only for Persistent */}
         {!isVirtualized && (
           <div className="px-6 py-3 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -602,7 +607,7 @@ export default function SilverDatasetViewPage() {
           )}
         </div>
 
-        {/* Pagination - only for Transform */}
+        {/* Pagination - only for Persistent */}
         {!isVirtualized && totalPages > 1 && (
           <div className="px-6 py-4 border-t border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
             <span className="text-sm text-gray-500 dark:text-gray-400">

@@ -24,7 +24,8 @@ import {
   Zap,
   Image as ImageIcon,
   FileText,
-  ExternalLink
+  ExternalLink,
+  Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
@@ -36,6 +37,7 @@ const MOCK_DATASETS = [
     name: 'patients_raw',
     description: 'Raw patient data from all healthcare sources',
     dataType: 'structured' as const,
+    type: 'persistent' as const,
     tables: [
       { id: 1, name: 'patients', connection: 'PostgreSQL Production', columnCount: 12 },
       { id: 2, name: 'medical_records', connection: 'PostgreSQL Production', columnCount: 8 },
@@ -55,6 +57,7 @@ const MOCK_DATASETS = [
     name: 'orders_unified',
     description: 'Unified orders from e-commerce and retail systems',
     dataType: 'structured' as const,
+    type: 'persistent' as const,
     tables: [
       { id: 3, name: 'orders', connection: 'PostgreSQL Production', columnCount: 15 },
       { id: 4, name: 'transactions', connection: 'MySQL Analytics', columnCount: 10 },
@@ -75,6 +78,7 @@ const MOCK_DATASETS = [
     name: 'product_catalog',
     description: 'Product images with metadata from e-commerce catalog',
     dataType: 'images' as const,
+    type: 'persistent' as const,
     tables: [
       { id: 9, name: 'products', connection: 'S3 Product Images', columnCount: 8 },
     ],
@@ -93,6 +97,7 @@ const MOCK_DATASETS = [
     name: 'document_scans',
     description: 'Scanned documents with OCR metadata',
     dataType: 'images' as const,
+    type: 'persistent' as const,
     tables: [
       { id: 10, name: 'scans', connection: 'S3 Document Archive', columnCount: 7 },
     ],
@@ -111,6 +116,7 @@ const MOCK_DATASETS = [
     name: 'customer_360',
     description: 'Customer data consolidated from CRM and MongoDB',
     dataType: 'structured' as const,
+    type: 'persistent' as const,
     tables: [
       { id: 6, name: 'customers', connection: 'PostgreSQL Production', columnCount: 20 },
       { id: 7, name: 'users', connection: 'MongoDB UserData', columnCount: 15 },
@@ -131,6 +137,7 @@ const MOCK_DATASETS = [
     name: 'inventory_snapshot',
     description: 'Daily inventory snapshots',
     dataType: 'structured' as const,
+    type: 'persistent' as const,
     tables: [
       { id: 8, name: 'inventory', connection: 'MySQL Analytics', columnCount: 8 },
     ],
@@ -143,6 +150,47 @@ const MOCK_DATASETS = [
     rowCount: 0,
     sizeBytes: 0,
     createdAt: '2026-01-13T09:00:00Z',
+  },
+  // Virtualized datasets - query on-demand
+  {
+    id: 'bronze_virt_1',
+    name: 'orders_exploration',
+    description: 'Virtualized view for exploring order data via API',
+    dataType: 'structured' as const,
+    type: 'virtualized' as const,
+    tables: [
+      { id: 3, name: 'orders', connection: 'PostgreSQL Production', columnCount: 15 },
+      { id: 4, name: 'transactions', connection: 'MySQL Analytics', columnCount: 10 },
+      { id: 5, name: 'order_items', connection: 'PostgreSQL Production', columnCount: 6 },
+    ],
+    relationshipCount: 2,
+    outputFormat: null,
+    outputBucket: null,
+    federatedJoins: true,
+    status: 'active',
+    lastIngestion: null,
+    rowCount: 0,
+    sizeBytes: 0,
+    createdAt: '2026-01-12T14:00:00Z',
+  },
+  {
+    id: 'bronze_virt_2',
+    name: 'inventory_realtime',
+    description: 'Real-time inventory data for external APIs',
+    dataType: 'structured' as const,
+    type: 'virtualized' as const,
+    tables: [
+      { id: 8, name: 'inventory', connection: 'MySQL Analytics', columnCount: 8 },
+    ],
+    relationshipCount: 0,
+    outputFormat: null,
+    outputBucket: null,
+    federatedJoins: false,
+    status: 'active',
+    lastIngestion: null,
+    rowCount: 0,
+    sizeBytes: 0,
+    createdAt: '2026-01-13T10:00:00Z',
   },
 ];
 
@@ -171,6 +219,7 @@ const StatusBadge = ({ status }: { status: string }) => {
     running: { color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400', icon: Loader2, label: 'Running' },
     failed: { color: 'text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400', icon: AlertCircle, label: 'Failed' },
     pending: { color: 'text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400', icon: Clock, label: 'Pending' },
+    active: { color: 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400', icon: Zap, label: 'Active' },
   }[status] || { color: 'text-gray-600 bg-gray-100', icon: Clock, label: status };
 
   const Icon = config.icon;
@@ -183,19 +232,36 @@ const StatusBadge = ({ status }: { status: string }) => {
   );
 };
 
+const TypeBadge = ({ type }: { type: 'persistent' | 'virtualized' }) => {
+  const config = type === 'persistent' 
+    ? { color: 'text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400', icon: Sparkles, label: 'Persistent' }
+    : { color: 'text-cyan-600 bg-cyan-100 dark:bg-cyan-900/30 dark:text-cyan-400', icon: Zap, label: 'Virtualized' };
+
+  const Icon = config.icon;
+
+  return (
+    <span className={clsx('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium', config.color)}>
+      <Icon className="w-3 h-3" />
+      {config.label}
+    </span>
+  );
+};
+
 export default function BronzeLayerPage() {
   const [datasets, setDatasets] = useState(MOCK_DATASETS);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDataset, setSelectedDataset] = useState<typeof MOCK_DATASETS[0] | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterType, setFilterType] = useState<string>('all');
 
   const filteredDatasets = datasets.filter(d => {
     const matchesSearch = 
       d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       d.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = filterStatus === 'all' || d.status === filterStatus;
-    return matchesSearch && matchesStatus;
+    const matchesType = filterType === 'all' || d.type === filterType;
+    return matchesSearch && matchesStatus && matchesType;
   });
 
   const handleDeleteDataset = (id: string) => {
@@ -206,9 +272,9 @@ export default function BronzeLayerPage() {
 
   const stats = {
     total: datasets.length,
+    persistent: datasets.filter(d => d.type === 'persistent').length,
+    virtualized: datasets.filter(d => d.type === 'virtualized').length,
     running: datasets.filter(d => d.status === 'running').length,
-    completed: datasets.filter(d => d.status === 'completed').length,
-    failed: datasets.filter(d => d.status === 'failed').length,
   };
 
   return (
@@ -244,17 +310,17 @@ export default function BronzeLayerPage() {
               <span className="text-gray-600 dark:text-gray-400">{stats.total} datasets</span>
             </div>
             <div className="flex items-center gap-2 text-sm">
-              <Loader2 className="w-4 h-4 text-blue-500" />
-              <span className="text-gray-600 dark:text-gray-400">{stats.running} running</span>
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <span className="text-gray-600 dark:text-gray-400">{stats.persistent} persistent</span>
             </div>
             <div className="flex items-center gap-2 text-sm">
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-              <span className="text-gray-600 dark:text-gray-400">{stats.completed} completed</span>
+              <Zap className="w-4 h-4 text-cyan-500" />
+              <span className="text-gray-600 dark:text-gray-400">{stats.virtualized} virtualized</span>
             </div>
-            {stats.failed > 0 && (
+            {stats.running > 0 && (
               <div className="flex items-center gap-2 text-sm">
-                <AlertCircle className="w-4 h-4 text-red-500" />
-                <span className="text-red-600 dark:text-red-400">{stats.failed} failed</span>
+                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                <span className="text-gray-600 dark:text-gray-400">{stats.running} running</span>
               </div>
             )}
           </div>
@@ -275,13 +341,34 @@ export default function BronzeLayerPage() {
                   className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm"
                 />
               </div>
-              <div className="flex gap-2">
-                {['all', 'running', 'completed', 'failed', 'pending'].map((status) => (
+              <div className="flex gap-1 p-1 bg-gray-100 dark:bg-zinc-800 rounded-lg">
+                {[
+                  { value: 'all', label: 'All' },
+                  { value: 'persistent', label: 'Persistent', icon: Sparkles },
+                  { value: 'virtualized', label: 'Virtualized', icon: Zap },
+                ].map(({ value, label, icon: Icon }) => (
+                  <button
+                    key={value}
+                    onClick={() => setFilterType(value)}
+                    className={clsx(
+                      'flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+                      filterType === value
+                        ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    )}
+                  >
+                    {Icon && <Icon className="w-3 h-3" />}
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {['all', 'running', 'completed', 'active', 'failed', 'pending'].map((status) => (
                   <button
                     key={status}
                     onClick={() => setFilterStatus(status)}
                     className={clsx(
-                      'px-3 py-1 rounded-full text-xs font-medium transition-colors capitalize',
+                      'px-2.5 py-1 rounded-full text-xs font-medium transition-colors capitalize',
                       filterStatus === status
                         ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
                         : 'bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-zinc-700'
@@ -318,37 +405,32 @@ export default function BronzeLayerPage() {
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <span className="font-semibold text-gray-900 dark:text-white text-sm truncate">
                               {dataset.name}
                             </span>
-                            <StatusBadge status={dataset.status} />
+                            <TypeBadge type={dataset.type} />
                           </div>
                           <p className="text-xs text-gray-500 dark:text-gray-400 truncate mb-2">
                             {dataset.description}
                           </p>
-                          <div className="flex items-center gap-4 text-xs text-gray-400">
+                          <div className="flex items-center gap-3">
+                            <StatusBadge status={dataset.status} />
                             {dataset.dataType === 'images' ? (
-                              <span className="flex items-center gap-1 text-purple-500">
+                              <span className="flex items-center gap-1 text-xs text-purple-500">
                                 <ImageIcon className="w-3 h-3" />
-                                Images + Metadata
+                                Images
                               </span>
                             ) : (
-                              <span className="flex items-center gap-1">
+                              <span className="flex items-center gap-1 text-xs text-gray-400">
                                 <Table2 className="w-3 h-3" />
-                                {dataset.tables.length} tables
+                                {dataset.tables.length}
                               </span>
                             )}
                             {dataset.relationshipCount > 0 && (
-                              <span className="flex items-center gap-1">
+                              <span className="flex items-center gap-1 text-xs text-gray-400">
                                 <Link2 className="w-3 h-3" />
-                                {dataset.relationshipCount} joins
-                              </span>
-                            )}
-                            {dataset.federatedJoins && (
-                              <span className="flex items-center gap-1 text-purple-500">
-                                <Zap className="w-3 h-3" />
-                                Federated
+                                {dataset.relationshipCount}
                               </span>
                             )}
                           </div>
@@ -368,10 +450,15 @@ export default function BronzeLayerPage() {
                             <div className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg shadow-lg z-10 py-1">
                               <Link 
                                 href={`/bronze/${dataset.id}`}
-                                className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-zinc-700 text-amber-600 dark:text-amber-400 font-medium"
+                                className={clsx(
+                                  "w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-zinc-700 font-medium",
+                                  dataset.type === 'virtualized'
+                                    ? "text-cyan-600 dark:text-cyan-400"
+                                    : "text-amber-600 dark:text-amber-400"
+                                )}
                               >
                                 <Eye className="w-3.5 h-3.5" />
-                                View Data
+                                {dataset.type === 'virtualized' ? 'Preview Data' : 'View Data'}
                               </Link>
                               {dataset.status === 'running' ? (
                                 <button 
@@ -433,6 +520,7 @@ export default function BronzeLayerPage() {
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white">
                           {selectedDataset.name}
                         </h2>
+                        <TypeBadge type={selectedDataset.type} />
                         <StatusBadge status={selectedDataset.status} />
                       </div>
                       <p className="text-gray-500 dark:text-gray-400">
@@ -442,16 +530,26 @@ export default function BronzeLayerPage() {
                     <div className="flex gap-2">
                       <Link 
                         href={`/bronze/${selectedDataset.id}`}
-                        className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-purple-500 hover:bg-purple-600 rounded-lg transition-colors"
+                        className={clsx(
+                          "flex items-center gap-2 px-3 py-2 text-sm font-medium text-white rounded-lg transition-colors",
+                          selectedDataset.type === 'virtualized'
+                            ? "bg-cyan-500 hover:bg-cyan-600"
+                            : "bg-purple-500 hover:bg-purple-600"
+                        )}
                       >
                         {selectedDataset.dataType === 'images' ? (
                           <ImageIcon className="w-4 h-4" />
                         ) : (
                           <Eye className="w-4 h-4" />
                         )}
-                        View Data
+                        {selectedDataset.type === 'virtualized' ? 'Preview Data' : 'View Data'}
                       </Link>
-                      {selectedDataset.status === 'running' ? (
+                      {selectedDataset.type === 'virtualized' ? (
+                        <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-lg">
+                          <Play className="w-4 h-4" />
+                          Run Query
+                        </button>
+                      ) : selectedDataset.status === 'running' ? (
                         <button 
                           disabled
                           className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-amber-500/50 cursor-not-allowed rounded-lg"
@@ -468,7 +566,7 @@ export default function BronzeLayerPage() {
                           Queued
                         </button>
                       ) : (
-                        <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg">
+                        <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-lg">
                           <RefreshCw className="w-4 h-4" />
                           Re-run Ingestion
                         </button>
@@ -489,6 +587,25 @@ export default function BronzeLayerPage() {
                     </div>
                   )}
 
+                  {/* Virtualized Query Banner */}
+                  {selectedDataset.type === 'virtualized' && (
+                    <div className="p-4 rounded-lg bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-900/40">
+                          <Zap className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-cyan-900 dark:text-cyan-200 flex items-center gap-2">
+                            Virtualized Query
+                          </h4>
+                          <p className="text-sm text-cyan-700 dark:text-cyan-300">
+                            This dataset queries source data on-demand. No data is persistentd.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Data Type Banner */}
                   {selectedDataset.dataType === 'images' && (
                     <div className="p-4 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 mb-4">
@@ -506,40 +623,42 @@ export default function BronzeLayerPage() {
                     </div>
                   )}
 
-                  {/* Stats Grid */}
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800">
-                      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">
-                        <Clock className="w-3.5 h-3.5" />
-                        Last Ingestion
+                  {/* Stats Grid - only for Persistent */}
+                  {selectedDataset.type === 'persistent' && (
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800">
+                        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          <Clock className="w-3.5 h-3.5" />
+                          Last Ingestion
+                        </div>
+                        <div className="font-semibold text-gray-900 dark:text-white text-sm">
+                          {formatDate(selectedDataset.lastIngestion)}
+                        </div>
                       </div>
-                      <div className="font-semibold text-gray-900 dark:text-white text-sm">
-                        {formatDate(selectedDataset.lastIngestion)}
+                      <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800">
+                        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          {selectedDataset.dataType === 'images' ? (
+                            <ImageIcon className="w-3.5 h-3.5" />
+                          ) : (
+                            <Table2 className="w-3.5 h-3.5" />
+                          )}
+                          {selectedDataset.dataType === 'images' ? 'Total Items' : 'Total Rows'}
+                        </div>
+                        <div className="font-semibold text-gray-900 dark:text-white text-sm">
+                          {selectedDataset.rowCount.toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800">
+                        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          <HardDrive className="w-3.5 h-3.5" />
+                          Data Size
+                        </div>
+                        <div className="font-semibold text-gray-900 dark:text-white text-sm">
+                          {formatBytes(selectedDataset.sizeBytes)}
+                        </div>
                       </div>
                     </div>
-                    <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800">
-                      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">
-                        {selectedDataset.dataType === 'images' ? (
-                          <ImageIcon className="w-3.5 h-3.5" />
-                        ) : (
-                          <Table2 className="w-3.5 h-3.5" />
-                        )}
-                        {selectedDataset.dataType === 'images' ? 'Total Items' : 'Total Rows'}
-                      </div>
-                      <div className="font-semibold text-gray-900 dark:text-white text-sm">
-                        {selectedDataset.rowCount.toLocaleString()}
-                      </div>
-                    </div>
-                    <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800">
-                      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">
-                        <HardDrive className="w-3.5 h-3.5" />
-                        Data Size
-                      </div>
-                      <div className="font-semibold text-gray-900 dark:text-white text-sm">
-                        {formatBytes(selectedDataset.sizeBytes)}
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Content */}

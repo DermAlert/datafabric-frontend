@@ -36,13 +36,13 @@ type FilterCondition = {
   value: string;
 };
 
-// Mock silver datasets (combining Virtualized and Transform)
+// Mock silver datasets (combining Virtualized and Persistent)
 const MOCK_DATASETS = [
   {
     id: 'silver_1',
     name: 'patients_normalized',
     description: 'Normalized patient data with CPF formatting and gender unification',
-    type: 'transform' as const,
+    type: 'persistent' as const,
     sourceBronzeDataset: 'patients_raw',
     columnGroups: ['sex_group', 'country_unified'],
     filterConditions: [
@@ -87,7 +87,7 @@ const MOCK_DATASETS = [
     id: 'silver_3',
     name: 'customer_360_silver',
     description: 'Clean customer data with phone normalization',
-    type: 'transform' as const,
+    type: 'persistent' as const,
     sourceBronzeDataset: 'customer_360',
     columnGroups: [],
     filterConditions: [
@@ -131,7 +131,7 @@ const MOCK_DATASETS = [
     id: 'silver_5',
     name: 'transactions_clean',
     description: 'Transaction data with value formatting',
-    type: 'transform' as const,
+    type: 'persistent' as const,
     sourceBronzeDataset: 'orders_unified',
     columnGroups: ['currency_unified'],
     filterConditions: [
@@ -170,7 +170,7 @@ const formatDate = (dateString: string | null) => {
   });
 };
 
-const StatusBadge = ({ status, type }: { status: string; type: 'transform' | 'virtualized' }) => {
+const StatusBadge = ({ status, type }: { status: string; type: 'persistent' | 'virtualized' }) => {
   const config = {
     completed: { color: 'text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400', icon: CheckCircle2, label: 'Completed' },
     running: { color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400', icon: Loader2, label: 'Running' },
@@ -189,9 +189,9 @@ const StatusBadge = ({ status, type }: { status: string; type: 'transform' | 'vi
   );
 };
 
-const TypeBadge = ({ type }: { type: 'transform' | 'virtualized' }) => {
-  const config = type === 'transform' 
-    ? { color: 'text-purple-600 bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400', icon: Sparkles, label: 'Transform' }
+const TypeBadge = ({ type }: { type: 'persistent' | 'virtualized' }) => {
+  const config = type === 'persistent' 
+    ? { color: 'text-purple-600 bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400', icon: Sparkles, label: 'Persistent' }
     : { color: 'text-cyan-600 bg-cyan-100 dark:bg-cyan-900/30 dark:text-cyan-400', icon: Zap, label: 'Virtualized' };
 
   const Icon = config.icon;
@@ -229,7 +229,7 @@ export default function SilverLayerPage() {
 
   const stats = {
     total: datasets.length,
-    transform: datasets.filter(d => d.type === 'transform').length,
+    persistent: datasets.filter(d => d.type === 'persistent').length,
     virtualized: datasets.filter(d => d.type === 'virtualized').length,
     running: datasets.filter(d => d.status === 'running').length,
   };
@@ -277,7 +277,7 @@ export default function SilverLayerPage() {
             </div>
             <div className="flex items-center gap-2 text-sm">
               <Sparkles className="w-4 h-4 text-purple-500" />
-              <span className="text-gray-600 dark:text-gray-400">{stats.transform} transform</span>
+              <span className="text-gray-600 dark:text-gray-400">{stats.persistent} persistent</span>
             </div>
             <div className="flex items-center gap-2 text-sm">
               <Zap className="w-4 h-4 text-cyan-500" />
@@ -311,8 +311,8 @@ export default function SilverLayerPage() {
                 <div className="flex gap-1 p-1 bg-gray-100 dark:bg-zinc-800 rounded-lg">
                   {[
                     { value: 'all', label: 'All' },
-                    { value: 'transform', label: 'Transform', icon: Sparkles },
-                    { value: 'virtualized', label: 'Virtual', icon: Zap },
+                    { value: 'persistent', label: 'Persistent', icon: Sparkles },
+                    { value: 'virtualized', label: 'Virtualized', icon: Zap },
                   ].map(({ value, label, icon: Icon }) => (
                     <button
                       key={value}
@@ -415,17 +415,17 @@ export default function SilverLayerPage() {
                                 href={`/silver/${dataset.id}`}
                                 className={clsx(
                                   "w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-zinc-700 font-medium",
-                                  dataset.type === 'transform' 
+                                  dataset.type === 'persistent' 
                                     ? "text-purple-600 dark:text-purple-400"
                                     : "text-cyan-600 dark:text-cyan-400"
                                 )}
                               >
                                 <Eye className="w-3.5 h-3.5" />
-                                {dataset.type === 'transform' ? 'View Data' : 'Preview Data'}
+                                {dataset.type === 'persistent' ? 'View Data' : 'Preview Data'}
                               </Link>
                               <button className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200">
                                 <Play className="w-3.5 h-3.5" />
-                                {dataset.type === 'transform' ? 'Execute' : 'Query'}
+                                {dataset.type === 'persistent' ? 'Execute' : 'Query'}
                               </button>
                               <hr className="my-1 border-gray-200 dark:border-zinc-700" />
                               <button className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200">
@@ -477,22 +477,22 @@ export default function SilverLayerPage() {
                         href={`/silver/${selectedDataset.id}`}
                         className={clsx(
                           "flex items-center gap-2 px-3 py-2 text-sm font-medium text-white rounded-lg transition-colors",
-                          selectedDataset.type === 'transform'
+                          selectedDataset.type === 'persistent'
                             ? "bg-purple-500 hover:bg-purple-600"
                             : "bg-cyan-500 hover:bg-cyan-600"
                         )}
                       >
                         <Eye className="w-4 h-4" />
-                        {selectedDataset.type === 'transform' ? 'View Data' : 'Preview Data'}
+                        {selectedDataset.type === 'persistent' ? 'View Data' : 'Preview Data'}
                       </Link>
                       <button className={clsx(
                         "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors",
-                        selectedDataset.type === 'transform'
+                        selectedDataset.type === 'persistent'
                           ? "text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700"
                           : "text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700"
                       )}>
                         <Play className="w-4 h-4" />
-                        {selectedDataset.type === 'transform' ? 'Execute' : 'Run Query'}
+                        {selectedDataset.type === 'persistent' ? 'Execute' : 'Run Query'}
                       </button>
                     </div>
                   </div>
@@ -511,7 +511,7 @@ export default function SilverLayerPage() {
                   )}
 
                   {/* Stats Grid */}
-                  {selectedDataset.type === 'transform' && (
+                  {selectedDataset.type === 'persistent' && (
                     <div className="grid grid-cols-3 gap-4">
                       <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800">
                         <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">
@@ -550,7 +550,7 @@ export default function SilverLayerPage() {
                         <span className="text-sm font-medium">Virtualized Query</span>
                       </div>
                       <p className="text-sm text-cyan-600 dark:text-cyan-300">
-                        This dataset queries source data on-demand via Trino. No data is materialized.
+                        This dataset queries source data on-demand. No data is materialized.
                       </p>
                     </div>
                   )}
@@ -561,7 +561,7 @@ export default function SilverLayerPage() {
                   {/* Source */}
                   <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                      {selectedDataset.type === 'transform' ? (
+                      {selectedDataset.type === 'persistent' ? (
                         <>
                           <Database className="w-4 h-4 text-gray-400" />
                           Source Bronze Dataset
@@ -576,7 +576,7 @@ export default function SilverLayerPage() {
                         </>
                       )}
                     </h3>
-                    {selectedDataset.type === 'transform' ? (
+                    {selectedDataset.type === 'persistent' ? (
                       <div className="p-4 rounded-lg bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
                         <div className="flex items-center gap-3">
                           <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30">

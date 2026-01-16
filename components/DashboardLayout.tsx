@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Database, Layers, ChevronLeft, ChevronRight, ChevronDown, Link as LinkIcon, GitMerge, BookOpen, Folder, Columns, HardDrive, Sparkles, FileCode } from 'lucide-react';
+import { LayoutDashboard, Database, Layers, ChevronLeft, ChevronRight, ChevronDown, Link as LinkIcon, GitMerge, BookOpen, Folder, Columns, HardDrive, Sparkles, FileCode, Share2, Users } from 'lucide-react';
 import { ModeToggle } from '@/components/ModeToggle';
 
 const SidebarItem = ({ 
@@ -112,6 +112,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [connectionsExpanded, setConnectionsExpanded] = useState(true);
   const [equivalenceExpanded, setEquivalenceExpanded] = useState(true);
   const [silverExpanded, setSilverExpanded] = useState(true);
+  const [sharingExpanded, setSharingExpanded] = useState(true);
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
 
@@ -138,6 +139,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isSilverActive = currentPath?.startsWith('/silver');
   const isSilverDatasetsActive = currentPath === '/silver' || currentPath?.startsWith('/silver/new');
   const isSilverRulesActive = currentPath?.startsWith('/silver/rules');
+
+  // Sharing routes
+  const isSharingActive = currentPath?.startsWith('/sharing');
+  const isSharingSharesActive = currentPath === '/sharing' || (currentPath?.startsWith('/sharing') && !currentPath?.includes('/recipients'));
+  const isSharingRecipientsActive = currentPath?.startsWith('/sharing/recipients');
 
   return (
     <div className="flex min-h-screen bg-gray-50 dark:bg-zinc-950 transition-colors duration-300">
@@ -217,6 +223,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               <SubItem label="Datasets" href="/silver" active={isSilverDatasetsActive} icon={Layers} />
               <SubItem label="Rules" href="/silver/rules" active={isSilverRulesActive} icon={FileCode} />
+            </SidebarItemWithSub>
+          )}
+
+          {collapsed ? (
+            <SidebarItem icon={Share2} label="Share" href="/sharing" active={isSharingActive} collapsed={collapsed} />
+          ) : (
+            <SidebarItemWithSub 
+              icon={Share2} 
+              label="Share" 
+              collapsed={collapsed}
+              isExpanded={sharingExpanded}
+              onToggle={() => setSharingExpanded(!sharingExpanded)}
+            >
+              <SubItem label="Datasets" href="/sharing" active={isSharingSharesActive} icon={Share2} />
+              <SubItem label="Recipients" href="/sharing/recipients" active={isSharingRecipientsActive} icon={Users} />
             </SidebarItemWithSub>
           )}
         </nav>

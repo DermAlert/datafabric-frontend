@@ -207,7 +207,7 @@ export default function NewSilverDatasetPage() {
   const [currentStep, setCurrentStep] = useState(1);
   
   // Step 1: Type & Source
-  const [datasetType, setDatasetType] = useState<'transform' | 'virtualized'>('transform');
+  const [datasetType, setDatasetType] = useState<'persistent' | 'virtualized'>('persistent');
   const [datasetName, setDatasetName] = useState('');
   const [description, setDescription] = useState('');
   const [sourceBronze, setSourceBronze] = useState('');
@@ -282,7 +282,7 @@ export default function NewSilverDatasetPage() {
   const canProceed = () => {
     switch (currentStep) {
       case 1:
-        if (datasetType === 'transform') {
+        if (datasetType === 'persistent') {
           return datasetName && sourceBronze;
         }
         return datasetName && selectedTables.length > 0;
@@ -422,10 +422,10 @@ export default function NewSilverDatasetPage() {
                   
                   <div className="grid grid-cols-2 gap-4 mb-6">
                     <button
-                      onClick={() => setDatasetType('transform')}
+                      onClick={() => setDatasetType('persistent')}
                       className={clsx(
                         "p-4 rounded-xl border-2 text-left transition-all",
-                        datasetType === 'transform'
+                        datasetType === 'persistent'
                           ? "border-purple-500 bg-purple-50 dark:bg-purple-900/20"
                           : "border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600"
                       )}
@@ -434,10 +434,10 @@ export default function NewSilverDatasetPage() {
                         <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
                           <Sparkles className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                         </div>
-                        <span className="font-semibold text-gray-900 dark:text-white">Transform</span>
+                        <span className="font-semibold text-gray-900 dark:text-white">Persistent</span>
                       </div>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Materialize Bronze data to Silver Delta Lake via Spark. Best for ETL pipelines.
+                        Persist data to Silver Delta Lake. Best for ETL pipelines.
                       </p>
                     </button>
                     
@@ -457,7 +457,7 @@ export default function NewSilverDatasetPage() {
                         <span className="font-semibold text-gray-900 dark:text-white">Virtualized</span>
                       </div>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Query source data on-demand via Trino. Best for exploration and APIs.
+                        Query source data on-demand. Best for exploration and APIs.
                       </p>
                     </button>
                   </div>
@@ -494,10 +494,10 @@ export default function NewSilverDatasetPage() {
                 {/* Source Selection */}
                 <div className="bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 p-6">
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                    {datasetType === 'transform' ? 'Select Bronze Dataset' : 'Select Source Tables'}
+                    {datasetType === 'persistent' ? 'Select Bronze Dataset' : 'Select Source Tables'}
                   </h2>
                   
-                  {datasetType === 'transform' ? (
+                  {datasetType === 'persistent' ? (
                     <div className="grid grid-cols-2 gap-3">
                       {MOCK_BRONZE_DATASETS.map((dataset) => (
                         <button
@@ -561,7 +561,7 @@ export default function NewSilverDatasetPage() {
                                 </span>
                               </div>
                               <ChevronDown className={clsx(
-                                "w-4 h-4 text-gray-400 transition-transform",
+                                "w-4 h-4 text-gray-400 transition-persistent",
                                 expandedConnections.includes(conn.id) && "rotate-180"
                               )} />
                             </button>
@@ -661,7 +661,7 @@ export default function NewSilverDatasetPage() {
                               {selectedCount}/{table.columns.length} selected
                             </span>
                             <ChevronDown className={clsx(
-                              "w-4 h-4 text-gray-400 transition-transform",
+                              "w-4 h-4 text-gray-400 transition-persistent",
                               isExpanded && "rotate-180"
                             )} />
                           </div>
@@ -1105,10 +1105,10 @@ export default function NewSilverDatasetPage() {
                       <div>
                         <span className="text-xs text-gray-500 dark:text-gray-400">Type</span>
                         <p className="flex items-center gap-2">
-                          {datasetType === 'transform' ? (
+                          {datasetType === 'persistent' ? (
                             <>
                               <Sparkles className="w-4 h-4 text-purple-500" />
-                              <span className="font-semibold text-gray-900 dark:text-white">Transform</span>
+                              <span className="font-semibold text-gray-900 dark:text-white">Persistent</span>
                             </>
                           ) : (
                             <>
@@ -1124,7 +1124,7 @@ export default function NewSilverDatasetPage() {
                     <div>
                       <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Source</h3>
                       <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800">
-                        {datasetType === 'transform' ? (
+                        {datasetType === 'persistent' ? (
                           <div className="flex items-center gap-2">
                             <Layers className="w-4 h-4 text-amber-500" />
                             <span className="text-gray-900 dark:text-white">
@@ -1286,7 +1286,7 @@ export default function NewSilverDatasetPage() {
                 </button>
                 <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-purple-500 hover:bg-purple-600 rounded-lg">
                   <Check className="w-4 h-4" />
-                  {datasetType === 'transform' ? 'Create & Execute' : 'Create Dataset'}
+                  {datasetType === 'persistent' ? 'Create & Execute' : 'Create Dataset'}
                 </button>
               </div>
             )}

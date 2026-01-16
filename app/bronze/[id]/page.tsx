@@ -25,7 +25,14 @@ import {
   Eye,
   RefreshCw,
   Layers,
-  Sparkles
+  Sparkles,
+  Zap,
+  Loader2,
+  Timer,
+  Info,
+  Code2,
+  Play,
+  Share2
 } from 'lucide-react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
@@ -46,14 +53,16 @@ interface DatasetInfo {
   name: string;
   description: string;
   dataType: DataType;
+  type: 'persistent' | 'virtualized';
   columns: Column[];
   data: Record<string, any>[];
   imageColumn?: string; // Column that contains image URLs
   totalRows: number;
   sizeBytes: number;
-  lastIngestion: string;
-  outputFormat: string;
-  outputBucket: string;
+  lastIngestion: string | null;
+  outputFormat: string | null;
+  outputBucket: string | null;
+  sourceQuery?: string; // For virtualized datasets
 }
 
 // Mock datasets with different types
@@ -63,6 +72,7 @@ const MOCK_DATASETS: Record<string, DatasetInfo> = {
     name: 'patients_raw',
     description: 'Raw patient data from all healthcare sources',
     dataType: 'structured',
+    type: 'persistent',
     columns: [
       { key: 'id', label: 'ID', type: 'number', width: 80 },
       { key: 'name', label: 'Patient Name', type: 'string', width: 180 },
@@ -94,6 +104,7 @@ const MOCK_DATASETS: Record<string, DatasetInfo> = {
     name: 'orders_unified',
     description: 'Unified orders from e-commerce and retail systems',
     dataType: 'structured',
+    type: 'persistent',
     columns: [
       { key: 'order_id', label: 'Order ID', type: 'string', width: 120 },
       { key: 'customer', label: 'Customer', type: 'string', width: 150 },
@@ -121,6 +132,7 @@ const MOCK_DATASETS: Record<string, DatasetInfo> = {
     name: 'product_catalog',
     description: 'Product images with metadata from e-commerce catalog',
     dataType: 'images',
+    type: 'persistent',
     imageColumn: 'image_url',
     columns: [
       { key: 'id', label: 'ID', type: 'number', width: 60 },
@@ -157,6 +169,7 @@ const MOCK_DATASETS: Record<string, DatasetInfo> = {
     name: 'document_scans',
     description: 'Scanned documents with OCR metadata',
     dataType: 'images',
+    type: 'persistent',
     imageColumn: 'scan_url',
     columns: [
       { key: 'doc_id', label: 'Doc ID', type: 'string', width: 100 },
@@ -180,6 +193,88 @@ const MOCK_DATASETS: Record<string, DatasetInfo> = {
     lastIngestion: '2026-01-13T11:20:00Z',
     outputFormat: 'delta',
     outputBucket: 's3://datalake-bronze/documents/',
+  },
+  // Virtualized datasets
+  'bronze_virt_1': {
+    id: 'bronze_virt_1',
+    name: 'orders_exploration',
+    description: 'Virtualized view for exploring order data via API',
+    dataType: 'structured',
+    type: 'virtualized',
+    sourceQuery: `SELECT 
+  o.id AS order_id,
+  o.customer_id,
+  c.name AS customer_name,
+  o.total_amount,
+  o.status,
+  o.created_at
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+JOIN transactions t ON o.id = t.order_id
+WHERE o.status IN ('completed', 'processing')
+ORDER BY o.created_at DESC
+LIMIT 100`,
+    columns: [
+      { key: 'order_id', label: 'Order ID', type: 'string', width: 120 },
+      { key: 'customer_id', label: 'Customer ID', type: 'number', width: 100 },
+      { key: 'customer_name', label: 'Customer', type: 'string', width: 180 },
+      { key: 'total_amount', label: 'Amount', type: 'number', width: 120 },
+      { key: 'status', label: 'Status', type: 'string', width: 100 },
+      { key: 'created_at', label: 'Created', type: 'date', width: 140 },
+    ],
+    data: [
+      { order_id: 'ORD-2026-0150', customer_id: 1, customer_name: 'Tech Solutions Inc', total_amount: 4999.99, status: 'completed', created_at: '2026-01-13 10:30:00' },
+      { order_id: 'ORD-2026-0149', customer_id: 2, customer_name: 'Global Trade LLC', total_amount: 2999.99, status: 'completed', created_at: '2026-01-13 09:45:00' },
+      { order_id: 'ORD-2026-0148', customer_id: 3, customer_name: 'StartUp Brasil', total_amount: 1499.00, status: 'completed', created_at: '2026-01-13 08:20:00' },
+      { order_id: 'ORD-2026-0147', customer_id: 5, customer_name: 'Innovation Labs', total_amount: 899.99, status: 'processing', created_at: '2026-01-12 16:55:00' },
+      { order_id: 'ORD-2026-0146', customer_id: 4, customer_name: 'DataCorp', total_amount: 8997.00, status: 'completed', created_at: '2026-01-12 14:30:00' },
+    ],
+    totalRows: 0,
+    sizeBytes: 0,
+    lastIngestion: null,
+    outputFormat: null,
+    outputBucket: null,
+  },
+  'bronze_virt_2': {
+    id: 'bronze_virt_2',
+    name: 'inventory_realtime',
+    description: 'Real-time inventory data for external APIs',
+    dataType: 'structured',
+    type: 'virtualized',
+    sourceQuery: `SELECT 
+  i.product_id,
+  p.name AS product_name,
+  p.category,
+  i.quantity,
+  i.warehouse_id,
+  w.name AS warehouse_name,
+  i.last_updated
+FROM inventory i
+JOIN products p ON i.product_id = p.id
+JOIN warehouses w ON i.warehouse_id = w.id
+WHERE i.quantity > 0
+ORDER BY i.last_updated DESC
+LIMIT 50`,
+    columns: [
+      { key: 'product_id', label: 'Product ID', type: 'number', width: 100 },
+      { key: 'product_name', label: 'Product', type: 'string', width: 200 },
+      { key: 'category', label: 'Category', type: 'string', width: 140 },
+      { key: 'quantity', label: 'Qty', type: 'number', width: 80 },
+      { key: 'warehouse_name', label: 'Warehouse', type: 'string', width: 140 },
+      { key: 'last_updated', label: 'Updated', type: 'date', width: 140 },
+    ],
+    data: [
+      { product_id: 101, product_name: 'Premium Watch', category: 'Accessories', quantity: 45, warehouse_name: 'São Paulo - SP01', last_updated: '2026-01-13 10:15:00' },
+      { product_id: 102, product_name: 'Wireless Headphones', category: 'Electronics', quantity: 120, warehouse_name: 'São Paulo - SP01', last_updated: '2026-01-13 10:14:00' },
+      { product_id: 103, product_name: 'Running Shoes', category: 'Footwear', quantity: 200, warehouse_name: 'Rio de Janeiro - RJ02', last_updated: '2026-01-13 10:12:00' },
+      { product_id: 104, product_name: 'Leather Backpack', category: 'Bags', quantity: 62, warehouse_name: 'São Paulo - SP01', last_updated: '2026-01-13 10:10:00' },
+      { product_id: 105, product_name: 'Fitness Tracker', category: 'Electronics', quantity: 140, warehouse_name: 'Rio de Janeiro - RJ02', last_updated: '2026-01-13 10:08:00' },
+    ],
+    totalRows: 0,
+    sizeBytes: 0,
+    lastIngestion: null,
+    outputFormat: null,
+    outputBucket: null,
   },
 };
 
@@ -465,6 +560,99 @@ const DataTable = ({ columns, data }: { columns: Column[]; data: Record<string, 
   );
 };
 
+// Virtualized Query Preview Component
+const VirtualizedPreview = ({ 
+  dataset, 
+  isLoading, 
+  onRefresh 
+}: { 
+  dataset: DatasetInfo;
+  isLoading: boolean;
+  onRefresh: () => void;
+}) => {
+  const [queryTime, setQueryTime] = useState<number | null>(null);
+
+  React.useEffect(() => {
+    // Simulate query time
+    setQueryTime(Math.floor(Math.random() * 200) + 50);
+  }, [dataset.data]);
+
+  return (
+    <div className="space-y-4">
+      {/* Virtualized Info Banner */}
+      <div className="p-4 rounded-xl bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 border border-cyan-200 dark:border-cyan-800">
+        <div className="flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-900/40">
+            <Zap className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
+          </div>
+          <div className="flex-1">
+            <h4 className="font-medium text-cyan-900 dark:text-cyan-200 flex items-center gap-2">
+              Live Query Preview
+            </h4>
+            <p className="text-sm text-cyan-700 dark:text-cyan-300 mt-1">
+              This is a virtualized dataset. Data is queried on-demand from source systems — no data is stored in this layer.
+            </p>
+          </div>
+          <button
+            onClick={onRefresh}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-3 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-cyan-400 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
+            Refresh Query
+          </button>
+        </div>
+      </div>
+
+      {/* Query Stats */}
+      <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+          <Timer className="w-4 h-4" />
+          <span>Query time: <strong className="text-gray-900 dark:text-white">{queryTime}ms</strong></span>
+        </div>
+        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+          <Rows3 className="w-4 h-4" />
+          <span>Sample: <strong className="text-gray-900 dark:text-white">{dataset.data.length} rows</strong></span>
+        </div>
+        <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+          <Info className="w-4 h-4" />
+          <span className="text-xs">Limited preview (LIMIT 100)</span>
+        </div>
+      </div>
+
+      {/* Source Query */}
+      {dataset.sourceQuery && (
+        <div className="rounded-xl overflow-hidden border border-zinc-700">
+          <div className="px-4 py-2 bg-zinc-800 border-b border-zinc-700 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <Code2 className="w-4 h-4" />
+              Source Query
+            </div>
+            <button className="text-xs text-cyan-400 hover:text-cyan-300">Copy SQL</button>
+          </div>
+          <pre className="p-4 bg-zinc-900 dark:bg-zinc-950 text-sm text-green-400 font-mono overflow-x-auto">
+            {dataset.sourceQuery}
+          </pre>
+        </div>
+      )}
+
+      {/* Data Table */}
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-700">
+          <Loader2 className="w-10 h-10 text-cyan-500 animate-spin mb-4" />
+          <p className="text-gray-600 dark:text-gray-400">Executing query...</p>
+        </div>
+      ) : (
+        <DataTable columns={dataset.columns} data={dataset.data} />
+      )}
+    </div>
+  );
+};
+
 export default function DatasetViewPage() {
   const params = useParams();
   const router = useRouter();
@@ -474,11 +662,18 @@ export default function DatasetViewPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedImage, setSelectedImage] = useState<{ url: string; metadata: Record<string, any> } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const itemsPerPage = 12;
 
   // Get dataset or 404
   const dataset = MOCK_DATASETS[datasetId];
+
+  // Simulate refresh for virtualized
+  const handleRefresh = () => {
+    setIsLoading(true);
+    setTimeout(() => setIsLoading(false), 800);
+  };
 
   // Filter data based on search
   const filteredData = useMemo(() => {
@@ -501,7 +696,7 @@ export default function DatasetViewPage() {
 
   // Determine available view modes based on data type
   const hasImages = dataset?.dataType === 'images' || dataset?.dataType === 'mixed';
-  const defaultViewMode = hasImages ? 'gallery' : 'table';
+  const isVirtualized = dataset?.type === 'virtualized';
 
   // Set initial view mode based on data type
   React.useEffect(() => {
@@ -545,13 +740,17 @@ export default function DatasetViewPage() {
               <div className="flex items-center gap-3">
                 <div className={clsx(
                   "p-2 rounded-lg",
-                  hasImages 
-                    ? "bg-purple-100 dark:bg-purple-900/30" 
-                    : "bg-amber-100 dark:bg-amber-900/30"
+                  isVirtualized
+                    ? "bg-cyan-100 dark:bg-cyan-900/30"
+                    : hasImages 
+                      ? "bg-purple-100 dark:bg-purple-900/30" 
+                      : "bg-amber-100 dark:bg-amber-900/30"
                 )}>
-                  {hasImages 
-                    ? <ImageIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                    : <Table2 className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                  {isVirtualized
+                    ? <Zap className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
+                    : hasImages 
+                      ? <ImageIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                      : <Table2 className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                   }
                 </div>
                 <div>
@@ -561,109 +760,157 @@ export default function DatasetViewPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-lg transition-colors">
-                <Download className="w-4 h-4" />
-                Export
-              </button>
-              <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors">
-                <RefreshCw className="w-4 h-4" />
-                Refresh
-              </button>
-            </div>
-          </div>
-
-          {/* Stats */}
-          <div className="flex items-center gap-6 text-sm">
-            <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-              <Rows3 className="w-4 h-4" />
-              <span>{dataset.totalRows.toLocaleString()} rows</span>
-            </div>
-            <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-              <HardDrive className="w-4 h-4" />
-              <span>{formatBytes(dataset.sizeBytes)}</span>
-            </div>
-            <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-              <Clock className="w-4 h-4" />
-              <span>{formatDate(dataset.lastIngestion)}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 uppercase">
-                {dataset.outputFormat}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Toolbar */}
-        <div className="px-6 py-3 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input 
-                type="text"
-                placeholder="Search data..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="pl-10 pr-4 py-2 w-72 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all"
-              />
-            </div>
-            <button className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors">
-              <Filter className="w-4 h-4" />
-              Filters
-            </button>
-          </div>
-
-          {/* View Mode Toggle */}
-          <div className="flex items-center gap-1 bg-gray-100 dark:bg-zinc-800 rounded-lg p-1">
-            {hasImages && (
-              <>
-                <button
-                  onClick={() => setViewMode('gallery')}
-                  className={clsx(
-                    "p-2 rounded-md transition-all",
-                    viewMode === 'gallery' 
-                      ? "bg-white dark:bg-zinc-700 text-amber-600 dark:text-amber-400 shadow-sm"
-                      : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-                  )}
-                  title="Gallery View"
+              {!isVirtualized && (
+                <Link
+                  href={`/sharing?dataset=bronze.${dataset.name}`}
+                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 hover:bg-violet-200 dark:hover:bg-violet-900/50 rounded-lg transition-colors"
                 >
-                  <Grid3X3 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={clsx(
-                    "p-2 rounded-md transition-all",
-                    viewMode === 'list' 
-                      ? "bg-white dark:bg-zinc-700 text-amber-600 dark:text-amber-400 shadow-sm"
-                      : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-                  )}
-                  title="List View"
-                >
-                  <List className="w-4 h-4" />
-                </button>
-              </>
-            )}
-            <button
-              onClick={() => setViewMode('table')}
-              className={clsx(
-                "p-2 rounded-md transition-all",
-                viewMode === 'table' 
-                  ? "bg-white dark:bg-zinc-700 text-amber-600 dark:text-amber-400 shadow-sm"
-                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                  <Share2 className="w-4 h-4" />
+                  Share
+                </Link>
               )}
-              title="Table View"
-            >
-              <Table2 className="w-4 h-4" />
-            </button>
+              {!isVirtualized && (
+                <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-lg transition-colors">
+                  <Download className="w-4 h-4" />
+                  Export
+                </button>
+              )}
+              <button className={clsx(
+                "flex items-center gap-2 px-3 py-2 text-sm font-medium text-white rounded-lg transition-colors",
+                isVirtualized
+                  ? "bg-cyan-500 hover:bg-cyan-600"
+                  : "bg-amber-500 hover:bg-amber-600"
+              )}>
+                {isVirtualized ? (
+                  <>
+                    <Play className="w-4 h-4" />
+                    Run Query
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4" />
+                    Refresh
+                  </>
+                )}
+              </button>
+            </div>
           </div>
+
+          {/* Stats - only for Persistent */}
+          {!isVirtualized && (
+            <div className="flex items-center gap-6 text-sm">
+              <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                <Rows3 className="w-4 h-4" />
+                <span>{dataset.totalRows.toLocaleString()} rows</span>
+              </div>
+              <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                <HardDrive className="w-4 h-4" />
+                <span>{formatBytes(dataset.sizeBytes)}</span>
+              </div>
+              <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                <Clock className="w-4 h-4" />
+                <span>{formatDate(dataset.lastIngestion || '')}</span>
+              </div>
+              {dataset.outputFormat && (
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 uppercase">
+                    {dataset.outputFormat}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Virtualized Type Badge */}
+          {isVirtualized && (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400">
+                <Zap className="w-3 h-3" />
+                Virtualized Query
+              </span>
+              </div>
+          )}
         </div>
+
+        {/* Toolbar - only for Persistent */}
+        {!isVirtualized && (
+          <div className="px-6 py-3 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input 
+                  type="text"
+                  placeholder="Search data..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="pl-10 pr-4 py-2 w-72 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all"
+                />
+              </div>
+              <button className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors">
+                <Filter className="w-4 h-4" />
+                Filters
+              </button>
+            </div>
+
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-1 bg-gray-100 dark:bg-zinc-800 rounded-lg p-1">
+              {hasImages && (
+                <>
+                  <button
+                    onClick={() => setViewMode('gallery')}
+                    className={clsx(
+                      "p-2 rounded-md transition-all",
+                      viewMode === 'gallery' 
+                        ? "bg-white dark:bg-zinc-700 text-amber-600 dark:text-amber-400 shadow-sm"
+                        : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                    )}
+                    title="Gallery View"
+                  >
+                    <Grid3X3 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={clsx(
+                      "p-2 rounded-md transition-all",
+                      viewMode === 'list' 
+                        ? "bg-white dark:bg-zinc-700 text-amber-600 dark:text-amber-400 shadow-sm"
+                        : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                    )}
+                    title="List View"
+                  >
+                    <List className="w-4 h-4" />
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => setViewMode('table')}
+                className={clsx(
+                  "p-2 rounded-md transition-all",
+                  viewMode === 'table' 
+                    ? "bg-white dark:bg-zinc-700 text-amber-600 dark:text-amber-400 shadow-sm"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                )}
+                title="Table View"
+              >
+                <Table2 className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Content Area */}
         <div className="flex-1 overflow-auto p-6">
-          {filteredData.length === 0 ? (
+          {/* Virtualized Preview */}
+          {isVirtualized ? (
+            <VirtualizedPreview 
+              dataset={dataset} 
+              isLoading={isLoading} 
+              onRefresh={handleRefresh} 
+            />
+          ) : filteredData.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-gray-500 dark:text-gray-400">
               <Search className="w-12 h-12 mb-4 opacity-30" />
               <p className="text-lg font-medium">No results found</p>
@@ -704,8 +951,8 @@ export default function DatasetViewPage() {
           )}
         </div>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
+        {/* Pagination - only for Persistent */}
+        {!isVirtualized && totalPages > 1 && (
           <div className="px-6 py-4 border-t border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
             <span className="text-sm text-gray-500 dark:text-gray-400">
               Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredData.length)} of {filteredData.length} items
