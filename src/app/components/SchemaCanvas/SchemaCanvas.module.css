@@ -1,0 +1,360 @@
+.canvasWrapper {
+  height: 100%;
+  width: 100%;
+  background-color: #f9fafb;
+}
+
+:global(.dark) .canvasWrapper {
+  background-color: #09090b;
+}
+
+.controls {
+  color: white;
+}
+
+:global(.dark) .controls {
+  background-color: #27272a;
+  border-color: #3f3f46;
+}
+
+.miniMap {
+  background-color: #e4e4e7;
+  border-color: #e4e4e7;
+}
+
+:global(.dark) .miniMap {
+  background-color: #18181b;
+  border-color: #27272a;
+}
+
+.nodeCard {
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  min-width: 240px;
+  position: relative;
+}
+
+:global(.dark) .nodeCard {
+  background-color: #18181b;
+  border-color: #3f3f46;
+}
+
+.nodeHeader {
+  background-color: #eff6ff;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+}
+
+:global(.dark) .nodeHeader {
+  background-color: #27272a;
+  border-color: #3f3f46;
+}
+
+.headerTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.titleText {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #111827;
+}
+
+:global(.dark) .titleText {
+  color: #f3f4f6;
+}
+
+.inactiveBadge {
+  font-size: 10px;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  background-color: #e5e7eb;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+:global(.dark) .inactiveBadge {
+  background-color: #3f3f46;
+  color: #9ca3af;
+}
+
+.menuContainer {
+  position: relative;
+}
+
+.menuButton {
+  color: #6b7280;
+  padding: 0.25rem;
+  border-radius: 0.25rem;
+  transition: color 0.15s, background-color 0.15s;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menuButton:hover {
+  color: #374151;
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+:global(.dark) .menuButton:hover {
+  color: #d1d5db;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.menuButtonActive {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: #111827;
+}
+
+:global(.dark) .menuButtonActive {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #f3f4f6;
+}
+
+.contextMenu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 0.25rem;
+  width: 12rem;
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  z-index: 100;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  transform-origin: top right;
+  animation: fadeIn 0.1s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+:global(.dark) .contextMenu {
+  background-color: #27272a;
+  border-color: #3f3f46;
+}
+
+.menuItem {
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #374151;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.menuItem:hover {
+  background-color: #f9fafb;
+}
+
+:global(.dark) .menuItem {
+  color: #e5e7eb;
+}
+
+:global(.dark) .menuItem:hover {
+  background-color: #3f3f46;
+}
+
+.menuDivider {
+  height: 1px;
+  background-color: #f3f4f6;
+  margin: 0.25rem 0;
+}
+
+:global(.dark) .menuDivider {
+  background-color: #3f3f46;
+}
+
+.columnsContainer {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.columnsContainerInactive {
+  opacity: 0.5;
+  filter: grayscale(100%);
+}
+
+.columnRow {
+  position: relative;
+  padding: 0.375rem 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  transition: background-color 0.15s;
+  cursor: pointer;
+}
+
+.columnRow:hover {
+  background-color: #f9fafb;
+}
+
+:global(.dark) .columnRow:hover {
+  background-color: rgba(39, 39, 42, 0.5);
+}
+
+.columnLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.eyeIcon {
+  color: #374151;
+  transition: color 0.15s;
+}
+
+:global(.dark) .eyeIcon {
+  color: #d1d5db;
+}
+
+.eyeIconInactive {
+  color: #9ca3af;
+}
+
+:global(.dark) .eyeIconInactive {
+  color: #52525b;
+}
+
+.colNameActive {
+  color: #374151;
+}
+
+:global(.dark) .colNameActive {
+  color: #d1d5db;
+}
+
+.colNameInactive {
+  color: #9ca3af;
+  text-decoration: line-through;
+}
+
+:global(.dark) .colNameInactive {
+  color: #52525b;
+}
+
+.pkIcon {
+  width: 0.75rem;
+  height: 0.75rem;
+  color: #eab308;
+  transform: rotate(45deg);
+}
+
+.fkIcon {
+  width: 0.75rem;
+  height: 0.75rem;
+  color: #9ca3af;
+}
+
+.columnRight {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.colType {
+  color: #9ca3af;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.imagePathIndicator {
+  color: #a855f7;
+}
+
+.handleLeft {
+  width: 0.5rem !important;
+  height: 0.5rem !important;
+  background-color: #d1d5db !important;
+  border: none !important;
+  left: -0.25rem !important;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+:global(.dark) .handleLeft {
+  background-color: #52525b !important;
+}
+
+.columnRow:hover .handleLeft {
+  opacity: 1;
+}
+
+.handleRight {
+  width: 1.25rem !important;
+  height: 1.25rem !important;
+  background-color: transparent !important;
+  border: none !important;
+  right: -0.625rem !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 50 !important;
+  cursor: crosshair !important;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.columnRow:hover .handleRight {
+  opacity: 1;
+}
+
+.handleIconWrapper {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 9999px;
+  background-color: #2563eb;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  transition: transform 0.15s;
+  border: 2px solid white;
+}
+
+:global(.dark) .handleIconWrapper {
+  border-color: #18181b;
+}
+
+.handleIconWrapper:hover {
+  transform: scale(1.25);
+}
+
+.iconSmall {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.iconMedium {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.iconStandard {
+  width: 1rem;
+  height: 1rem;
+}

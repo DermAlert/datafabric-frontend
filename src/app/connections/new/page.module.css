@@ -1,0 +1,512 @@
+.container {
+  max-width: 56rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 2rem;
+}
+
+.header {
+  margin-bottom: 2rem;
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-bottom: 1rem;
+  transition: color 0.15s;
+  text-decoration: none;
+}
+
+.backLink:hover {
+  color: #111827;
+}
+
+:global(.dark) .backLink:hover {
+  color: #d1d5db;
+}
+
+.pageTitle {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+:global(.dark) .pageTitle {
+  color: white;
+}
+
+.pageSubtitle {
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+.stepContent {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.searchContainer {
+  position: relative;
+  margin-bottom: 2rem;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.25rem;
+  height: 1.25rem;
+  color: #9ca3af;
+}
+
+.searchInput {
+  width: 100%;
+  padding-left: 2.5rem;
+  padding-right: 2.5rem;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid #e5e7eb;
+  background-color: white;
+  font-size: 1rem;
+  outline: none;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.searchInput:focus {
+  box-shadow: 0 0 0 2px #3b82f6;
+}
+
+:global(.dark) .searchInput {
+  border-color: #27272a;
+  background-color: #18181b;
+}
+
+.clearButton {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+}
+
+.clearButton:hover {
+  color: #4b5563;
+}
+
+:global(.dark) .clearButton:hover {
+  color: #e5e7eb;
+}
+
+.categorySection {
+  animation: fadeInSlideUp 0.5s ease-out;
+}
+
+@keyframes fadeInSlideUp {
+  from { opacity: 0; transform: translateY(1rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.categoryHeader {
+  margin-bottom: 1rem;
+  margin-top: 2rem;
+}
+
+.categoryTitle {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+:global(.dark) .categoryTitle {
+  color: white;
+}
+
+.iconBlue {
+  color: #3b82f6;
+}
+
+.iconPurple {
+  color: #a855f7;
+}
+
+.categoryDesc {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+:global(.dark) .categoryDesc {
+  color: #9ca3af;
+}
+
+.sourceGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .sourceGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .sourceGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.sourceCard {
+  display: flex;
+  align-items: flex-start;
+  padding: 1rem;
+  text-align: left;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  background-color: white;
+  transition: all 0.15s;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.sourceCard:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+
+:global(.dark) .sourceCard {
+  border-color: #27272a;
+  background-color: #18181b;
+}
+
+.sourceIconWrapper {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.75rem;
+  transition: transform 0.15s;
+  background-color: white;
+  padding: 0.5rem;
+  border: 1px solid #f3f4f6;
+}
+
+.sourceCard:hover .sourceIconWrapper {
+  transform: scale(1.1);
+}
+
+:global(.dark) .sourceIconWrapper {
+  background-color: #18181b;
+  border-color: #3f3f46;
+}
+
+.sourceIcon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.sourceInfo {
+  margin-left: 0.75rem;
+  z-index: 10;
+}
+
+.sourceName {
+  font-weight: 500;
+  color: #111827;
+  font-size: 0.875rem;
+}
+
+:global(.dark) .sourceName {
+  color: white;
+}
+
+.sourceDesc {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.emptyState {
+  text-align: center;
+  padding: 3rem 0;
+}
+
+.emptyIconBox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 9999px;
+  background-color: #f3f4f6;
+  margin-bottom: 1rem;
+}
+
+:global(.dark) .emptyIconBox {
+  background-color: #27272a;
+}
+
+.emptyIcon {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: #9ca3af;
+}
+
+.emptyTitle {
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: #111827;
+}
+
+:global(.dark) .emptyTitle {
+  color: white;
+}
+
+.emptyText {
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+/* Step 2 Styles */
+.formContainer {
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 2rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  animation: zoomIn 0.3s ease-out;
+}
+
+:global(.dark) .formContainer {
+  background-color: #18181b;
+  border-color: #27272a;
+}
+
+@keyframes zoomIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.formHeader {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+:global(.dark) .formHeader {
+  border-bottom-color: #27272a;
+}
+
+.selectedIconBox {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.5rem;
+  background-color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #f3f4f6;
+  padding: 0.5rem;
+}
+
+:global(.dark) .selectedIconBox {
+  background-color: #18181b;
+  border-color: #3f3f46;
+}
+
+.formTitle {
+  font-weight: 600;
+  font-size: 1.125rem;
+  color: #111827;
+}
+
+:global(.dark) .formTitle {
+  color: white;
+}
+
+.formSubtitle {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.formFields {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 0.5rem;
+}
+
+:global(.dark) .label {
+  color: #d1d5db;
+}
+
+.input {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+  background-color: transparent;
+  font-size: 1rem;
+  outline: none;
+  transition: all 0.15s;
+}
+
+.input:focus {
+  box-shadow: 0 0 0 2px #3b82f6;
+}
+
+:global(.dark) .input {
+  border-color: #3f3f46;
+}
+
+.rowGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+}
+
+.feedbackBox {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-0.5rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.feedbackSuccess {
+  background-color: #f0fdf4;
+  color: #15803d;
+}
+
+:global(.dark) .feedbackSuccess {
+  background-color: rgba(22, 163, 74, 0.2);
+  color: #4ade80;
+}
+
+.feedbackError {
+  background-color: #fef2f2;
+  color: #b91c1c;
+}
+
+.feedbackText {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.formActions {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+:global(.dark) .formActions {
+  border-top-color: #27272a;
+}
+
+.buttonBack {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  border-radius: 0.5rem;
+  transition: background-color 0.15s;
+}
+
+.buttonBack:hover {
+  background-color: #f3f4f6;
+}
+
+:global(.dark) .buttonBack {
+  color: #d1d5db;
+}
+
+:global(.dark) .buttonBack:hover {
+  background-color: #27272a;
+}
+
+.buttonTest {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  transition: background-color 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.buttonTest:hover {
+  background-color: #f9fafb;
+}
+
+:global(.dark) .buttonTest {
+  color: #d1d5db;
+  background-color: #27272a;
+  border-color: #3f3f46;
+}
+
+:global(.dark) .buttonTest:hover {
+  background-color: #3f3f46;
+}
+
+.buttonCreate {
+  padding: 0.5rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: white;
+  background-color: #2563eb;
+  border-radius: 0.5rem;
+  transition: background-color 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.buttonCreate:hover {
+  background-color: #1d4ed8;
+}
