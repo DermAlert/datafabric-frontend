@@ -1,0 +1,1020 @@
+'use client';
+
+import React, { useState, useCallback, memo } from 'react';
+import DashboardLayout from '@/components/DashboardLayout';
+import Link from 'next/link';
+import { clsx } from 'clsx';
+import {
+  Plus,
+  Database,
+  Play,
+  Eye,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Clock,
+  Loader2,
+  ChevronRight,
+  ChevronDown,
+  Sparkles,
+  Zap,
+  Table2,
+  GitMerge,
+  Filter,
+  Code2,
+  FileCode,
+  Settings2,
+  ArrowRightLeft,
+  Layers,
+  GitCommit,
+  History,
+  RotateCcw,
+  AlertTriangle,
+  AlertCircle,
+  CheckCircle2,
+} from 'lucide-react';
+import { useDisclosure } from '@/hooks';
+import {
+  StatusBadge,
+  TypeBadge,
+  VersionBadge,
+  DropdownMenu,
+  DropdownItem,
+  DropdownDivider,
+  EmptyState,
+} from '@/components/ui';
+import { SearchInput } from '@/components/ui/Input';
+import { formatBytes, formatDate } from '@/lib/utils';
+
+// ===========================================
+// Mock Data - Em produção, viria de uma API
+// ===========================================
+
+const MOCK_DATASETS = [
+  {
+    id: 'silver_1',
+    name: 'patients_normalized',
+    description: 'Normalized patient data with CPF formatting and gender unification',
+    type: 'persistent',
+    sourceBronzeDataset: 'patients_raw',
+    columnGroups: ['sex_group', 'country_unified'],
+    filterConditions: [
+      { column: 'patients.status', operator: '=', value: 'active' },
+      { column: 'patients.age', operator: '>=', value: '18' },
+    ],
+    filterLogic: 'AND',
+    transformations: [
+      { column: 'cpf', type: 'template', rule: 'CPF Format' },
+      { column: 'name', type: 'uppercase' },
+      { column: 'email', type: 'lowercase' },
+    ],
+    status: 'completed',
+    lastExecution: '2026-01-13T09:30:00Z',
+    rowCount: 125430,
+    sizeBytes: 89456712,
+    createdAt: '2026-01-10T14:00:00Z',
+    version: 15,
+    versionHistory: [
+      {
+        version: 15,
+        timestamp: '2026-01-13T09:30:00Z',
+        operation: 'MERGE',
+        rowsAffected: 2341,
+        trigger: 'scheduled',
+        config: {
+          sourceBronzeDataset: 'patients_raw',
+          columnGroups: ['sex_group', 'country_unified'],
+          filterConditions: [
+            { column: 'patients.status', operator: '=', value: 'active' },
+            { column: 'patients.age', operator: '>=', value: '18' },
+          ],
+          filterLogic: 'AND',
+          transformations: [
+            { column: 'cpf', type: 'template', rule: 'CPF Format' },
+            { column: 'name', type: 'uppercase' },
+            { column: 'email', type: 'lowercase' },
+          ],
+          rowCount: 125430,
+          sizeBytes: 89456712,
+        },
+      },
+      {
+        version: 14,
+        timestamp: '2026-01-12T09:30:00Z',
+        operation: 'MERGE',
+        rowsAffected: 1892,
+        config: {
+          sourceBronzeDataset: 'patients_raw',
+          columnGroups: ['sex_group'],
+          filterConditions: [{ column: 'patients.status', operator: '=', value: 'active' }],
+          filterLogic: 'AND',
+          transformations: [
+            { column: 'cpf', type: 'template', rule: 'CPF Format' },
+            { column: 'name', type: 'uppercase' },
+          ],
+          rowCount: 123089,
+          sizeBytes: 87234567,
+        },
+      },
+    ],
+  },
+  {
+    id: 'silver_2',
+    name: 'orders_exploration',
+    description: 'Virtualized view of orders for API consumption',
+    type: 'virtualized',
+    tables: [
+      { id: 1, name: 'orders', connection: 'PostgreSQL Production', columnCount: 8 },
+      { id: 2, name: 'order_items', connection: 'PostgreSQL Production', columnCount: 6 },
+    ],
+    columnGroups: ['status_unified'],
+    filterConditions: [],
+    filterLogic: 'AND',
+    transformations: [{ column: 'customer_name', type: 'trim' }],
+    status: 'active',
+    lastExecution: null,
+    rowCount: 0,
+    sizeBytes: 0,
+    createdAt: '2026-01-12T10:00:00Z',
+  },
+  {
+    id: 'silver_3',
+    name: 'customer_360_silver',
+    description: 'Clean customer data with phone normalization',
+    type: 'persistent',
+    sourceBronzeDataset: 'customer_360',
+    columnGroups: [],
+    filterConditions: [
+      { column: 'customers.email', operator: 'IS NOT NULL', value: '' },
+      { column: 'customers.email', operator: 'LIKE', value: '%@%' },
+    ],
+    filterLogic: 'AND',
+    transformations: [
+      { column: 'phone', type: 'template', rule: 'Phone BR' },
+      { column: 'cep', type: 'template', rule: 'CEP Format' },
+      { column: 'name', type: 'normalize_spaces' },
+    ],
+    status: 'running',
+    lastExecution: '2026-01-13T10:45:00Z',
+    rowCount: 0,
+    sizeBytes: 0,
+    createdAt: '2026-01-11T16:30:00Z',
+    version: 5,
+    versionHistory: [],
+  },
+  {
+    id: 'silver_4',
+    name: 'transactions_clean',
+    description: 'Transaction data with value formatting',
+    type: 'persistent',
+    sourceBronzeDataset: 'orders_unified',
+    columnGroups: ['currency_unified'],
+    filterConditions: [{ column: 'transactions.status', operator: '=', value: 'completed' }],
+    filterLogic: 'AND',
+    transformations: [
+      { column: 'amount', type: 'template', rule: 'Currency BR' },
+      { column: 'description', type: 'remove_accents' },
+    ],
+    status: 'failed',
+    lastExecution: '2026-01-12T22:00:00Z',
+    rowCount: 456789,
+    sizeBytes: 234567890,
+    createdAt: '2026-01-09T11:00:00Z',
+    error: 'Invalid transformation rule: Currency BR not found',
+    version: 28,
+    versionHistory: [],
+  },
+];
+
+// ===========================================
+// Dataset List Item Component
+// ===========================================
+
+const DatasetListItem = memo(function DatasetListItem({
+  dataset,
+  isSelected,
+  onSelect,
+  onDelete,
+}) {
+  const menuDisclosure = useDisclosure();
+
+  return (
+    <div
+      onClick={() => onSelect(dataset)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && onSelect(dataset)}
+      className={clsx(
+        'p-4 rounded-lg transition-all cursor-pointer',
+        isSelected
+          ? 'bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800'
+          : 'hover:bg-gray-50 dark:hover:bg-zinc-800 border border-transparent'
+      )}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className="font-semibold text-gray-900 dark:text-white text-sm truncate">
+              {dataset.name}
+            </span>
+            <TypeBadge type={dataset.type} variant="silver" />
+            {dataset.type === 'persistent' && dataset.version !== undefined && (
+              <VersionBadge version={dataset.version} />
+            )}
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 truncate mb-2">
+            {dataset.description}
+          </p>
+          <div className="flex items-center gap-3">
+            <StatusBadge status={dataset.status} />
+            {dataset.transformations.length > 0 && (
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                <Code2 className="w-3 h-3" />
+                {dataset.transformations.length}
+              </span>
+            )}
+            {dataset.columnGroups.length > 0 && (
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                <GitMerge className="w-3 h-3" />
+                {dataset.columnGroups.length}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <DropdownMenu
+          isOpen={menuDisclosure.isOpen}
+          onClose={menuDisclosure.onClose}
+          trigger={
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                menuDisclosure.onToggle();
+              }}
+              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-400"
+              aria-label="Menu de ações"
+            >
+              <MoreVertical className="w-4 h-4" />
+            </button>
+          }
+        >
+          <DropdownItem icon={<Eye className="w-3.5 h-3.5" />} href={`/silver/${dataset.id}`}>
+            {dataset.type === 'persistent' ? 'View Data' : 'Preview Data'}
+          </DropdownItem>
+          <DropdownItem icon={<Play className="w-3.5 h-3.5" />}>
+            {dataset.type === 'persistent' ? 'Execute' : 'Query'}
+          </DropdownItem>
+          <DropdownDivider />
+          <DropdownItem icon={<Pencil className="w-3.5 h-3.5" />}>Edit</DropdownItem>
+          <DropdownItem
+            icon={<Trash2 className="w-3.5 h-3.5" />}
+            variant="danger"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(dataset.id);
+            }}
+          >
+            Delete
+          </DropdownItem>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
+});
+
+// ===========================================
+// Version History Component
+// ===========================================
+
+const VersionHistory = memo(function VersionHistory({
+  dataset,
+  selectedVersion,
+  onSelectVersion,
+}) {
+  if (!dataset.versionHistory || dataset.versionHistory.length === 0) {
+    return null;
+  }
+
+  return (
+    <div>
+      <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+        <History className="w-4 h-4 text-gray-400" />
+        Version History
+        <span className="text-xs font-normal text-gray-500 ml-1">(Delta Lake)</span>
+      </h3>
+      <div className="bg-white dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700 overflow-hidden">
+        <div className="divide-y divide-gray-100 dark:divide-zinc-700">
+          {dataset.versionHistory.slice(0, 5).map((entry) => (
+            <button
+              key={entry.version}
+              onClick={() =>
+                onSelectVersion(entry.version === selectedVersion ? null : entry.version)
+              }
+              className={clsx(
+                'w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-zinc-700/50',
+                entry.version === selectedVersion && 'bg-purple-50/50 dark:bg-purple-900/10'
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-900 text-xs font-mono text-zinc-700 dark:text-zinc-300">
+                  <GitCommit className="w-3 h-3" />
+                  v{entry.version}
+                </span>
+                <span
+                  className={clsx(
+                    'px-2 py-0.5 rounded text-xs font-medium',
+                    entry.operation === 'WRITE' &&
+                      'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+                    entry.operation === 'MERGE' &&
+                      'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
+                    entry.operation === 'DELETE' &&
+                      'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                  )}
+                >
+                  {entry.operation}
+                </span>
+                {entry.error && (
+                  <span className="flex items-center gap-1 text-xs text-red-500">
+                    <AlertCircle className="w-3 h-3" />
+                    Failed
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                <span>{entry.rowsAffected.toLocaleString()} rows</span>
+                <span>{formatDate(entry.timestamp)}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+        {dataset.versionHistory.length > 5 && (
+          <div className="px-4 py-2 bg-gray-50 dark:bg-zinc-900 border-t border-gray-200 dark:border-zinc-700">
+            <button className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-700 font-medium flex items-center gap-1">
+              View all {dataset.versionHistory.length} versions
+              <ChevronRight className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+      </div>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 flex items-center gap-1">
+        <GitCommit className="w-3 h-3" />
+        Time travel available: query any version using{' '}
+        <code className="px-1 py-0.5 bg-gray-100 dark:bg-zinc-800 rounded text-xs">
+          VERSION AS OF {dataset.version}
+        </code>
+      </p>
+    </div>
+  );
+});
+
+// ===========================================
+// Transformations Section Component
+// ===========================================
+
+const TransformationsSection = memo(function TransformationsSection({
+  transformations,
+  isViewingOldVersion,
+  currentCount,
+}) {
+  if (transformations.length === 0) return null;
+
+  return (
+    <section
+      className={clsx(
+        isViewingOldVersion &&
+          'p-4 rounded-lg bg-amber-50/30 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/30'
+      )}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <Code2 className="w-4 h-4 text-gray-400" />
+          Column Transformations
+          <span className="text-xs font-normal text-gray-500 ml-1">
+            ({transformations.length})
+          </span>
+        </h3>
+        {isViewingOldVersion && currentCount !== undefined && currentCount !== transformations.length && (
+          <span className="text-xs px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+            Changed from current ({currentCount})
+          </span>
+        )}
+      </div>
+      <div className="space-y-2">
+        {transformations.map((t, i) => (
+          <div
+            key={i}
+            className={clsx(
+              'flex items-center justify-between p-3 rounded-lg border',
+              isViewingOldVersion
+                ? 'bg-amber-50/50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50'
+                : 'bg-white dark:bg-zinc-800 border-gray-200 dark:border-zinc-700'
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <code
+                className={clsx(
+                  'px-2 py-1 rounded text-sm font-mono',
+                  isViewingOldVersion
+                    ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200'
+                    : 'bg-gray-100 dark:bg-zinc-700 text-gray-800 dark:text-gray-200'
+                )}
+              >
+                {t.column}
+              </code>
+              <ArrowRightLeft className="w-4 h-4 text-gray-400" />
+              <span
+                className={clsx(
+                  'px-2 py-1 rounded text-xs font-medium',
+                  isViewingOldVersion
+                    ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                    : t.type === 'template'
+                    ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                    : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                )}
+              >
+                {t.type.toUpperCase()}
+              </span>
+            </div>
+            {t.rule && (
+              <span className="text-xs text-gray-500 dark:text-gray-400">Rule: {t.rule}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+});
+
+// ===========================================
+// Detail Panel Component
+// ===========================================
+
+const DetailPanel = memo(function DetailPanel({
+  dataset,
+  selectedVersion,
+  onSelectVersion,
+}) {
+  const versionDropdown = useDisclosure();
+
+  if (!dataset) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-gray-500 dark:text-gray-400">
+        <Sparkles className="w-16 h-16 mb-4 opacity-30" />
+        <h3 className="text-lg font-medium mb-2">Select a Dataset</h3>
+        <p className="text-sm text-center max-w-md">
+          Choose a silver dataset from the list to view its transformations, column groups, and
+          execution status.
+        </p>
+      </div>
+    );
+  }
+
+  const getVersionConfig = () => {
+    if (selectedVersion === null || selectedVersion === dataset.version) {
+      return null;
+    }
+    const versionEntry = dataset.versionHistory?.find((v) => v.version === selectedVersion);
+    return versionEntry?.config || null;
+  };
+
+  const viewingVersion = getVersionConfig();
+  const isViewingOldVersion = selectedVersion !== null && selectedVersion !== dataset.version;
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <header className="p-6 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+        {/* Version Warning Banner */}
+        {isViewingOldVersion && (
+          <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+              <History className="w-4 h-4" />
+              <span className="text-sm font-medium">
+                Viewing configuration from version {selectedVersion}
+              </span>
+            </div>
+            <button
+              onClick={() => onSelectVersion(null)}
+              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30 rounded"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Back to current
+            </button>
+          </div>
+        )}
+
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <div className="flex items-center gap-3 mb-1 flex-wrap">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">{dataset.name}</h2>
+              <TypeBadge type={dataset.type} variant="silver" />
+              <StatusBadge status={dataset.status} />
+
+              {/* Version Selector */}
+              {dataset.type === 'persistent' &&
+                dataset.versionHistory &&
+                dataset.versionHistory.length > 0 && (
+                  <DropdownMenu
+                    isOpen={versionDropdown.isOpen}
+                    onClose={versionDropdown.onClose}
+                    trigger={
+                      <button
+                        onClick={versionDropdown.onToggle}
+                        className={clsx(
+                          'inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-mono border transition-colors',
+                          isViewingOldVersion
+                            ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700'
+                            : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                        )}
+                      >
+                        <GitCommit className="w-3 h-3" />
+                        v{selectedVersion ?? dataset.version}
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                    }
+                  >
+                    <DropdownItem
+                      onClick={() => {
+                        onSelectVersion(null);
+                        versionDropdown.onClose();
+                      }}
+                    >
+                      <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                        v{dataset.version}
+                      </span>
+                      <span className="ml-2">Current</span>
+                    </DropdownItem>
+                    <DropdownDivider />
+                    {dataset.versionHistory.map((entry) => (
+                      <DropdownItem
+                        key={entry.version}
+                        onClick={() => {
+                          onSelectVersion(entry.version);
+                          versionDropdown.onClose();
+                        }}
+                      >
+                        <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400">
+                          v{entry.version}
+                        </span>
+                        <span
+                          className={clsx(
+                            'ml-2 text-xs px-1.5 py-0.5 rounded',
+                            entry.operation === 'WRITE' &&
+                              'bg-blue-100 dark:bg-blue-900/30 text-blue-600',
+                            entry.operation === 'MERGE' &&
+                              'bg-purple-100 dark:bg-purple-900/30 text-purple-600',
+                            entry.operation === 'DELETE' &&
+                              'bg-red-100 dark:bg-red-900/30 text-red-600'
+                          )}
+                        >
+                          {entry.operation}
+                        </span>
+                      </DropdownItem>
+                    ))}
+                  </DropdownMenu>
+                )}
+            </div>
+            <p className="text-gray-500 dark:text-gray-400">{dataset.description}</p>
+          </div>
+
+          <div className="flex gap-2">
+            <Link
+              href={`/silver/${dataset.id}`}
+              className={clsx(
+                'flex items-center gap-2 px-3 py-2 text-sm font-medium text-white rounded-lg transition-colors',
+                dataset.type === 'persistent'
+                  ? 'bg-purple-500 hover:bg-purple-600'
+                  : 'bg-cyan-500 hover:bg-cyan-600'
+              )}
+            >
+              <Eye className="w-4 h-4" />
+              {dataset.type === 'persistent' ? 'View Data' : 'Preview Data'}
+            </Link>
+            <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-lg">
+              <Play className="w-4 h-4" />
+              {dataset.type === 'persistent' ? 'Execute' : 'Run Query'}
+            </button>
+          </div>
+        </div>
+
+        {/* Error message */}
+        {dataset.status === 'failed' && dataset.error && (
+          <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 mb-4">
+            <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
+              <AlertCircle className="w-4 h-4" />
+              <span className="text-sm font-medium">Execution Failed</span>
+            </div>
+            <p className="text-sm text-red-600 dark:text-red-300 mt-1">{dataset.error}</p>
+          </div>
+        )}
+
+        {/* Virtualized Banner */}
+        {dataset.type === 'virtualized' && (
+          <div className="p-4 rounded-lg bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 mb-4">
+            <div className="flex items-center gap-2 text-cyan-700 dark:text-cyan-400 mb-1">
+              <Zap className="w-4 h-4" />
+              <span className="text-sm font-medium">Virtualized Query</span>
+            </div>
+            <p className="text-sm text-cyan-600 dark:text-cyan-300">
+              This dataset queries source data on-demand. No data is materialized.
+            </p>
+          </div>
+        )}
+
+        {/* Stats Grid - only for Persistent */}
+        {dataset.type === 'persistent' && (
+          <div className="grid grid-cols-3 gap-4">
+            <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800">
+              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">
+                <Clock className="w-3.5 h-3.5" />
+                Last Execution
+              </div>
+              <div className="font-semibold text-gray-900 dark:text-white text-sm">
+                {formatDate(dataset.lastExecution)}
+              </div>
+            </div>
+            <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800">
+              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">
+                <Table2 className="w-3.5 h-3.5" />
+                Output Rows
+              </div>
+              <div className="font-semibold text-gray-900 dark:text-white text-sm">
+                {(viewingVersion?.rowCount ?? dataset.rowCount).toLocaleString()}
+              </div>
+            </div>
+            <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800">
+              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">
+                <Layers className="w-3.5 h-3.5" />
+                Delta Size
+              </div>
+              <div className="font-semibold text-gray-900 dark:text-white text-sm">
+                {formatBytes(viewingVersion?.sizeBytes ?? dataset.sizeBytes)}
+              </div>
+            </div>
+          </div>
+        )}
+      </header>
+
+      {/* Content */}
+      <div className="flex-1 overflow-auto p-6 space-y-6">
+        {/* Source */}
+        <section>
+          <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+            {dataset.type === 'persistent' ? (
+              <>
+                <Database className="w-4 h-4 text-gray-400" />
+                Source Bronze Dataset
+              </>
+            ) : (
+              <>
+                <Table2 className="w-4 h-4 text-gray-400" />
+                Source Tables
+                <span className="text-xs font-normal text-gray-500 ml-1">
+                  ({dataset.tables?.length || 0})
+                </span>
+              </>
+            )}
+          </h3>
+          {dataset.type === 'persistent' ? (
+            <div className="p-4 rounded-lg bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30">
+                  <Layers className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <div className="font-medium text-gray-900 dark:text-white text-sm">
+                    {viewingVersion?.sourceBronzeDataset ?? dataset.sourceBronzeDataset}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    Bronze Layer Dataset
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {dataset.tables?.map((table) => (
+                <div
+                  key={table.id}
+                  className="flex items-center justify-between p-4 rounded-lg bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                      <Table2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <div className="font-medium text-gray-900 dark:text-white text-sm">
+                        {table.name}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {table.connection}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-500">{table.columnCount} columns</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Column Transformations */}
+        <TransformationsSection
+          transformations={viewingVersion?.transformations ?? dataset.transformations}
+          isViewingOldVersion={isViewingOldVersion}
+          currentCount={dataset.transformations.length}
+        />
+
+        {/* Column Groups (Equivalence) */}
+        {(viewingVersion?.columnGroups ?? dataset.columnGroups).length > 0 && (
+          <section
+            className={clsx(
+              isViewingOldVersion &&
+                'p-4 rounded-lg bg-amber-50/30 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/30'
+            )}
+          >
+            <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
+              <GitMerge className="w-4 h-4 text-gray-400" />
+              Column Groups (Equivalence)
+              <span className="text-xs font-normal text-gray-500 ml-1">
+                ({(viewingVersion?.columnGroups ?? dataset.columnGroups).length})
+              </span>
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {(viewingVersion?.columnGroups ?? dataset.columnGroups).map((group) => (
+                <span
+                  key={group}
+                  className={clsx(
+                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm',
+                    isViewingOldVersion
+                      ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                      : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                  )}
+                >
+                  <GitMerge className="w-3.5 h-3.5" />
+                  {group}
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Column unification + value mappings applied from Equivalence layer
+            </p>
+          </section>
+        )}
+
+        {/* Filter Conditions */}
+        {(viewingVersion?.filterConditions ?? dataset.filterConditions).length > 0 && (
+          <section
+            className={clsx(
+              isViewingOldVersion &&
+                'p-4 rounded-lg bg-amber-50/30 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/30'
+            )}
+          >
+            <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
+              <Filter className="w-4 h-4 text-gray-400" />
+              Filter Conditions
+            </h3>
+            <div
+              className={clsx(
+                'p-4 rounded-lg',
+                isViewingOldVersion
+                  ? 'bg-amber-900/80 dark:bg-amber-950'
+                  : 'bg-zinc-900 dark:bg-zinc-950'
+              )}
+            >
+              <code
+                className={clsx(
+                  'text-sm font-mono',
+                  isViewingOldVersion ? 'text-amber-300' : 'text-green-400'
+                )}
+              >
+                WHERE{' '}
+                {(viewingVersion?.filterConditions ?? dataset.filterConditions)
+                  .map((c) => {
+                    if (['IS NULL', 'IS NOT NULL'].includes(c.operator)) {
+                      return `${c.column} ${c.operator}`;
+                    }
+                    return `${c.column} ${c.operator} '${c.value}'`;
+                  })
+                  .join(` ${viewingVersion?.filterLogic ?? dataset.filterLogic} `)}
+              </code>
+            </div>
+          </section>
+        )}
+
+        {/* No transformations message */}
+        {(viewingVersion?.transformations ?? dataset.transformations).length === 0 &&
+          (viewingVersion?.columnGroups ?? dataset.columnGroups).length === 0 &&
+          (viewingVersion?.filterConditions ?? dataset.filterConditions).length === 0 && (
+            <div className="text-center py-8">
+              <Settings2 className="w-12 h-12 mx-auto mb-3 opacity-30 text-gray-500 dark:text-gray-400" />
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                No transformations configured
+              </p>
+              <p className="text-xs mt-1 text-gray-500 dark:text-gray-400">
+                Data is passed through without modifications
+              </p>
+            </div>
+          )}
+
+        {/* Version History */}
+        <VersionHistory
+          dataset={dataset}
+          selectedVersion={selectedVersion}
+          onSelectVersion={onSelectVersion}
+        />
+      </div>
+    </div>
+  );
+});
+
+// ===========================================
+// Main Page Component
+// ===========================================
+
+export default function SilverLayerPage() {
+  const [datasets, setDatasets] = useState(MOCK_DATASETS);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDataset, setSelectedDataset] = useState(null);
+  const [filterType, setFilterType] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [selectedVersion, setSelectedVersion] = useState(null);
+
+  // Handlers
+  const handleSelectDataset = useCallback((dataset) => {
+    setSelectedDataset(dataset);
+    setSelectedVersion(null);
+  }, []);
+
+  const handleDeleteDataset = useCallback((id) => {
+    if (confirm('Are you sure you want to delete this dataset?')) {
+      setDatasets((prev) => prev.filter((d) => d.id !== id));
+      setSelectedDataset((prev) => (prev?.id === id ? null : prev));
+    }
+  }, []);
+
+  // Filtered datasets
+  const filteredDatasets = datasets.filter((d) => {
+    const matchesSearch =
+      d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      d.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesType = filterType === 'all' || d.type === filterType;
+    const matchesStatus = filterStatus === 'all' || d.status === filterStatus;
+    return matchesSearch && matchesType && matchesStatus;
+  });
+
+  // Stats
+  const stats = {
+    total: datasets.length,
+    persistent: datasets.filter((d) => d.type === 'persistent').length,
+    virtualized: datasets.filter((d) => d.type === 'virtualized').length,
+    running: datasets.filter((d) => d.status === 'running').length,
+  };
+
+  return (
+    <DashboardLayout>
+      <div className="h-screen flex flex-col bg-gray-50 dark:bg-zinc-950">
+        {/* Header */}
+        <header className="px-6 py-4 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
+                <Sparkles className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white">Silver Layer</h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Data transformation and normalization
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/silver/rules"
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+              >
+                <FileCode className="w-4 h-4" />
+                Rules
+              </Link>
+              <Link
+                href="/silver/new"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-purple-500 hover:bg-purple-600 rounded-lg transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                New Dataset
+              </Link>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="flex items-center gap-6 mt-4">
+            <div className="flex items-center gap-2 text-sm">
+              <Database className="w-4 h-4 text-gray-400" />
+              <span className="text-gray-600 dark:text-gray-400">{stats.total} datasets</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <Sparkles className="w-4 h-4 text-purple-500" />
+              <span className="text-gray-600 dark:text-gray-400">{stats.persistent} persistent</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <Zap className="w-4 h-4 text-cyan-500" />
+              <span className="text-gray-600 dark:text-gray-400">
+                {stats.virtualized} virtualized
+              </span>
+            </div>
+            {stats.running > 0 && (
+              <div className="flex items-center gap-2 text-sm">
+                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                <span className="text-gray-600 dark:text-gray-400">{stats.running} running</span>
+              </div>
+            )}
+          </div>
+        </header>
+
+        <div className="flex-1 flex overflow-hidden">
+          {/* List Panel */}
+          <aside className="w-[420px] border-r border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col">
+            {/* Filters */}
+            <div className="p-4 border-b border-gray-200 dark:border-zinc-800 space-y-3">
+              <SearchInput
+                placeholder="Search datasets..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onClear={() => setSearchQuery('')}
+              />
+              <div className="flex gap-1 p-1 bg-gray-100 dark:bg-zinc-800 rounded-lg">
+                {[
+                  { value: 'all', label: 'All' },
+                  { value: 'persistent', label: 'Persistent', icon: Sparkles },
+                  { value: 'virtualized', label: 'Virtualized', icon: Zap },
+                ].map(({ value, label, icon: Icon }) => (
+                  <button
+                    key={value}
+                    onClick={() => setFilterType(value)}
+                    className={clsx(
+                      'flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+                      filterType === value
+                        ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    )}
+                  >
+                    {Icon && <Icon className="w-3 h-3" />}
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {['all', 'running', 'completed', 'active', 'failed'].map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setFilterStatus(status)}
+                    className={clsx(
+                      'px-2.5 py-1 rounded-full text-xs font-medium transition-colors capitalize',
+                      filterStatus === status
+                        ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                        : 'bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                    )}
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Dataset List */}
+            <div className="flex-1 overflow-auto p-2">
+              {filteredDatasets.length === 0 ? (
+                <EmptyState
+                  icon={<Sparkles className="w-12 h-12" />}
+                  title="No datasets found"
+                  description="Try adjusting your search or filters"
+                />
+              ) : (
+                <div className="space-y-2">
+                  {filteredDatasets.map((dataset) => (
+                    <DatasetListItem
+                      key={dataset.id}
+                      dataset={dataset}
+                      isSelected={selectedDataset?.id === dataset.id}
+                      onSelect={handleSelectDataset}
+                      onDelete={handleDeleteDataset}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </aside>
+
+          {/* Detail Panel */}
+          <main className="flex-1 overflow-auto">
+            <DetailPanel
+              dataset={selectedDataset}
+              selectedVersion={selectedVersion}
+              onSelectVersion={setSelectedVersion}
+            />
+          </main>
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+}
