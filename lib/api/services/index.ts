@@ -7,6 +7,8 @@ export { connectionService } from './connection';
 
 export * from './metadata';
 export { metadataService } from './metadata';
+
+export * from './relationships';
 export { relationshipsService } from './relationships';
 
 export * from './imagePath';

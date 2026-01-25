@@ -168,17 +168,14 @@ const TableNode = memo(function TableNode({
             <div 
               key={col.id} 
               className={clsx(
-                "relative px-3 py-1.5 flex items-center justify-between text-xs group/col transition-all",
+                "relative px-3 py-1.5 flex items-center justify-between text-xs group/col transition-all cursor-pointer",
                 highlighted 
                   ? "bg-blue-100 dark:bg-blue-900/40 ring-1 ring-blue-400 dark:ring-blue-500 ring-inset" 
-                  : "hover:bg-gray-50 dark:hover:bg-zinc-800/50",
-                !isFederation && "cursor-pointer"
+                  : "hover:bg-gray-50 dark:hover:bg-zinc-800/50"
               )}
               onClick={(e) => {
-                if (!isFederation) {
-                  e.stopPropagation();
-                  data.onColumnClick?.(col.id, id);
-                }
+                e.stopPropagation();
+                data.onColumnClick?.(col.id, id);
               }}
             >
               <div className="flex items-center gap-2 min-w-0">

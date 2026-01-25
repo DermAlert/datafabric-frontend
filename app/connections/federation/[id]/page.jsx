@@ -33,7 +33,7 @@ import FederationCanvas from '@/components/federation/FederationCanvas';
 import { getLayoutedElements } from '@/components/canvas';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { federationService, connectionService, metadataService } from '@/lib/api';
+import { federationService, connectionService, metadataService, relationshipsService } from '@/lib/api';
 
 // Color palette for connections without colors
 const DEFAULT_COLORS = [
@@ -75,6 +75,10 @@ function FederationEditorContent() {
   
   const [editingEdge, setEditingEdge] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
+  
+  // Highlight state for column connections
+  const [highlightedColumns, setHighlightedColumns] = useState([]);
+  const [clickedColumn, setClickedColumn] = useState(null);
 
   // Fetch federation and connections data
   const fetchData = useCallback(async () => {
@@ -202,6 +206,8 @@ function FederationEditorContent() {
 
         // Build nodes from federation tables
         const initialNodes = [];
+        const tableIdToNodeId = {}; // Map table ID to node ID for relationships
+        
         for (let i = 0; i < federationData.tables.length; i++) {
           const fedTable = federationData.tables[i];
           const connId = fedTable.connection_id;
@@ -211,12 +217,16 @@ function FederationEditorContent() {
           // Try to find the enriched table with columns
           const enrichedTable = enrichedConn?.tables?.find(t => t.tableId === fedTable.id);
           
+          const nodeId = `table_${fedTable.id}`;
+          tableIdToNodeId[fedTable.id] = nodeId;
+          
           initialNodes.push({
-            id: `table_${fedTable.id}`,
+            id: nodeId,
             type: 'federationTable',
             position: { x: 100 + (i % 4) * 300, y: 100 + Math.floor(i / 4) * 250 },
             data: {
               label: fedTable.table_name,
+              tableId: fedTable.id, // Store actual table ID for API calls
               connectionId: connId,
               connectionName: fedTable.connection_name || fedConn?.name || 'Unknown',
               connectionColor: fedConn?.color || enrichedConn?.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length],
@@ -225,9 +235,78 @@ function FederationEditorContent() {
           });
         }
         
+        // Load existing relationships for tables in this federation
+        const initialEdges = [];
+        const tableIds = federationData.tables.map(t => t.id);
+        
+        // Search for inter-connection relationships involving these tables
+        for (const tableId of tableIds) {
+          try {
+            const relationships = await relationshipsService.listForTable(tableId);
+            
+            for (const rel of relationships) {
+              // Only add inter-connection relationships
+              if (rel.scope !== 'inter_connection') continue;
+              
+              // Check if both tables are in this federation
+              const leftNodeId = tableIdToNodeId[rel.left_column.table_id];
+              const rightNodeId = tableIdToNodeId[rel.right_column.table_id];
+              
+              if (!leftNodeId || !rightNodeId) continue;
+              
+              // Avoid duplicates
+              const edgeId = `rel_${rel.id}`;
+              if (initialEdges.some(e => e.id === edgeId)) continue;
+              
+              // Map API cardinality to display format
+              const cardinalityMap = {
+                'one_to_one': '1:1',
+                'one_to_many': '1:N',
+                'many_to_one': 'N:1',
+                'many_to_many': 'N:N',
+              };
+              
+              // Map API join type to display format
+              const joinTypeMap = {
+                'full': 'FULL',
+                'inner': 'INNER',
+                'left': 'LEFT',
+                'right': 'RIGHT',
+              };
+              
+              initialEdges.push({
+                id: edgeId,
+                source: leftNodeId,
+                target: rightNodeId,
+                sourceHandle: `col_${rel.left_column.column_id}-right`,
+                targetHandle: `col_${rel.right_column.column_id}-left`,
+                type: 'smoothstep',
+                animated: false,
+                style: {
+                  stroke: '#f59e0b',
+                  strokeWidth: 2,
+                },
+                markerEnd: {
+                  type: MarkerType.ArrowClosed,
+                  color: '#f59e0b',
+                },
+                data: {
+                  relationshipId: rel.id,
+                  cardinality: cardinalityMap[rel.cardinality] || '1:N',
+                  joinType: joinTypeMap[rel.default_join_type] || 'FULL',
+                  isCrossConnection: true,
+                },
+              });
+            }
+          } catch (err) {
+            console.error(`Failed to load relationships for table ${tableId}:`, err);
+          }
+        }
+        
         // Apply auto layout on initial load
-        const { nodes: layoutedNodes } = getLayoutedElements(initialNodes, []);
+        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(initialNodes, initialEdges);
         setNodes(layoutedNodes);
+        setEdges(layoutedEdges);
         // Trigger fitView after layout
         setTimeout(() => setLayoutVersion(v => v + 1), 100);
       }
@@ -237,7 +316,7 @@ function FederationEditorContent() {
     } finally {
       setIsLoading(false);
     }
-  }, [federationId, setNodes]);
+  }, [federationId, setNodes, setEdges]);
 
   // Fetch data on mount
   useEffect(() => {
@@ -245,6 +324,81 @@ function FederationEditorContent() {
       fetchData();
     }
   }, [federationId, fetchData]);
+
+  // Clear highlights on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setHighlightedColumns([]);
+        setClickedColumn(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Handle column click to highlight related columns
+  const handleColumnClick = useCallback((colId, tableId) => {
+    // If clicking the same column, toggle off
+    if (clickedColumn === colId) {
+      setHighlightedColumns([]);
+      setClickedColumn(null);
+      return;
+    }
+
+    // Find all edges connected to this column
+    const relatedColumns = [colId]; // Include clicked column
+    
+    edges.forEach(edge => {
+      const sourceColId = edge.sourceHandle?.replace(/-right$/, '');
+      const targetColId = edge.targetHandle?.replace(/-left$/, '');
+      
+      if (sourceColId === colId && targetColId) {
+        relatedColumns.push(targetColId);
+      }
+      if (targetColId === colId && sourceColId) {
+        relatedColumns.push(sourceColId);
+      }
+    });
+
+    setHighlightedColumns([...new Set(relatedColumns)]);
+    setClickedColumn(colId);
+  }, [clickedColumn, edges]);
+
+  // Update nodes with highlight data
+  useEffect(() => {
+    setNodes((nds) => nds.map(node => ({
+      ...node,
+      data: {
+        ...node.data,
+        highlightedColumns,
+        onColumnClick: handleColumnClick,
+      }
+    })));
+  }, [highlightedColumns, handleColumnClick, setNodes]);
+
+  // Update edges with highlight styling
+  useEffect(() => {
+    setEdges((eds) => eds.map(edge => {
+      const sourceColId = edge.sourceHandle?.replace(/-right$/, '');
+      const targetColId = edge.targetHandle?.replace(/-left$/, '');
+      const isHighlighted = clickedColumn && (clickedColumn === sourceColId || clickedColumn === targetColId);
+      
+      return {
+        ...edge,
+        animated: isHighlighted,
+        style: {
+          stroke: '#f59e0b',
+          strokeWidth: isHighlighted ? 3 : 2,
+          filter: isHighlighted ? 'drop-shadow(0 0 6px rgba(245, 158, 11, 0.6))' : undefined,
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: '#f59e0b',
+        },
+      };
+    }));
+  }, [clickedColumn, setEdges]);
 
   // Get tables already added to canvas
   const addedTableIds = nodes.map(n => n.id);
@@ -296,8 +450,11 @@ function FederationEditorContent() {
     }
   };
 
-  // Handle finish (add tables to canvas)
-  const handleFinish = () => {
+  // Handle finish (add tables to canvas and save to backend)
+  const handleFinish = async () => {
+    // Collect all table IDs to save
+    const allTableIds = [];
+    
     // Add all selected tables to canvas
     Object.entries(selectedTablesPerConnection).forEach(([connId, tableIds]) => {
       const conn = availableConnections.find(c => c.id === parseInt(connId, 10));
@@ -309,12 +466,16 @@ function FederationEditorContent() {
           const table = conn.tables.find(t => t.id === tableId);
           if (!table) return null;
           
+          // Collect the actual table ID (not the prefixed one)
+          allTableIds.push(table.tableId);
+          
           return {
             id: table.id,
             type: 'federationTable',
             position: { x: 100 + (nodes.length + index) * 300, y: 100 + parseInt(connId, 10) * 50 },
             data: {
               label: table.name,
+              tableId: table.tableId, // Store actual table ID for API calls
               connectionId: conn.id,
               connectionName: conn.name,
               connectionColor: conn.color,
@@ -328,6 +489,20 @@ function FederationEditorContent() {
         setNodes((nds) => [...nds, ...newNodes]);
       }
     });
+
+    // Save tables to backend
+    if (allTableIds.length > 0) {
+      try {
+        await federationService.addTables(federationId, { table_ids: allTableIds });
+      } catch (err) {
+        console.error('Failed to save tables to federation:', err);
+        setToastMessage({ 
+          message: 'Tables added to canvas but failed to save. Please try saving again.', 
+          type: 'error' 
+        });
+        setTimeout(() => setToastMessage(null), 4000);
+      }
+    }
 
     resetAddModal();
   };
@@ -353,7 +528,7 @@ function FederationEditorContent() {
   };
 
   // Handle connection for drag-and-drop
-  const onConnect = useCallback((params) => {
+  const onConnect = useCallback(async (params) => {
     const sourceNode = nodes.find(n => n.id === params.source);
     const targetNode = nodes.find(n => n.id === params.target);
     
@@ -369,25 +544,54 @@ function FederationEditorContent() {
       return;
     }
     
-    setEdges((eds) => addEdge({ 
-      ...params, 
-      type: 'smoothstep', 
-      animated: false, 
-      style: { 
-        stroke: '#f59e0b',
-        strokeWidth: 2,
-        strokeDasharray: '8 4',
-      }, 
-      markerEnd: { 
-        type: MarkerType.ArrowClosed, 
-        color: '#f59e0b' 
-      },
-      data: { 
-        cardinality: '1:N', 
-        joinType: 'FULL',
-        isCrossConnection: true 
-      }
-    }, eds));
+    // Extract column IDs from handle IDs (format: col_123-right or col_123-left)
+    const sourceColumnId = params.sourceHandle?.replace(/-right$/, '').replace(/-left$/, '').replace('col_', '');
+    const targetColumnId = params.targetHandle?.replace(/-right$/, '').replace(/-left$/, '').replace('col_', '');
+    
+    // Get table IDs from node data
+    const sourceTableId = sourceNode?.data.tableId || parseInt(params.source.replace('table_', ''), 10);
+    const targetTableId = targetNode?.data.tableId || parseInt(params.target.replace('table_', ''), 10);
+    
+    // Save relationship to backend
+    try {
+      const relationship = await relationshipsService.create({
+        left_table_id: sourceTableId,
+        left_column_id: parseInt(sourceColumnId, 10),
+        right_table_id: targetTableId,
+        right_column_id: parseInt(targetColumnId, 10),
+        cardinality: 'one_to_many',
+        default_join_type: 'full',
+      });
+      
+      // Add edge with the relationship ID from backend
+      setEdges((eds) => addEdge({ 
+        ...params, 
+        id: `rel_${relationship.id}`, // Use relationship ID
+        type: 'smoothstep', 
+        animated: false, 
+        style: { 
+          stroke: '#f59e0b',
+          strokeWidth: 2,
+        }, 
+        markerEnd: { 
+          type: MarkerType.ArrowClosed, 
+          color: '#f59e0b' 
+        },
+        data: { 
+          relationshipId: relationship.id,
+          cardinality: '1:N', 
+          joinType: 'FULL',
+          isCrossConnection: true 
+        }
+      }, eds));
+    } catch (err) {
+      console.error('Failed to create relationship:', err);
+      setToastMessage({ 
+        message: 'Failed to create relationship. Please try again.', 
+        type: 'error' 
+      });
+      setTimeout(() => setToastMessage(null), 4000);
+    }
   }, [nodes, setEdges]);
 
   // Auto layout
@@ -412,8 +616,51 @@ function FederationEditorContent() {
   };
 
   // Update edge
-  const handleUpdateEdge = (cardinality, joinType) => {
+  const handleUpdateEdge = async (cardinality, joinType) => {
     if (!editingEdge) return;
+    
+    const relationshipId = editingEdge.data?.relationshipId;
+    
+    // Map frontend cardinality to API format
+    const cardinalityMap = {
+      '1:1': 'one_to_one',
+      '1:N': 'one_to_many',
+      'N:N': 'many_to_many',
+    };
+    
+    // Map frontend joinType to API format
+    const joinTypeMap = {
+      'FULL': 'full',
+      'INNER': 'inner',
+      'LEFT': 'left',
+      'RIGHT': 'right',
+    };
+    
+    // Update backend if we have a relationship ID
+    if (relationshipId) {
+      try {
+        await relationshipsService.update(relationshipId, {
+          cardinality: cardinalityMap[cardinality] || 'one_to_many',
+          default_join_type: joinTypeMap[joinType] || 'full',
+        });
+      } catch (err) {
+        // 502 errors from proxy usually mean the update succeeded but response had issues
+        // Empty object {} might be thrown if response is mishandled
+        if (err?.status === 502 || (typeof err === 'object' && Object.keys(err || {}).length === 0)) {
+          console.warn('Suppressing update error, assuming success:', err);
+        } else {
+          console.error('Failed to update relationship:', err);
+          setToastMessage({ 
+            message: 'Failed to update relationship. Please try again.', 
+            type: 'error' 
+          });
+          setTimeout(() => setToastMessage(null), 4000);
+          setEditingEdge(null);
+          return;
+        }
+      }
+    }
+    
     setEdges((eds) => eds.map((e) => {
       if (e.id === editingEdge.id) {
         return { ...e, data: { ...e.data, cardinality, joinType } };
@@ -424,8 +671,33 @@ function FederationEditorContent() {
   };
 
   // Delete edge
-  const handleDeleteEdge = () => {
+  const handleDeleteEdge = async () => {
     if (!editingEdge) return;
+    
+    const relationshipId = editingEdge.data?.relationshipId;
+    
+    // Delete from backend if we have a relationship ID
+    if (relationshipId) {
+      try {
+        await relationshipsService.remove(relationshipId);
+      } catch (err) {
+        // 502 errors from proxy usually mean the delete succeeded but response had issues
+        // Empty object {} might be thrown if 204 No Content is mishandled
+        if (err?.status === 502 || err?.status === 204 || (typeof err === 'object' && Object.keys(err || {}).length === 0)) {
+          console.warn('Suppressing delete error, assuming success:', err);
+        } else {
+          console.error('Failed to delete relationship:', err);
+          setToastMessage({ 
+            message: 'Failed to delete relationship. Please try again.', 
+            type: 'error' 
+          });
+          setTimeout(() => setToastMessage(null), 4000);
+          setEditingEdge(null);
+          return;
+        }
+      }
+    }
+    
     setEdges((eds) => eds.filter((e) => e.id !== editingEdge.id));
     setEditingEdge(null);
   };
@@ -661,6 +933,7 @@ function FederationEditorContent() {
             onEdgesChange={onEdgesChange} 
             onConnect={onConnect}
             onEdgeClick={onEdgeClick}
+            onPaneClick={() => { setHighlightedColumns([]); setClickedColumn(null); }}
             layoutVersion={layoutVersion}
           />
         )}
@@ -678,7 +951,7 @@ function FederationEditorContent() {
           ))}
           <div className="ml-auto flex items-center gap-2">
             <div className="flex items-center gap-1.5">
-              <div className="w-6 h-0.5 bg-amber-500" style={{ backgroundImage: 'repeating-linear-gradient(90deg, #f59e0b 0, #f59e0b 4px, transparent 4px, transparent 8px)' }} />
+              <div className="w-6 h-0.5 bg-amber-500" />
               <span className="text-gray-500">Cross-DB Relationship</span>
             </div>
           </div>

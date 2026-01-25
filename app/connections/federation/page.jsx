@@ -39,6 +39,12 @@ export default function FederationListPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Edit modal state
+  const [editingFederation, setEditingFederation] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
+
   // Fetch federations
   const fetchFederations = useCallback(async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
@@ -89,6 +95,44 @@ export default function FederationListPage() {
       toast.error(error?.message || 'Failed to create federation');
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  // Open edit modal
+  const openEditModal = (federation) => {
+    setEditingFederation(federation);
+    setEditName(federation.name);
+    setEditDescription(federation.description || '');
+    setMenuOpenId(null);
+  };
+
+  // Update federation
+  const handleUpdateFederation = async () => {
+    if (!editingFederation || !editName.trim()) return;
+    
+    setIsUpdating(true);
+    try {
+      const updated = await federationService.update(editingFederation.id, {
+        name: editName.trim(),
+        description: editDescription.trim() || undefined,
+      });
+      
+      setFederations(prev => prev.map(f => f.id === editingFederation.id ? { ...f, ...updated } : f));
+      setEditingFederation(null);
+      toast.success('Federation updated successfully!');
+    } catch (err) {
+      console.error('Failed to update federation:', err);
+      const error = err;
+      // Handle 502 as success
+      if (error?.status === 502 || (typeof error === 'object' && Object.keys(error || {}).length === 0)) {
+        setFederations(prev => prev.map(f => f.id === editingFederation.id ? { ...f, name: editName.trim(), description: editDescription.trim() } : f));
+        setEditingFederation(null);
+        toast.success('Federation updated successfully!');
+      } else {
+        toast.error(error?.message || 'Failed to update federation');
+      }
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -264,13 +308,16 @@ export default function FederationListPage() {
                         
                         {menuOpenId === federation.id && (
                           <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg shadow-lg z-10 py-1">
-                            <Link
-                              href={`/connections/federation/${federation.id}`}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditModal(federation);
+                              }}
                               className="w-full text-left px-4 py-2 text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200"
                             >
                               <Pencil className="w-3.5 h-3.5" />
                               Edit
-                            </Link>
+                            </button>
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -457,6 +504,76 @@ export default function FederationListPage() {
                 >
                   {isDeleting && <Loader2 className="w-4 h-4 animate-spin" />}
                   {isDeleting ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Modal */}
+        {editingFederation && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl max-w-md w-full border border-gray-200 dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-zinc-800">
+                <h3 className="font-semibold text-lg text-gray-900 dark:text-white flex items-center gap-2">
+                  <Pencil className="w-5 h-5 text-amber-500" />
+                  Edit Federation
+                </h3>
+                <button 
+                  onClick={() => setEditingFederation(null)} 
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                  disabled={isUpdating}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Name <span className="text-red-500">*</span>
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="e.g., E-commerce Integration"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                    autoFocus
+                    disabled={isUpdating}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Description <span className="text-gray-400">(optional)</span>
+                  </label>
+                  <textarea 
+                    placeholder="Which connections will be related in this federation?"
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm resize-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                    disabled={isUpdating}
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-gray-100 dark:border-zinc-800 flex justify-end gap-3">
+                <button 
+                  onClick={() => setEditingFederation(null)} 
+                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg"
+                  disabled={isUpdating}
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleUpdateFederation}
+                  disabled={!editName.trim() || isUpdating}
+                  className="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isUpdating && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {isUpdating ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
             </div>

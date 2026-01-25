@@ -26,6 +26,7 @@ export default function FederationCanvas({
   onEdgesChange, 
   onConnect,
   onEdgeClick,
+  onPaneClick,
   layoutVersion = 0
 }) {
   return (
@@ -38,6 +39,7 @@ export default function FederationCanvas({
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       onEdgeClick={onEdgeClick}
+      onPaneClick={onPaneClick}
       variant="federation"
       defaultEdgeType="smoothstep"
       maxZoom={1.5}
