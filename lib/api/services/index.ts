@@ -16,3 +16,6 @@ export { imagePathService } from './imagePath';
 
 export * from './federation';
 export { federationService } from './federation';
+
+export * from './bronze';
+export { bronzeService } from './bronze';
