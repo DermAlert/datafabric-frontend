@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, memo } from 'react';
+import React, { useState, useCallback, useEffect, memo } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import Link from 'next/link';
 import { clsx } from 'clsx';
@@ -17,157 +17,41 @@ import {
   BookOpen,
   Layers,
   Link as LinkIcon,
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import { useDisclosure } from '@/hooks';
 import {
   Modal,
   DropdownMenu,
   DropdownItem,
-  DropdownDivider,
   EmptyState,
 } from '@/components/ui';
 import { Input, SearchInput, Textarea } from '@/components/ui/Input';
-import { formatDate } from '@/lib/utils';
+import { equivalenceService } from '../../lib/api/services/equivalence';
+import { toast } from 'sonner';
 
-// ===========================================
-// Mock Data - Em produção, viria de uma API
-// ===========================================
+// Helper to generate a consistent color based on connection type/name
+const getConnectionColor = (type) => {
+  const map = {
+    'postgres': '#3b82f6', // blue
+    'mysql': '#22c55e',    // green
+    'sqlserver': '#ef4444', // red
+    'oracle': '#f97316',   // orange
+    'mongodb': '#a855f7',  // purple
+    's3': '#ec4899',       // pink
+  };
+  return map[type?.toLowerCase()] || '#64748b'; // default slate
+};
 
-const MOCK_COLUMN_GROUPS = [
-  {
-    id: 'grp_1',
-    name: 'sex_unified',
-    description: 'Unified sex/gender column across all data sources',
-    dictionaryTerm: {
-      id: 'term_1',
-      name: 'Sex/Gender',
-      domain: 'Demographics',
-      dataType: 'ENUM',
-      standardValues: ['M', 'F', 'O'],
-    },
-    useTermStandardValues: true,
-    customStandardValues: [],
-    columnMappings: [
-      {
-        id: 'map_1',
-        connection: 'PostgreSQL Production',
-        connectionColor: '#3b82f6',
-        table: 'patients',
-        column: 'sex',
-        sampleValues: ['M', 'F'],
-      },
-      {
-        id: 'map_2',
-        connection: 'MongoDB UserData',
-        connectionColor: '#a855f7',
-        table: 'users',
-        column: 'gender',
-        sampleValues: ['male', 'female'],
-      },
-      {
-        id: 'map_3',
-        connection: 'MySQL Analytics',
-        connectionColor: '#22c55e',
-        table: 'pacientes',
-        column: 'sexo_paciente',
-        sampleValues: ['masculino', 'feminino'],
-      },
-    ],
-    valueMappings: [
-      { source: 'male', target: 'M', count: 1523 },
-      { source: 'female', target: 'F', count: 1891 },
-      { source: 'masculino', target: 'M', count: 892 },
-      { source: 'feminino', target: 'F', count: 1045 },
-    ],
-    updatedAt: '2026-01-12T10:30:00Z',
-  },
-  {
-    id: 'grp_2',
-    name: 'status_unified',
-    description: 'Unified status column for orders and transactions',
-    dictionaryTerm: {
-      id: 'term_2',
-      name: 'Status',
-      domain: 'Operations',
-      dataType: 'ENUM',
-      standardValues: ['ACTIVE', 'INACTIVE', 'PENDING', 'COMPLETED'],
-    },
-    useTermStandardValues: true,
-    customStandardValues: [],
-    columnMappings: [
-      {
-        id: 'map_4',
-        connection: 'PostgreSQL Production',
-        connectionColor: '#3b82f6',
-        table: 'orders',
-        column: 'status',
-        sampleValues: ['active', 'pending', 'done'],
-      },
-      {
-        id: 'map_5',
-        connection: 'MySQL Analytics',
-        connectionColor: '#22c55e',
-        table: 'transactions',
-        column: 'estado',
-        sampleValues: ['ativo', 'pendente', 'concluido'],
-      },
-    ],
-    valueMappings: [
-      { source: 'active', target: 'ACTIVE', count: 5432 },
-      { source: 'ativo', target: 'ACTIVE', count: 2341 },
-      { source: 'pending', target: 'PENDING', count: 892 },
-    ],
-    updatedAt: '2026-01-11T14:20:00Z',
-  },
-  {
-    id: 'grp_3',
-    name: 'email_unified',
-    description: 'Unified email columns - semantic grouping without value normalization',
-    dictionaryTerm: {
-      id: 'term_4',
-      name: 'Email',
-      domain: 'Contact',
-      dataType: 'STRING',
-      standardValues: [],
-    },
-    useTermStandardValues: true,
-    customStandardValues: [],
-    columnMappings: [
-      {
-        id: 'map_8',
-        connection: 'PostgreSQL Production',
-        connectionColor: '#3b82f6',
-        table: 'patients',
-        column: 'email',
-        sampleValues: ['joao@email.com', 'maria@gmail.com'],
-      },
-      {
-        id: 'map_9',
-        connection: 'MongoDB UserData',
-        connectionColor: '#a855f7',
-        table: 'users',
-        column: 'email',
-        sampleValues: ['john@company.com', 'jane@work.org'],
-      },
-    ],
-    valueMappings: [],
-    updatedAt: '2026-01-09T11:00:00Z',
-  },
-];
-
-const MOCK_DICTIONARY_TERMS = [
-  { id: 'term_1', name: 'Sex/Gender', domain: 'Demographics', dataType: 'ENUM', values: ['M', 'F'] },
-  {
-    id: 'term_2',
-    name: 'Status',
-    domain: 'Operations',
-    dataType: 'ENUM',
-    values: ['ACTIVE', 'INACTIVE', 'PENDING', 'COMPLETED'],
-  },
-  { id: 'term_3', name: 'Country', domain: 'Location', dataType: 'STRING', values: [] },
-  { id: 'term_4', name: 'Email', domain: 'Contact', dataType: 'STRING', values: [] },
-  { id: 'term_5', name: 'Date of Birth', domain: 'Demographics', dataType: 'DATE', values: [] },
-];
+const formatDate = (dateString) => {
+  if (!dateString) return 'Never';
+  return new Date(dateString).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+};
 
 // ===========================================
 // Group List Item Component
@@ -200,9 +84,9 @@ const GroupListItem = memo(function GroupListItem({
             <span className="font-medium text-gray-900 dark:text-white text-sm truncate">
               {group.name}
             </span>
-            {group.dictionaryTerm && (
+            {group.data_dictionary_term_name && (
               <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
-                {group.dictionaryTerm.name}
+                {group.data_dictionary_term_name}
               </span>
             )}
           </div>
@@ -212,11 +96,11 @@ const GroupListItem = memo(function GroupListItem({
           <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
             <span className="flex items-center gap-1">
               <Database className="w-3 h-3" />
-              {group.columnMappings.length} columns
+              {group.columns_count || 0} columns
             </span>
             <span className="flex items-center gap-1">
               <ArrowRight className="w-3 h-3" />
-              {group.valueMappings.length} mappings
+              {group.value_mappings_count || 0} mappings
             </span>
           </div>
         </div>
@@ -262,26 +146,32 @@ const ColumnMappingCard = memo(function ColumnMappingCard({
   mapping,
   onRemove,
 }) {
+  const color = getConnectionColor(mapping.data_source_type);
+  const sample = mapping.sample_values || [];
+
   return (
     <div className="flex items-center justify-between p-4 rounded-lg bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
       <div className="flex items-center gap-4">
         <div
           className="w-3 h-3 rounded-full"
-          style={{ backgroundColor: mapping.connectionColor }}
+          style={{ backgroundColor: color }}
           aria-hidden="true"
+          title={mapping.data_source_type}
         />
         <div>
           <div className="font-mono text-sm text-gray-900 dark:text-white">
-            {mapping.table}.
-            <span className="text-purple-600 dark:text-purple-400">{mapping.column}</span>
+            {mapping.table_name}.
+            <span className="text-purple-600 dark:text-purple-400">{mapping.column_name}</span>
           </div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">{mapping.connection}</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">{mapping.data_source_name}</div>
         </div>
       </div>
       <div className="flex items-center gap-4">
-        <div className="text-xs text-gray-400">
-          Sample: {mapping.sampleValues.slice(0, 3).join(', ')}
-        </div>
+        {sample.length > 0 && (
+          <div className="text-xs text-gray-400 hidden sm:block">
+            Sample: {sample.slice(0, 3).join(', ')}
+          </div>
+        )}
         <button
           onClick={() => onRemove(mapping.id)}
           className="p-1 text-gray-400 hover:text-red-500"
@@ -302,7 +192,7 @@ const ValueMappingsTable = memo(function ValueMappingsTable({
   mappings,
   onRemove,
 }) {
-  if (mappings.length === 0) {
+  if (!mappings || mappings.length === 0) {
     return (
       <div className="p-6 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-dashed border-gray-300 dark:border-zinc-600 text-center">
         <Layers className="w-8 h-8 mx-auto mb-2 text-gray-400" />
@@ -338,10 +228,10 @@ const ValueMappingsTable = memo(function ValueMappingsTable({
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-zinc-700">
           {mappings.map((mapping, idx) => (
-            <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-zinc-700/50">
+            <tr key={mapping.id || idx} className="hover:bg-gray-50 dark:hover:bg-zinc-700/50">
               <td className="px-4 py-3">
                 <code className="px-2 py-1 text-sm bg-gray-100 dark:bg-zinc-900 text-gray-700 dark:text-gray-300 rounded">
-                  {mapping.source}
+                  {mapping.source_value}
                 </code>
               </td>
               <td className="px-4 py-3 text-center">
@@ -349,15 +239,15 @@ const ValueMappingsTable = memo(function ValueMappingsTable({
               </td>
               <td className="px-4 py-3">
                 <code className="px-2 py-1 text-sm bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded font-medium">
-                  {mapping.target}
+                  {mapping.standard_value}
                 </code>
               </td>
               <td className="px-4 py-3 text-right text-sm text-gray-500 dark:text-gray-400">
-                {mapping.count.toLocaleString()}
+                {(mapping.record_count || 0).toLocaleString()}
               </td>
               <td className="px-2 py-3">
                 <button
-                  onClick={() => onRemove(idx)}
+                  onClick={() => onRemove(mapping.id)}
                   className="p-1 text-gray-400 hover:text-red-500"
                   aria-label="Remover mapeamento"
                 >
@@ -376,7 +266,16 @@ const ValueMappingsTable = memo(function ValueMappingsTable({
 // Detail Panel Component
 // ===========================================
 
-const DetailPanel = memo(function DetailPanel({ group }) {
+const DetailPanel = memo(function DetailPanel({ group, isLoading }) {
+  if (isLoading) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-gray-500 dark:text-gray-400">
+        <Loader2 className="w-8 h-8 mb-4 animate-spin text-purple-500" />
+        <p className="text-sm">Loading group details...</p>
+      </div>
+    );
+  }
+
   if (!group) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-gray-500 dark:text-gray-400">
@@ -390,13 +289,33 @@ const DetailPanel = memo(function DetailPanel({ group }) {
     );
   }
 
-  const handleRemoveColumnMapping = (id) => {
-    console.log('Remove column mapping:', id);
+  const handleRemoveColumnMapping = async (id) => {
+    if (!confirm('Remove this column mapping?')) return;
+    try {
+      await equivalenceService.deleteColumnMapping(id);
+      toast.success('Column mapping removed');
+      // Trigger a refresh logic here usually via context or callback prop
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to remove mapping');
+    }
   };
 
-  const handleRemoveValueMapping = (index) => {
-    console.log('Remove value mapping at index:', index);
+  const handleRemoveValueMapping = async (id) => {
+    if (!confirm('Remove this value mapping?')) return;
+    try {
+      await equivalenceService.deleteValueMapping(id);
+      toast.success('Value mapping removed');
+      // Trigger refresh
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to remove mapping');
+    }
   };
+
+  // Determine standard values (from Dictionary or Custom)
+  const standardValues = group.standard_values || []; 
+  const hasDictionaryTerm = !!group.data_dictionary_term_id;
 
   return (
     <div className="h-full flex flex-col">
@@ -406,91 +325,80 @@ const DetailPanel = memo(function DetailPanel({ group }) {
           <div>
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">{group.name}</h2>
-              {group.dictionaryTerm && (
+              {group.data_dictionary_term_id && (
                 <Link
-                  href={`/equivalence/data-dictionary?term=${group.dictionaryTerm.id}`}
+                  href={`/equivalence/data-dictionary?term=${group.data_dictionary_term_id}`}
                   className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
                 >
                   <BookOpen className="w-3 h-3" />
-                  {group.dictionaryTerm.name}
+                  {group.data_dictionary_term_name}
                 </Link>
               )}
             </div>
             <p className="text-gray-500 dark:text-gray-400 mt-1">{group.description}</p>
-            <p className="text-xs text-gray-400 mt-2">Last updated: {formatDate(group.updatedAt)}</p>
+            <p className="text-xs text-gray-400 mt-2">Last updated: {formatDate(group.data_atualizacao)}</p>
           </div>
           <button className="px-4 py-2 text-sm font-medium text-white bg-purple-500 hover:bg-purple-600 rounded-lg">
             Edit Group
           </button>
         </div>
 
-        {/* Standard Values */}
-        {group.dictionaryTerm && (
-          <div className="mt-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Standard Values
-              </span>
-              {group.dictionaryTerm.standardValues &&
-              group.dictionaryTerm.standardValues.length > 0 ? (
-                group.useTermStandardValues ? (
-                  <span className="text-xs flex items-center gap-1 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded">
-                    <LinkIcon className="w-3 h-3" />
-                    From Dictionary Term
-                  </span>
-                ) : (
-                  <span className="text-xs flex items-center gap-1 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded">
-                    <Pencil className="w-3 h-3" />
-                    Custom Values
-                  </span>
-                )
-              ) : (
-                <span className="text-xs flex items-center gap-1 text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-zinc-800 px-2 py-0.5 rounded">
-                  <Layers className="w-3 h-3" />
-                  Semantic Grouping Only
+        {/* Standard Values Information */}
+        <div className="mt-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              Standard Values
+            </span>
+            {standardValues.length > 0 ? (
+              hasDictionaryTerm ? (
+                <span className="text-xs flex items-center gap-1 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded">
+                  <LinkIcon className="w-3 h-3" />
+                  From Dictionary Term
                 </span>
-              )}
-            </div>
-            {group.dictionaryTerm.standardValues &&
-            group.dictionaryTerm.standardValues.length > 0 ? (
-              <>
-                <div className="flex flex-wrap items-center gap-2">
-                  {(group.useTermStandardValues
-                    ? group.dictionaryTerm.standardValues
-                    : group.customStandardValues
-                  ).map((val) => (
-                    <span
-                      key={val}
-                      className="px-3 py-1 text-sm font-mono bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full"
-                    >
-                      {val}
-                    </span>
-                  ))}
-                  {!group.useTermStandardValues && (
-                    <button className="px-2 py-1 text-xs text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded">
-                      + Add
-                    </button>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  {group.useTermStandardValues
-                    ? 'Using standard values from the dictionary term.'
-                    : 'Using custom values.'}
-                </p>
-              </>
+              ) : (
+                <span className="text-xs flex items-center gap-1 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded">
+                  <Pencil className="w-3 h-3" />
+                  Custom Values
+                </span>
+              )
             ) : (
-              <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  This group unifies columns <strong>semantically</strong> without value
-                  normalization.
-                </p>
-                <p className="text-xs text-gray-500 mt-2">
-                  Useful for: federated queries, LGPD mapping, data cataloging, impact analysis.
-                </p>
-              </div>
+              <span className="text-xs flex items-center gap-1 text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-zinc-800 px-2 py-0.5 rounded">
+                <Layers className="w-3 h-3" />
+                Semantic Grouping Only
+              </span>
             )}
           </div>
-        )}
+          
+          {standardValues.length > 0 ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                {standardValues.map((val) => (
+                  <span
+                    key={val}
+                    className="px-3 py-1 text-sm font-mono bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full"
+                  >
+                    {val}
+                  </span>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                {hasDictionaryTerm
+                  ? 'Using standard values from the linked dictionary term.'
+                  : 'Values defined in property rules.'}
+              </p>
+            </>
+          ) : (
+            <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                This group unifies columns <strong>semantically</strong> without strict value
+                normalization.
+              </p>
+              <p className="text-xs text-gray-500 mt-2">
+                Useful for: federated queries, LGPD mapping, data cataloging, impact analysis.
+              </p>
+            </div>
+          )}
+        </div>
       </header>
 
       {/* Content */}
@@ -509,13 +417,16 @@ const DetailPanel = memo(function DetailPanel({ group }) {
           </div>
 
           <div className="space-y-2">
-            {group.columnMappings.map((mapping) => (
+            {group.column_mappings && group.column_mappings.map((mapping) => (
               <ColumnMappingCard
                 key={mapping.id}
                 mapping={mapping}
                 onRemove={handleRemoveColumnMapping}
               />
             ))}
+            {(!group.column_mappings || group.column_mappings.length === 0) && (
+              <p className="text-sm text-gray-500 italic">No columns mapped yet.</p>
+            )}
           </div>
         </section>
 
@@ -526,7 +437,7 @@ const DetailPanel = memo(function DetailPanel({ group }) {
               <ArrowRight className="w-4 h-4 text-gray-400" />
               Value Mappings
             </h3>
-            {group.valueMappings.length > 0 && (
+            {group.value_mappings && group.value_mappings.length > 0 && (
               <button className="text-sm text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium flex items-center gap-1">
                 <Plus className="w-4 h-4" />
                 Add Mapping
@@ -534,7 +445,7 @@ const DetailPanel = memo(function DetailPanel({ group }) {
             )}
           </div>
 
-          <ValueMappingsTable mappings={group.valueMappings} onRemove={handleRemoveValueMapping} />
+          <ValueMappingsTable mappings={group.value_mappings || []} onRemove={handleRemoveValueMapping} />
         </section>
       </div>
     </div>
@@ -549,15 +460,29 @@ const CreateGroupModal = memo(function CreateGroupModal({
   isOpen,
   onClose,
   onCreate,
-  terms,
+  isLoading
 }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [termId, setTermId] = useState('');
+  const [terms, setTerms] = useState([]);
+
+  // Fetch terms when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      equivalenceService.listDataDictionary()
+        .then(setTerms)
+        .catch(err => console.error('Failed to load terms', err));
+    }
+  }, [isOpen]);
 
   const handleSubmit = () => {
     if (!name.trim()) return;
-    onCreate({ name: name.trim(), description: description.trim(), termId });
+    onCreate({ 
+      name: name.trim(), 
+      description: description.trim(), 
+      data_dictionary_term_id: termId ? parseInt(termId) : null 
+    });
     setName('');
     setDescription('');
     setTermId('');
@@ -595,7 +520,7 @@ const CreateGroupModal = memo(function CreateGroupModal({
             <option value="">Select a term...</option>
             {terms.map((term) => (
               <option key={term.id} value={term.id}>
-                {term.name} ({term.domain})
+                {term.name}
               </option>
             ))}
           </select>
@@ -614,9 +539,10 @@ const CreateGroupModal = memo(function CreateGroupModal({
         </button>
         <button
           onClick={handleSubmit}
-          disabled={!name.trim()}
-          className="px-4 py-2 text-sm font-medium text-white bg-purple-500 hover:bg-purple-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={!name.trim() || isLoading}
+          className="px-4 py-2 text-sm font-medium text-white bg-purple-500 hover:bg-purple-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
+          {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
           Create Group
         </button>
       </div>
@@ -629,59 +555,89 @@ const CreateGroupModal = memo(function CreateGroupModal({
 // ===========================================
 
 export default function EquivalencePage() {
-  const [groups, setGroups] = useState(MOCK_COLUMN_GROUPS);
+  const [groups, setGroups] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [selectedGroup, setSelectedGroup] = useState(null); // This holds the full detail object
+  const [isLoadingList, setIsLoadingList] = useState(true);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  
   const createModal = useDisclosure();
+
+  // Load Groups
+  const fetchGroups = useCallback(async () => {
+    setIsLoadingList(true);
+    try {
+      const data = await equivalenceService.listColumnGroups();
+      setGroups(data);
+    } catch (error) {
+      console.error('Failed to fetch groups:', error);
+      toast.error('Failed to load column groups');
+    } finally {
+      setIsLoadingList(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchGroups();
+  }, [fetchGroups]);
+
+  // Load Details for Selected Group
+  const handleSelectGroup = useCallback(async (groupSummary) => {
+    setIsLoadingDetails(true);
+    // Optimistically set selection with basic info while loading details
+    setSelectedGroup(groupSummary);
+    
+    try {
+      const fullDetails = await equivalenceService.getColumnGroup(groupSummary.id);
+      setSelectedGroup(fullDetails);
+    } catch (error) {
+      console.error('Failed to fetch group details:', error);
+      toast.error('Failed to load group details');
+    } finally {
+      setIsLoadingDetails(false);
+    }
+  }, []);
 
   // Filtered groups
   const filteredGroups = groups.filter(
     (g) =>
       g.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      g.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      g.dictionaryTerm?.name.toLowerCase().includes(searchQuery.toLowerCase())
+      (g.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (g.data_dictionary_term_name || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Handlers
-  const handleSelectGroup = useCallback((group) => {
-    setSelectedGroup(group);
-  }, []);
-
-  const handleDeleteGroup = useCallback((id) => {
+  const handleDeleteGroup = useCallback(async (id) => {
     if (confirm('Are you sure you want to delete this column group?')) {
-      setGroups((prev) => prev.filter((g) => g.id !== id));
-      setSelectedGroup((prev) => (prev?.id === id ? null : prev));
+      try {
+        await equivalenceService.deleteColumnGroup(id);
+        setGroups((prev) => prev.filter((g) => g.id !== id));
+        if (selectedGroup?.id === id) setSelectedGroup(null);
+        toast.success('Column group deleted');
+      } catch (error) {
+        console.error(error);
+        toast.error('Failed to delete group');
+      }
     }
-  }, []);
+  }, [selectedGroup]);
 
-  const handleCreateGroup = useCallback(
-    (data) => {
-      const term = MOCK_DICTIONARY_TERMS.find((t) => t.id === data.termId);
-      const newGroup = {
-        id: `grp_${Date.now()}`,
-        name: data.name,
-        description: data.description,
-        dictionaryTerm: term
-          ? {
-              id: term.id,
-              name: term.name,
-              domain: term.domain,
-              dataType: term.dataType,
-              standardValues: term.values,
-            }
-          : null,
-        useTermStandardValues: true,
-        customStandardValues: [],
-        columnMappings: [],
-        valueMappings: [],
-        updatedAt: new Date().toISOString(),
-      };
-
+  const handleCreateGroup = useCallback(async (data) => {
+    setIsCreating(true);
+    try {
+      const newGroup = await equivalenceService.createColumnGroup(data);
       setGroups((prev) => [newGroup, ...prev]);
       createModal.onClose();
-    },
-    [createModal]
-  );
+      toast.success('Column group created');
+      
+      // Select the new group
+      handleSelectGroup(newGroup);
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to create group');
+    } finally {
+      setIsCreating(false);
+    }
+  }, [createModal, handleSelectGroup]);
 
   return (
     <DashboardLayout>
@@ -714,7 +670,11 @@ export default function EquivalencePage() {
 
           {/* Groups List */}
           <div className="flex-1 overflow-auto p-2">
-            {filteredGroups.length === 0 ? (
+            {isLoadingList ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-purple-500" />
+              </div>
+            ) : filteredGroups.length === 0 ? (
               <EmptyState
                 icon={<Columns className="w-8 h-8" />}
                 title="No column groups found"
@@ -738,7 +698,10 @@ export default function EquivalencePage() {
 
         {/* Right Panel - Group Details */}
         <main className="flex-1 overflow-auto">
-          <DetailPanel group={selectedGroup} />
+          <DetailPanel 
+            group={selectedGroup} 
+            isLoading={isLoadingDetails && (!selectedGroup || !selectedGroup.column_mappings)} 
+          />
         </main>
 
         {/* Create Modal */}
@@ -746,7 +709,7 @@ export default function EquivalencePage() {
           isOpen={createModal.isOpen}
           onClose={createModal.onClose}
           onCreate={handleCreateGroup}
-          terms={MOCK_DICTIONARY_TERMS}
+          isLoading={isCreating}
         />
       </div>
     </DashboardLayout>

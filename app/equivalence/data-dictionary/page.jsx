@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { 
   Plus, 
@@ -17,10 +17,14 @@ import {
   Type,
   ToggleLeft,
   List,
-  Tag
+  Tag,
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
+import { equivalenceService } from '../../../lib/api/services/equivalence';
+import { toast } from 'sonner';
 
 // Data types with icons
 const DATA_TYPES = [
@@ -33,92 +37,18 @@ const DATA_TYPES = [
   { value: 'ENUM', label: 'Enum', icon: List },
 ];
 
-// Mock semantic domains
-const MOCK_DOMAINS = [
-  { id: 'dom_1', name: 'Demographics', color: '#3b82f6', description: 'Personal demographic information' },
-  { id: 'dom_2', name: 'Operations', color: '#22c55e', description: 'Operational and status data' },
-  { id: 'dom_3', name: 'Location', color: '#f59e0b', description: 'Geographic and address data' },
-  { id: 'dom_4', name: 'Contact', color: '#ec4899', description: 'Contact information' },
-  { id: 'dom_5', name: 'Financial', color: '#8b5cf6', description: 'Financial and monetary data' },
-];
-
-// Mock dictionary terms
-const MOCK_TERMS = [
-  {
-    id: 'term_1',
-    name: 'Sex/Gender',
-    displayName: 'Sexo/Gênero',
-    description: 'Biological sex or gender identity of a person',
-    domainId: 'dom_1',
-    dataType: 'ENUM',
-    standardValues: ['M', 'F', 'O'],
-    synonyms: ['gender', 'sexo', 'genero', 'sex'],
-    usageCount: 3,
-  },
-  {
-    id: 'term_2',
-    name: 'Status',
-    displayName: 'Status',
-    description: 'Current state or condition of an entity',
-    domainId: 'dom_2',
-    dataType: 'ENUM',
-    standardValues: ['ACTIVE', 'INACTIVE', 'PENDING', 'COMPLETED'],
-    synonyms: ['state', 'estado', 'situacao'],
-    usageCount: 2,
-  },
-  {
-    id: 'term_3',
-    name: 'Country',
-    displayName: 'País',
-    description: 'Country code or name',
-    domainId: 'dom_3',
-    dataType: 'STRING',
-    standardValues: ['BR', 'US', 'UK', 'DE', 'FR'],
-    synonyms: ['pais', 'nation', 'nacao'],
-    usageCount: 2,
-  },
-  {
-    id: 'term_4',
-    name: 'Email',
-    displayName: 'E-mail',
-    description: 'Electronic mail address - used for grouping email columns without value normalization',
-    domainId: 'dom_4',
-    dataType: 'STRING',
-    standardValues: [],
-    synonyms: ['email_address', 'correio', 'mail', 'e_mail'],
-    usageCount: 1,
-  },
-  {
-    id: 'term_5',
-    name: 'Date of Birth',
-    displayName: 'Data de Nascimento',
-    description: 'Birth date of a person - used for grouping birthdate columns',
-    domainId: 'dom_1',
-    dataType: 'DATE',
-    standardValues: [],
-    synonyms: ['birthdate', 'data_nasc', 'dob', 'nascimento', 'dt_nascimento'],
-    usageCount: 1,
-  },
-  {
-    id: 'term_6',
-    name: 'Amount',
-    displayName: 'Valor',
-    description: 'Monetary amount or value - used for grouping price/value columns',
-    domainId: 'dom_5',
-    dataType: 'DECIMAL',
-    standardValues: [],
-    synonyms: ['value', 'valor', 'price', 'preco', 'total', 'amount'],
-    usageCount: 1,
-  },
-];
-
 export default function DataDictionaryPage() {
-  const [terms, setTerms] = useState(MOCK_TERMS);
+  const [terms, setTerms] = useState([]);
+  const [domains, setDomains] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDomain, setSelectedDomain] = useState(null);
   const [selectedTerm, setSelectedTerm] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState(null);
+  
+  const [isLoadingTerms, setIsLoadingTerms] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // New term form state
   const [newTermName, setNewTermName] = useState('');
@@ -129,40 +59,86 @@ export default function DataDictionaryPage() {
   const [newTermValues, setNewTermValues] = useState('');
   const [newTermSynonyms, setNewTermSynonyms] = useState('');
 
+  // Fetch Domains for sidebar
+  useEffect(() => {
+    const loadDomains = async () => {
+      try {
+        const data = await equivalenceService.listSemanticDomains();
+        setDomains(data);
+      } catch (error) {
+        console.error('Failed to load domains:', error);
+      }
+    };
+    loadDomains();
+  }, []);
+
+  // Fetch Terms
+  const fetchTerms = useCallback(async () => {
+    setIsLoadingTerms(true);
+    try {
+      // If a domain is selected, filter by it in the API call
+      const filters = selectedDomain ? { semantic_domain_id: selectedDomain } : undefined;
+      const data = await equivalenceService.listDataDictionary(filters);
+      setTerms(data);
+    } catch (error) {
+      console.error('Failed to fetch terms:', error);
+      toast.error('Failed to load data dictionary');
+    } finally {
+      setIsLoadingTerms(false);
+    }
+  }, [selectedDomain]);
+
+  useEffect(() => {
+    fetchTerms();
+  }, [fetchTerms]);
+
   const filteredTerms = terms.filter(t => {
-    const matchesSearch = 
-      t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.synonyms.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesDomain = !selectedDomain || t.domainId === selectedDomain;
-    return matchesSearch && matchesDomain;
+    const q = searchQuery.toLowerCase();
+    return (
+      t.name.toLowerCase().includes(q) ||
+      (t.display_name || '').toLowerCase().includes(q) ||
+      (t.synonyms || []).some(s => s.toLowerCase().includes(q))
+    );
   });
 
-  const getDomain = (domainId) => MOCK_DOMAINS.find(d => d.id === domainId);
+  const getDomain = (domainId) => domains.find(d => d.id === domainId);
 
   const getDataTypeIcon = (dataType) => {
     const type = DATA_TYPES.find(t => t.value === dataType);
     return type?.icon || Type;
   };
 
-  const handleCreateTerm = () => {
+  const handleCreateTerm = async () => {
     if (!newTermName.trim() || !newTermDomain) return;
     
-    const newTerm = {
-      id: `term_${Date.now()}`,
-      name: newTermName.trim(),
-      displayName: newTermDisplayName.trim() || newTermName.trim(),
-      description: newTermDescription.trim(),
-      domainId: newTermDomain,
-      dataType: newTermDataType,
-      standardValues: newTermValues.split(',').map(v => v.trim()).filter(Boolean),
-      synonyms: newTermSynonyms.split(',').map(s => s.trim()).filter(Boolean),
-      usageCount: 0,
-    };
-    
-    setTerms([newTerm, ...terms]);
-    resetForm();
-    setIsCreateModalOpen(false);
+    setIsCreating(true);
+    try {
+      const payload = {
+        name: newTermName.trim(),
+        display_name: newTermDisplayName.trim() || newTermName.trim(),
+        description: newTermDescription.trim(),
+        semantic_domain_id: parseInt(newTermDomain),
+        data_type: newTermDataType,
+        standard_values: newTermValues.split(',').map(v => v.trim()).filter(Boolean),
+        synonyms: newTermSynonyms.split(',').map(s => s.trim()).filter(Boolean),
+      };
+
+      const created = await equivalenceService.createDataDictionaryTerm(payload);
+      
+      // Update local list if it matches current filter
+      if (!selectedDomain || selectedDomain === created.semantic_domain_id) {
+        setTerms(prev => [created, ...prev]);
+      }
+      
+      toast.success('Term created successfully');
+      resetForm();
+      setIsCreateModalOpen(false);
+    } catch (error) {
+      console.error('Create failed:', error);
+      toast.error(error.message || 'Failed to create term');
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const resetForm = () => {
@@ -175,10 +151,22 @@ export default function DataDictionaryPage() {
     setNewTermSynonyms('');
   };
 
-  const handleDeleteTerm = (id) => {
-    setTerms(terms.filter(t => t.id !== id));
-    if (selectedTerm?.id === id) setSelectedTerm(null);
-    setMenuOpenId(null);
+  const handleDeleteTerm = async (id) => {
+    if (!confirm('Are you sure you want to delete this term?')) return;
+
+    setIsDeleting(true);
+    try {
+      await equivalenceService.deleteDataDictionaryTerm(id);
+      setTerms(prev => prev.filter(t => t.id !== id));
+      if (selectedTerm?.id === id) setSelectedTerm(null);
+      toast.success('Term deleted successfully');
+    } catch (error) {
+      console.error('Delete failed:', error);
+      toast.error(error.message || 'Failed to delete term');
+    } finally {
+      setIsDeleting(false);
+      setMenuOpenId(null);
+    }
   };
 
   return (
@@ -207,8 +195,9 @@ export default function DataDictionaryPage() {
             </button>
             
             <div className="mt-2 space-y-1">
-              {MOCK_DOMAINS.map((domain) => {
-                const count = terms.filter(t => t.domainId === domain.id).length;
+              {domains.map((domain) => {
+                // Count is not strictly updated here unless we fetch counts again, 
+                // defaulting to the count from domain list
                 return (
                   <button
                     key={domain.id}
@@ -222,10 +211,10 @@ export default function DataDictionaryPage() {
                   >
                     <div 
                       className="w-3 h-3 rounded-full" 
-                      style={{ backgroundColor: domain.color }}
+                      style={{ backgroundColor: domain.color || '#ccc' }}
                     />
-                    <span className="flex-1">{domain.name}</span>
-                    <span className="text-xs text-gray-400">{count}</span>
+                    <span className="flex-1 truncate">{domain.name}</span>
+                    <span className="text-xs text-gray-400">{domain.terms_count || 0}</span>
                   </button>
                 );
               })}
@@ -277,16 +266,23 @@ export default function DataDictionaryPage() {
 
           {/* Terms List */}
           <div className="flex-1 overflow-auto p-2">
-            {filteredTerms.length === 0 ? (
+            {isLoadingTerms ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+              </div>
+            ) : filteredTerms.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <BookOpen className="w-8 h-8 mx-auto mb-2 opacity-50" />
                 <p className="text-sm">No terms found</p>
+                <button onClick={fetchTerms} className="mt-2 text-xs text-blue-600 flex items-center justify-center gap-1 mx-auto hover:underline">
+                  <RefreshCw className="w-3 h-3" /> Refresh
+                </button>
               </div>
             ) : (
               <div className="space-y-2">
                 {filteredTerms.map((term) => {
-                  const domain = getDomain(term.domainId);
-                  const TypeIcon = getDataTypeIcon(term.dataType);
+                  const domain = getDomain(term.semantic_domain_id);
+                  const TypeIcon = getDataTypeIcon(term.data_type);
                   
                   return (
                     <div
@@ -310,9 +306,9 @@ export default function DataDictionaryPage() {
                               {term.name}
                             </span>
                           </div>
-                          {term.displayName !== term.name && (
+                          {term.display_name !== term.name && (
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 ml-6">
-                              {term.displayName}
+                              {term.display_name}
                             </p>
                           )}
                           <div className="flex items-center gap-2 mt-2 ml-6">
@@ -320,19 +316,19 @@ export default function DataDictionaryPage() {
                               <span 
                                 className="text-xs px-1.5 py-0.5 rounded"
                                 style={{ 
-                                  backgroundColor: `${domain.color}20`, 
-                                  color: domain.color 
+                                  backgroundColor: `${domain.color || '#ccc'}20`, 
+                                  color: domain.color || '#666'
                                 }}
                               >
                                 {domain.name}
                               </span>
                             )}
                             <span className="text-xs text-gray-400">
-                              {term.dataType}
+                              {term.data_type}
                             </span>
-                            {term.usageCount > 0 && (
+                            {term.column_groups_count > 0 && (
                               <span className="text-xs text-gray-400">
-                                • {term.usageCount} groups
+                                • {term.column_groups_count} groups
                               </span>
                             )}
                           </div>
@@ -386,16 +382,16 @@ export default function DataDictionaryPage() {
                   <div>
                     <div className="flex items-center gap-3">
                       {(() => {
-                        const TypeIcon = getDataTypeIcon(selectedTerm.dataType);
+                        const TypeIcon = getDataTypeIcon(selectedTerm.data_type);
                         return <TypeIcon className="w-6 h-6 text-blue-500" />;
                       })()}
                       <h2 className="text-xl font-bold text-gray-900 dark:text-white">
                         {selectedTerm.name}
                       </h2>
                     </div>
-                    {selectedTerm.displayName !== selectedTerm.name && (
+                    {selectedTerm.display_name !== selectedTerm.name && (
                       <p className="text-gray-500 dark:text-gray-400 mt-1 ml-9">
-                        {selectedTerm.displayName}
+                        {selectedTerm.display_name}
                       </p>
                     )}
                     <p className="text-gray-500 dark:text-gray-400 mt-2 ml-9">
@@ -418,16 +414,16 @@ export default function DataDictionaryPage() {
                     </span>
                     <div className="flex items-center gap-2 mt-2">
                       {(() => {
-                        const domain = getDomain(selectedTerm.domainId);
+                        const domain = getDomain(selectedTerm.semantic_domain_id);
                         return domain ? (
                           <>
                             <div 
                               className="w-3 h-3 rounded-full" 
-                              style={{ backgroundColor: domain.color }}
+                              style={{ backgroundColor: domain.color || '#ccc' }}
                             />
                             <span className="text-gray-900 dark:text-white">{domain.name}</span>
                           </>
-                        ) : null;
+                        ) : <span className="text-gray-400">None</span>;
                       })()}
                     </div>
                   </div>
@@ -438,12 +434,12 @@ export default function DataDictionaryPage() {
                     </span>
                     <div className="flex items-center gap-2 mt-2">
                       {(() => {
-                        const type = DATA_TYPES.find(t => t.value === selectedTerm.dataType);
+                        const type = DATA_TYPES.find(t => t.value === selectedTerm.data_type);
                         const TypeIcon = type?.icon || Type;
                         return (
                           <>
                             <TypeIcon className="w-4 h-4 text-gray-400" />
-                            <span className="text-gray-900 dark:text-white">{type?.label || selectedTerm.dataType}</span>
+                            <span className="text-gray-900 dark:text-white">{type?.label || selectedTerm.data_type}</span>
                           </>
                         );
                       })()}
@@ -452,7 +448,7 @@ export default function DataDictionaryPage() {
                 </div>
 
                 {/* Standard Values */}
-                {selectedTerm.standardValues && selectedTerm.standardValues.length > 0 && (
+                {selectedTerm.standard_values && selectedTerm.standard_values.length > 0 && (
                   <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
                       <List className="w-4 h-4 text-gray-400" />
@@ -462,7 +458,7 @@ export default function DataDictionaryPage() {
                       Output values used in Column Groups for normalization.
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      {selectedTerm.standardValues.map((val, idx) => (
+                      {selectedTerm.standard_values.map((val, idx) => (
                         <code 
                           key={idx}
                           className="px-3 py-1.5 text-sm bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg font-medium"
@@ -475,7 +471,7 @@ export default function DataDictionaryPage() {
                 )}
 
                 {/* Synonyms */}
-                {selectedTerm.synonyms.length > 0 && (
+                {selectedTerm.synonyms && selectedTerm.synonyms.length > 0 && (
                   <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
                       <Tag className="w-4 h-4 text-gray-400" />
@@ -503,9 +499,9 @@ export default function DataDictionaryPage() {
                     Usage
                   </h3>
                   <p className="text-gray-600 dark:text-gray-400">
-                    This term is used in <strong>{selectedTerm.usageCount}</strong> column group(s).
+                    This term is used in <strong>{selectedTerm.column_groups_count || 0}</strong> column group(s).
                   </p>
-                  {selectedTerm.usageCount > 0 && (
+                  {selectedTerm.column_groups_count > 0 && (
                     <Link 
                       href={`/equivalence?term=${selectedTerm.id}`}
                       className="inline-flex items-center gap-1 mt-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
@@ -599,7 +595,7 @@ export default function DataDictionaryPage() {
                       className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm"
                     >
                       <option value="">Select domain...</option>
-                      {MOCK_DOMAINS.map(domain => (
+                      {domains.map(domain => (
                         <option key={domain.id} value={domain.id}>
                           {domain.name}
                         </option>
@@ -667,9 +663,10 @@ export default function DataDictionaryPage() {
                 </button>
                 <button 
                   onClick={handleCreateTerm}
-                  disabled={!newTermName.trim() || !newTermDomain}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!newTermName.trim() || !newTermDomain || isCreating}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
+                  {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                   Create Term
                 </button>
               </div>

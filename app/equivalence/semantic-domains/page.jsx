@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { 
   Plus, 
@@ -12,12 +12,15 @@ import {
   Trash2,
   BookOpen,
   ChevronRight,
-  Palette
+  Palette,
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
+import { equivalenceService } from '../../../lib/api/services/equivalence';
+import { toast } from 'sonner';
 
-// Color options for domains
 const COLOR_OPTIONS = [
   '#3b82f6', // blue
   '#22c55e', // green
@@ -31,113 +34,70 @@ const COLOR_OPTIONS = [
   '#6366f1', // indigo
 ];
 
-// Terms by domain (must match Data Dictionary)
-const TERMS_BY_DOMAIN = {
-  dom_1: [ // Demographics
-    { name: 'Sex/Gender', type: 'ENUM' },
-    { name: 'Date of Birth', type: 'DATE' },
-  ],
-  dom_2: [ // Operations
-    { name: 'Status', type: 'ENUM' },
-  ],
-  dom_3: [ // Location
-    { name: 'Country', type: 'STRING' },
-  ],
-  dom_4: [ // Contact
-    { name: 'Email', type: 'STRING' },
-  ],
-  dom_5: [ // Financial
-    { name: 'Amount', type: 'DECIMAL' },
-  ],
-};
-
-// Mock semantic domains
-const MOCK_DOMAINS = [
-  { 
-    id: 'dom_1', 
-    name: 'Demographics', 
-    color: '#3b82f6', 
-    description: 'Personal demographic information like age, gender, birth date',
-    parentId: null,
-    termCount: 2,
-    updatedAt: '2026-01-12T10:30:00Z',
-  },
-  { 
-    id: 'dom_2', 
-    name: 'Operations', 
-    color: '#22c55e', 
-    description: 'Operational and status data like workflow states, flags',
-    parentId: null,
-    termCount: 1,
-    updatedAt: '2026-01-11T14:20:00Z',
-  },
-  { 
-    id: 'dom_3', 
-    name: 'Location', 
-    color: '#f59e0b', 
-    description: 'Geographic and address data',
-    parentId: null,
-    termCount: 1,
-    updatedAt: '2026-01-10T09:15:00Z',
-  },
-  { 
-    id: 'dom_4', 
-    name: 'Contact', 
-    color: '#ec4899', 
-    description: 'Contact information like email, phone, social media',
-    parentId: null,
-    termCount: 1,
-    updatedAt: '2026-01-09T16:45:00Z',
-  },
-  { 
-    id: 'dom_5', 
-    name: 'Financial', 
-    color: '#8b5cf6', 
-    description: 'Financial and monetary data like prices, amounts, currencies',
-    parentId: null,
-    termCount: 1,
-    updatedAt: '2026-01-08T11:30:00Z',
-  },
-];
-
 export default function SemanticDomainsPage() {
-  const [domains, setDomains] = useState(MOCK_DOMAINS);
+  const [domains, setDomains] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDomain, setSelectedDomain] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  // New domain form state
+  // Form State
   const [newDomainName, setNewDomainName] = useState('');
   const [newDomainDescription, setNewDomainDescription] = useState('');
   const [newDomainColor, setNewDomainColor] = useState(COLOR_OPTIONS[0]);
 
+  const fetchDomains = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await equivalenceService.listSemanticDomains();
+      setDomains(data);
+    } catch (error) {
+      console.error('Failed to fetch domains:', error);
+      toast.error('Failed to load semantic domains');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDomains();
+  }, [fetchDomains]);
+
   const filteredDomains = domains.filter(d => 
     d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    d.description.toLowerCase().includes(searchQuery.toLowerCase())
+    (d.description || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const formatDate = (dateString) => {
+    if (!dateString) return 'Never';
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const handleCreateDomain = () => {
+  const handleCreateDomain = async () => {
     if (!newDomainName.trim()) return;
     
-    const newDomain = {
-      id: `dom_${Date.now()}`,
-      name: newDomainName.trim(),
-      description: newDomainDescription.trim(),
-      color: newDomainColor,
-      parentId: null,
-      termCount: 0,
-      updatedAt: new Date().toISOString(),
-    };
-    
-    setDomains([newDomain, ...domains]);
-    resetForm();
-    setIsCreateModalOpen(false);
+    setIsCreating(true);
+    try {
+      const created = await equivalenceService.createSemanticDomain({
+        name: newDomainName.trim(),
+        description: newDomainDescription.trim(),
+        color: newDomainColor,
+      });
+      
+      setDomains(prev => [...prev, created]);
+      toast.success('Domain created successfully');
+      resetForm();
+      setIsCreateModalOpen(false);
+    } catch (error) {
+      console.error('Create failed:', error);
+      toast.error(error.message || 'Failed to create domain');
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const resetForm = () => {
@@ -146,10 +106,22 @@ export default function SemanticDomainsPage() {
     setNewDomainColor(COLOR_OPTIONS[0]);
   };
 
-  const handleDeleteDomain = (id) => {
-    setDomains(domains.filter(d => d.id !== id));
-    if (selectedDomain?.id === id) setSelectedDomain(null);
-    setMenuOpenId(null);
+  const handleDeleteDomain = async (id) => {
+    if (!confirm('Are you sure you want to delete this domain?')) return;
+
+    setIsDeleting(true);
+    try {
+      await equivalenceService.deleteSemanticDomain(id);
+      setDomains(prev => prev.filter(d => d.id !== id));
+      if (selectedDomain?.id === id) setSelectedDomain(null);
+      toast.success('Domain deleted successfully');
+    } catch (error) {
+      console.error('Delete failed:', error);
+      toast.error(error.message || 'Failed to delete domain');
+    } finally {
+      setIsDeleting(false);
+      setMenuOpenId(null);
+    }
   };
 
   return (
@@ -188,10 +160,20 @@ export default function SemanticDomainsPage() {
 
           {/* Domains List */}
           <div className="flex-1 overflow-auto p-2">
-            {filteredDomains.length === 0 ? (
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
+              </div>
+            ) : filteredDomains.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <Folder className="w-8 h-8 mx-auto mb-2 opacity-50" />
                 <p className="text-sm">No domains found</p>
+                <button 
+                  onClick={fetchDomains}
+                  className="mt-2 text-xs text-blue-600 hover:underline flex items-center justify-center gap-1 mx-auto"
+                >
+                  <RefreshCw className="w-3 h-3" /> Refresh
+                </button>
               </div>
             ) : (
               <div className="space-y-2">
@@ -214,7 +196,7 @@ export default function SemanticDomainsPage() {
                         <div className="flex items-center gap-2">
                           <div 
                             className="w-4 h-4 rounded-lg"
-                            style={{ backgroundColor: domain.color }}
+                            style={{ backgroundColor: domain.color || '#ccc' }}
                           />
                           <span className="font-medium text-gray-900 dark:text-white text-sm">
                             {domain.name}
@@ -226,7 +208,7 @@ export default function SemanticDomainsPage() {
                         <div className="flex items-center gap-3 mt-2 ml-6 text-xs text-gray-400">
                           <span className="flex items-center gap-1">
                             <BookOpen className="w-3 h-3" />
-                            {domain.termCount} terms
+                            {domain.terms_count || 0} terms
                           </span>
                         </div>
                       </div>
@@ -279,7 +261,7 @@ export default function SemanticDomainsPage() {
                     <div className="flex items-center gap-3">
                       <div 
                         className="w-8 h-8 rounded-xl"
-                        style={{ backgroundColor: selectedDomain.color }}
+                        style={{ backgroundColor: selectedDomain.color || '#ccc' }}
                       />
                       <h2 className="text-xl font-bold text-gray-900 dark:text-white">
                         {selectedDomain.name}
@@ -289,7 +271,7 @@ export default function SemanticDomainsPage() {
                       {selectedDomain.description}
                     </p>
                     <p className="text-xs text-gray-400 mt-2 ml-11">
-                      Last updated: {formatDate(selectedDomain.updatedAt)}
+                      Created: {formatDate(selectedDomain.data_criacao)}
                     </p>
                   </div>
                   <button className="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg">
@@ -300,7 +282,6 @@ export default function SemanticDomainsPage() {
 
               {/* Content */}
               <div className="flex-1 overflow-auto p-6 space-y-6">
-                {/* Stats */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 bg-white dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
                     <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -309,7 +290,7 @@ export default function SemanticDomainsPage() {
                     <div className="flex items-center gap-2 mt-2">
                       <BookOpen className="w-5 h-5 text-gray-400" />
                       <span className="text-2xl font-bold text-gray-900 dark:text-white">
-                        {selectedDomain.termCount}
+                        {selectedDomain.terms_count || 0}
                       </span>
                     </div>
                     <p className="text-xs text-gray-400 mt-1">
@@ -324,7 +305,7 @@ export default function SemanticDomainsPage() {
                     <div className="flex items-center gap-2 mt-2">
                       <div 
                         className="w-6 h-6 rounded-lg"
-                        style={{ backgroundColor: selectedDomain.color }}
+                        style={{ backgroundColor: selectedDomain.color || '#ccc' }}
                       />
                       <span className="text-sm font-mono text-gray-600 dark:text-gray-400">
                         {selectedDomain.color}
@@ -349,33 +330,19 @@ export default function SemanticDomainsPage() {
                     </Link>
                   </div>
                   
-                  {selectedDomain.termCount > 0 && TERMS_BY_DOMAIN[selectedDomain.id] ? (
-                    <div className="bg-white dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700 divide-y divide-gray-100 dark:divide-zinc-700">
-                      {TERMS_BY_DOMAIN[selectedDomain.id].map((term, idx) => (
-                        <div key={idx} className="flex items-center justify-between px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <BookOpen className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm text-gray-900 dark:text-white">{term.name}</span>
-                          </div>
-                          <span className="text-xs text-gray-400">{term.type}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700 p-6 text-center">
-                      <BookOpen className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        No terms in this domain yet.
-                      </p>
-                      <Link 
-                        href="/equivalence/data-dictionary"
-                        className="inline-flex items-center gap-1 mt-2 text-sm text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
-                      >
-                        <Plus className="w-4 h-4" />
-                        Create first term
-                      </Link>
-                    </div>
-                  )}
+                  <div className="bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700 p-6 text-center">
+                    <BookOpen className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Manage terms in the Data Dictionary view.
+                    </p>
+                    <Link 
+                      href="/equivalence/data-dictionary"
+                      className="inline-flex items-center gap-1 mt-2 text-sm text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Create first term
+                    </Link>
+                  </div>
                 </div>
               </div>
             </div>
@@ -467,9 +434,10 @@ export default function SemanticDomainsPage() {
                 </button>
                 <button 
                   onClick={handleCreateDomain}
-                  disabled={!newDomainName.trim()}
-                  className="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!newDomainName.trim() || isCreating}
+                  className="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
+                  {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                   Create Domain
                 </button>
               </div>
