@@ -61,6 +61,7 @@ const GroupListItem = memo(function GroupListItem({
   isSelected,
   onSelect,
   onDelete,
+  onEdit,
 }) {
   const menuDisclosure = useDisclosure();
 
@@ -120,7 +121,16 @@ const GroupListItem = memo(function GroupListItem({
             </button>
           }
         >
-          <DropdownItem icon={<Pencil className="w-3.5 h-3.5" />}>Edit</DropdownItem>
+          <DropdownItem
+            icon={<Pencil className="w-3.5 h-3.5" />}
+            onClick={(e) => {
+              e.stopPropagation();
+              menuDisclosure.onClose();
+              onEdit?.(group);
+            }}
+          >
+            Edit
+          </DropdownItem>
           <DropdownItem
             icon={<Trash2 className="w-3.5 h-3.5" />}
             variant="danger"
@@ -224,7 +234,11 @@ const ValueMappingsTable = memo(function ValueMappingsTable({
                 <code className="px-2 py-1 text-sm bg-gray-100 dark:bg-zinc-900 text-gray-700 dark:text-gray-300 rounded">
                   {mapping.source_value}
                 </code>
-                <div className="text-[10px] text-gray-400 mt-1">{mapping.source_column_name}</div>
+                <div className="text-[10px] text-gray-400 mt-1">
+                  {mapping.table_name
+                    ? `${mapping.table_name}.${mapping.source_column_name}`
+                    : mapping.source_column_name}
+                </div>
               </td>
               <td className="px-4 py-3 text-center">
                 <ArrowRight className="w-4 h-4 text-gray-300 dark:text-gray-600 mx-auto" />
@@ -552,10 +566,110 @@ const CreateGroupModal = memo(function CreateGroupModal({
   );
 });
 
+const EditGroupModal = memo(function EditGroupModal({
+  isOpen,
+  onClose,
+  group,
+  onSave,
+  isLoading
+}) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [termId, setTermId] = useState('');
+  const [terms, setTerms] = useState([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      equivalenceService.listDataDictionary()
+        .then(setTerms)
+        .catch(err => console.error('Failed to load terms', err));
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && group) {
+      setName(group.name || '');
+      setDescription(group.description || '');
+      setTermId(group.data_dictionary_term_id ? String(group.data_dictionary_term_id) : '');
+    }
+  }, [isOpen, group]);
+
+  const handleSubmit = () => {
+    if (!name.trim() || !group?.id) return;
+    onSave({
+      name: name.trim(),
+      description: description.trim(),
+      data_dictionary_term_id: termId ? parseInt(termId) : null
+    });
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Edit Column Group">
+      <div className="space-y-4">
+        <Input
+          label="Group Name"
+          placeholder="e.g., sex_unified"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          className="font-mono"
+        />
+
+        <Textarea
+          label="Description"
+          placeholder="What columns will this group unify?"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={2}
+        />
+
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Link to Dictionary Term <span className="text-gray-400">(optional)</span>
+          </label>
+          <select
+            value={termId}
+            onChange={(e) => setTermId(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm"
+          >
+            <option value="">Select a term...</option>
+            {terms.map((term) => (
+              <option key={term.id} value={term.id}>
+                {term.name}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-500">
+            Linking to a dictionary term will inherit its standard values.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100 dark:border-zinc-800">
+        <button
+          onClick={onClose}
+          className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSubmit}
+          disabled={!name.trim() || isLoading}
+          className="px-4 py-2 text-sm font-medium text-white bg-purple-500 hover:bg-purple-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+          {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+          Save Changes
+        </button>
+      </div>
+    </Modal>
+  );
+});
+
 const DetailPanel = memo(function DetailPanel({ 
   group, 
   isLoading,
-  onRefresh
+  onRefresh,
+  onEdit
 }) {
   const [isColumnModalOpen, setIsColumnModalOpen] = useState(false);
   const [isValueModalOpen, setIsValueModalOpen] = useState(false);
@@ -658,7 +772,10 @@ const DetailPanel = memo(function DetailPanel({
             <p className="text-gray-500 dark:text-gray-400 mt-1">{group.description}</p>
             <p className="text-xs text-gray-400 mt-2">Last updated: {formatDate(group.data_atualizacao)}</p>
           </div>
-          <button className="px-4 py-2 text-sm font-medium text-white bg-purple-500 hover:bg-purple-600 rounded-lg">
+          <button
+            onClick={() => onEdit?.(group)}
+            className="px-4 py-2 text-sm font-medium text-white bg-purple-500 hover:bg-purple-600 rounded-lg"
+          >
             Edit Group
           </button>
         </div>
@@ -796,8 +913,11 @@ export default function EquivalencePage() {
   const [isLoadingList, setIsLoadingList] = useState(true);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [editingGroup, setEditingGroup] = useState(null);
   
   const createModal = useDisclosure();
+  const editModal = useDisclosure();
 
   const fetchGroups = useCallback(async () => {
     setIsLoadingList(true);
@@ -871,6 +991,31 @@ export default function EquivalencePage() {
     }
   }, [createModal, handleSelectGroup]);
 
+  const openEditGroup = useCallback((group) => {
+    if (!group) return;
+    setEditingGroup(group);
+    editModal.onOpen();
+  }, [editModal]);
+
+  const handleUpdateGroup = useCallback(async (data) => {
+    if (!editingGroup?.id) return;
+    setIsUpdating(true);
+    try {
+      const updated = await equivalenceService.updateColumnGroup(editingGroup.id, data);
+      setGroups((prev) => prev.map((g) => (g.id === updated.id ? { ...g, ...updated } : g)));
+      toast.success('Group updated');
+      editModal.onClose();
+
+      // Refresh details to keep mappings/derived fields in sync
+      await fetchGroupDetails(updated.id);
+    } catch (error) {
+      console.error(error);
+      toast.error(error.message || 'Failed to update group');
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [editingGroup?.id, editModal, fetchGroupDetails]);
+
   return (
     <DashboardLayout>
       <div className="h-screen flex bg-gray-50 dark:bg-zinc-950">
@@ -918,6 +1063,7 @@ export default function EquivalencePage() {
                     isSelected={selectedGroup?.id === group.id}
                     onSelect={handleSelectGroup}
                     onDelete={handleDeleteGroup}
+                    onEdit={openEditGroup}
                   />
                 ))}
               </div>
@@ -930,6 +1076,7 @@ export default function EquivalencePage() {
             group={selectedGroup} 
             isLoading={isLoadingDetails && (!selectedGroup || !selectedGroup.column_mappings)} 
             onRefresh={() => fetchGroupDetails(selectedGroup.id)}
+            onEdit={openEditGroup}
           />
         </main>
 
@@ -938,6 +1085,17 @@ export default function EquivalencePage() {
           onClose={createModal.onClose}
           onCreate={handleCreateGroup}
           isLoading={isCreating}
+        />
+
+        <EditGroupModal
+          isOpen={editModal.isOpen}
+          onClose={() => {
+            editModal.onClose();
+            setEditingGroup(null);
+          }}
+          group={editingGroup}
+          onSave={handleUpdateGroup}
+          isLoading={isUpdating}
         />
       </div>
     </DashboardLayout>

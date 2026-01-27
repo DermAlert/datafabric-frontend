@@ -14,12 +14,29 @@ import {
   ChevronRight,
   Palette,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Hash,
+  Calendar,
+  Type,
+  ToggleLeft,
+  List,
+  ExternalLink
 } from 'lucide-react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import { equivalenceService } from '../../../lib/api/services/equivalence';
 import { toast } from 'sonner';
+
+// Data types with icons
+const DATA_TYPES = [
+  { value: 'STRING', label: 'String', icon: Type },
+  { value: 'INTEGER', label: 'Integer', icon: Hash },
+  { value: 'DECIMAL', label: 'Decimal', icon: Hash },
+  { value: 'DATE', label: 'Date', icon: Calendar },
+  { value: 'DATETIME', label: 'DateTime', icon: Calendar },
+  { value: 'BOOLEAN', label: 'Boolean', icon: ToggleLeft },
+  { value: 'ENUM', label: 'Enum', icon: List },
+];
 
 const COLOR_OPTIONS = [
   '#3b82f6', // blue
@@ -39,15 +56,31 @@ export default function SemanticDomainsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDomain, setSelectedDomain] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  
+  // Terms for selected domain
+  const [domainTerms, setDomainTerms] = useState([]);
+  const [isLoadingTerms, setIsLoadingTerms] = useState(false);
 
-  // Form State
+  // Form State (Create)
   const [newDomainName, setNewDomainName] = useState('');
   const [newDomainDescription, setNewDomainDescription] = useState('');
   const [newDomainColor, setNewDomainColor] = useState(COLOR_OPTIONS[0]);
+  
+  // Form State (Edit)
+  const [editDomainName, setEditDomainName] = useState('');
+  const [editDomainDescription, setEditDomainDescription] = useState('');
+  const [editDomainColor, setEditDomainColor] = useState(COLOR_OPTIONS[0]);
+  
+  const getDataTypeIcon = (dataType) => {
+    const type = DATA_TYPES.find(t => t.value === dataType);
+    return type?.icon || Type;
+  };
 
   const fetchDomains = useCallback(async () => {
     setIsLoading(true);
@@ -65,6 +98,32 @@ export default function SemanticDomainsPage() {
   useEffect(() => {
     fetchDomains();
   }, [fetchDomains]);
+
+  // Fetch terms when a domain is selected
+  const fetchDomainTerms = useCallback(async (domainId) => {
+    if (!domainId) {
+      setDomainTerms([]);
+      return;
+    }
+    setIsLoadingTerms(true);
+    try {
+      const terms = await equivalenceService.listDataDictionary({ semantic_domain_id: domainId });
+      setDomainTerms(terms || []);
+    } catch (error) {
+      console.error('Failed to fetch domain terms:', error);
+      setDomainTerms([]);
+    } finally {
+      setIsLoadingTerms(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedDomain?.id) {
+      fetchDomainTerms(selectedDomain.id);
+    } else {
+      setDomainTerms([]);
+    }
+  }, [selectedDomain?.id, fetchDomainTerms]);
 
   const filteredDomains = domains.filter(d => 
     d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -121,6 +180,37 @@ export default function SemanticDomainsPage() {
     } finally {
       setIsDeleting(false);
       setMenuOpenId(null);
+    }
+  };
+
+  const openEditModal = (domain) => {
+    setEditDomainName(domain.name);
+    setEditDomainDescription(domain.description || '');
+    setEditDomainColor(domain.color || COLOR_OPTIONS[0]);
+    setIsEditModalOpen(true);
+    setMenuOpenId(null);
+  };
+
+  const handleUpdateDomain = async () => {
+    if (!editDomainName.trim() || !selectedDomain) return;
+    
+    setIsUpdating(true);
+    try {
+      const updated = await equivalenceService.updateSemanticDomain(selectedDomain.id, {
+        name: editDomainName.trim(),
+        description: editDomainDescription.trim(),
+        color: editDomainColor,
+      });
+      
+      setDomains(prev => prev.map(d => d.id === updated.id ? { ...d, ...updated } : d));
+      setSelectedDomain(prev => ({ ...prev, ...updated }));
+      toast.success('Domain updated successfully');
+      setIsEditModalOpen(false);
+    } catch (error) {
+      console.error('Update failed:', error);
+      toast.error(error.message || 'Failed to update domain');
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -225,7 +315,14 @@ export default function SemanticDomainsPage() {
                         
                         {menuOpenId === domain.id && (
                           <div className="absolute right-0 top-full mt-1 w-32 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg shadow-lg z-10 py-1">
-                            <button className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedDomain(domain);
+                                openEditModal(domain);
+                              }}
+                              className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200"
+                            >
                               <Pencil className="w-3.5 h-3.5" />
                               Edit
                             </button>
@@ -274,7 +371,10 @@ export default function SemanticDomainsPage() {
                       Created: {formatDate(selectedDomain.data_criacao)}
                     </p>
                   </div>
-                  <button className="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg">
+                  <button 
+                    onClick={() => openEditModal(selectedDomain)}
+                    className="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg"
+                  >
                     Edit Domain
                   </button>
                 </div>
@@ -330,19 +430,70 @@ export default function SemanticDomainsPage() {
                     </Link>
                   </div>
                   
-                  <div className="bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700 p-6 text-center">
-                    <BookOpen className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Manage terms in the Data Dictionary view.
-                    </p>
-                    <Link 
-                      href="/equivalence/data-dictionary"
-                      className="inline-flex items-center gap-1 mt-2 text-sm text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Create first term
-                    </Link>
-                  </div>
+                  {isLoadingTerms ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
+                    </div>
+                  ) : domainTerms.length === 0 ? (
+                    <div className="bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700 p-6 text-center">
+                      <BookOpen className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        No terms in this domain yet.
+                      </p>
+                      <Link 
+                        href={`/equivalence/data-dictionary?domain=${selectedDomain.id}`}
+                        className="inline-flex items-center gap-1 mt-2 text-sm text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Create first term
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {domainTerms.map((term) => {
+                        const TypeIcon = getDataTypeIcon(term.data_type);
+                        return (
+                          <Link
+                            key={term.id}
+                            href={`/equivalence/data-dictionary?domain=${selectedDomain.id}&term=${term.id}`}
+                            className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 hover:border-amber-300 dark:hover:border-amber-700 hover:bg-amber-50/50 dark:hover:bg-amber-900/10 transition-colors group"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="p-2 rounded-lg bg-gray-100 dark:bg-zinc-700 group-hover:bg-amber-100 dark:group-hover:bg-amber-900/30 transition-colors">
+                                <TypeIcon className="w-4 h-4 text-gray-500 dark:text-gray-400 group-hover:text-amber-600 dark:group-hover:text-amber-400" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-medium text-gray-900 dark:text-white text-sm truncate">
+                                  {term.name}
+                                </div>
+                                {term.display_name && term.display_name !== term.name && (
+                                  <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                    {term.display_name}
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-xs text-gray-400 dark:text-gray-500">
+                                    {term.data_type}
+                                  </span>
+                                  {term.standard_values && term.standard_values.length > 0 && (
+                                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                                      • {term.standard_values.length} values
+                                    </span>
+                                  )}
+                                  {term.column_groups_count > 0 && (
+                                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                                      • {term.column_groups_count} groups
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <ExternalLink className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -439,6 +590,94 @@ export default function SemanticDomainsPage() {
                 >
                   {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                   Create Domain
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Modal */}
+        {isEditModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl max-w-md w-full border border-gray-200 dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-zinc-800">
+                <h3 className="font-semibold text-lg text-gray-900 dark:text-white flex items-center gap-2">
+                  <Pencil className="w-5 h-5 text-amber-500" />
+                  Edit Semantic Domain
+                </h3>
+                <button 
+                  onClick={() => setIsEditModalOpen(false)} 
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Domain Name <span className="text-red-500">*</span>
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="e.g., Demographics"
+                    value={editDomainName}
+                    onChange={(e) => setEditDomainName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Description
+                  </label>
+                  <textarea 
+                    placeholder="Describe what kind of data belongs in this domain..."
+                    value={editDomainDescription}
+                    onChange={(e) => setEditDomainDescription(e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm resize-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                    <Palette className="w-4 h-4" />
+                    Color
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {COLOR_OPTIONS.map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => setEditDomainColor(color)}
+                        className={clsx(
+                          "w-8 h-8 rounded-lg transition-all",
+                          editDomainColor === color 
+                            ? "ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-zinc-900" 
+                            : "hover:scale-110"
+                        )}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-gray-100 dark:border-zinc-800 flex justify-end gap-3">
+                <button 
+                  onClick={() => setIsEditModalOpen(false)} 
+                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleUpdateDomain}
+                  disabled={!editDomainName.trim() || isUpdating}
+                  className="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Save Changes
                 </button>
               </div>
             </div>

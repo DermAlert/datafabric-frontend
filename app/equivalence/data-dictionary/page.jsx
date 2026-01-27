@@ -22,6 +22,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { clsx } from 'clsx';
 import { equivalenceService } from '../../../lib/api/services/equivalence';
 import { toast } from 'sonner';
@@ -37,17 +38,134 @@ const DATA_TYPES = [
   { value: 'ENUM', label: 'Enum', icon: List },
 ];
 
+function normalizeTokens(items) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of items) {
+    const v = String(raw ?? '').trim();
+    if (!v) continue;
+    const key = v.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+  }
+  return out;
+}
+
+function splitBySeparators(text) {
+  return String(text ?? '')
+    .split(/[,\s;]+/g)
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+function TokensInput({
+  label,
+  placeholder,
+  helper,
+  tokens,
+  onChange,
+}) {
+  const [draft, setDraft] = useState('');
+
+  const commit = (raw, forceAll = false) => {
+    const s = String(raw ?? '');
+    const endsWithSeparator = /[,\s;]$/.test(s);
+    const parts = splitBySeparators(s);
+
+    if (parts.length === 0) {
+      setDraft('');
+      return;
+    }
+
+    if (forceAll || endsWithSeparator) {
+      onChange(normalizeTokens([...(tokens || []), ...parts]));
+      setDraft('');
+      return;
+    }
+
+    // keep last as draft (still being typed)
+    const last = parts[parts.length - 1];
+    const toCommit = parts.slice(0, -1);
+    if (toCommit.length) {
+      onChange(normalizeTokens([...(tokens || []), ...toCommit]));
+    }
+    setDraft(last);
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        {label}
+      </label>
+      <div className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm flex flex-wrap gap-2 items-center">
+        {(tokens || []).map((t) => (
+          <span
+            key={t}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs"
+          >
+            {t}
+            <button
+              type="button"
+              onClick={() => onChange((tokens || []).filter((x) => x !== t))}
+              className="text-blue-700/70 hover:text-blue-700 dark:text-blue-300/70 dark:hover:text-blue-300"
+              aria-label={`Remove ${t}`}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (/[,\s;]/.test(v)) {
+              commit(v, false);
+            } else {
+              setDraft(v);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',' || e.key === ';' || e.key === ' ') {
+              e.preventDefault();
+              commit(draft, true);
+              return;
+            }
+            if (e.key === 'Backspace' && !draft && (tokens || []).length > 0) {
+              onChange((tokens || []).slice(0, -1));
+            }
+          }}
+          onBlur={() => commit(draft, true)}
+          placeholder={(tokens || []).length ? '' : placeholder}
+          className="flex-1 min-w-[180px] bg-transparent outline-none text-gray-900 dark:text-white placeholder:text-gray-400"
+        />
+      </div>
+      {helper ? <p className="text-xs text-gray-500">{helper}</p> : null}
+    </div>
+  );
+}
+
 export default function DataDictionaryPage() {
+  const searchParams = useSearchParams();
+  const domainParam = searchParams.get('domain');
+  const termParam = searchParams.get('term');
+
   const [terms, setTerms] = useState([]);
   const [domains, setDomains] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDomain, setSelectedDomain] = useState(null);
   const [selectedTerm, setSelectedTerm] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState(null);
+
+  // Query-param driven selection (deep-linking)
+  const [pendingTermId, setPendingTermId] = useState(null);
   
   const [isLoadingTerms, setIsLoadingTerms] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // New term form state
@@ -56,8 +174,17 @@ export default function DataDictionaryPage() {
   const [newTermDescription, setNewTermDescription] = useState('');
   const [newTermDomain, setNewTermDomain] = useState('');
   const [newTermDataType, setNewTermDataType] = useState('STRING');
-  const [newTermValues, setNewTermValues] = useState('');
-  const [newTermSynonyms, setNewTermSynonyms] = useState('');
+  const [newTermValues, setNewTermValues] = useState([]);
+  const [newTermSynonyms, setNewTermSynonyms] = useState([]);
+
+  // Edit term form state
+  const [editTermName, setEditTermName] = useState('');
+  const [editTermDisplayName, setEditTermDisplayName] = useState('');
+  const [editTermDescription, setEditTermDescription] = useState('');
+  const [editTermDomain, setEditTermDomain] = useState('');
+  const [editTermDataType, setEditTermDataType] = useState('STRING');
+  const [editTermValues, setEditTermValues] = useState([]);
+  const [editTermSynonyms, setEditTermSynonyms] = useState([]);
 
   // Fetch Domains for sidebar
   useEffect(() => {
@@ -71,6 +198,23 @@ export default function DataDictionaryPage() {
     };
     loadDomains();
   }, []);
+
+  // Apply query params (domain/term) to state
+  useEffect(() => {
+    if (domainParam) {
+      const parsedDomain = parseInt(domainParam, 10);
+      if (!Number.isNaN(parsedDomain)) {
+        setSelectedDomain(parsedDomain);
+      }
+    }
+
+    if (termParam) {
+      const parsedTerm = parseInt(termParam, 10);
+      setPendingTermId(Number.isNaN(parsedTerm) ? null : parsedTerm);
+    } else {
+      setPendingTermId(null);
+    }
+  }, [domainParam, termParam]);
 
   // Fetch Terms
   const fetchTerms = useCallback(async () => {
@@ -91,6 +235,33 @@ export default function DataDictionaryPage() {
   useEffect(() => {
     fetchTerms();
   }, [fetchTerms]);
+
+  // Auto-select term from query params (after list loads, or via direct fetch)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function ensureSelected() {
+      if (!pendingTermId) return;
+
+      const inList = terms.find((t) => t.id === pendingTermId);
+      if (inList) {
+        setSelectedTerm(inList);
+        return;
+      }
+
+      try {
+        const fetched = await equivalenceService.getDataDictionaryTerm(pendingTermId);
+        if (!cancelled) setSelectedTerm(fetched);
+      } catch (error) {
+        console.error('Failed to fetch term by id:', error);
+      }
+    }
+
+    ensureSelected();
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingTermId, terms]);
 
   const filteredTerms = terms.filter(t => {
     const q = searchQuery.toLowerCase();
@@ -119,8 +290,8 @@ export default function DataDictionaryPage() {
         description: newTermDescription.trim(),
         semantic_domain_id: parseInt(newTermDomain),
         data_type: newTermDataType,
-        standard_values: newTermValues.split(',').map(v => v.trim()).filter(Boolean),
-        synonyms: newTermSynonyms.split(',').map(s => s.trim()).filter(Boolean),
+        standard_values: normalizeTokens(newTermValues || []),
+        synonyms: normalizeTokens(newTermSynonyms || []),
       };
 
       const created = await equivalenceService.createDataDictionaryTerm(payload);
@@ -147,8 +318,8 @@ export default function DataDictionaryPage() {
     setNewTermDescription('');
     setNewTermDomain('');
     setNewTermDataType('STRING');
-    setNewTermValues('');
-    setNewTermSynonyms('');
+    setNewTermValues([]);
+    setNewTermSynonyms([]);
   };
 
   const handleDeleteTerm = async (id) => {
@@ -166,6 +337,69 @@ export default function DataDictionaryPage() {
     } finally {
       setIsDeleting(false);
       setMenuOpenId(null);
+    }
+  };
+
+  const openEditTermModal = (term) => {
+    if (!term) return;
+    setEditTermName(term.name || '');
+    setEditTermDisplayName(term.display_name || term.name || '');
+    setEditTermDescription(term.description || '');
+    setEditTermDomain(term.semantic_domain_id ? term.semantic_domain_id.toString() : '');
+    setEditTermDataType(term.data_type || 'STRING');
+    setEditTermValues(term.standard_values || []);
+    setEditTermSynonyms(term.synonyms || []);
+    setIsEditModalOpen(true);
+    setMenuOpenId(null);
+  };
+
+  const closeEditModal = () => {
+    setIsEditModalOpen(false);
+  };
+
+  const handleUpdateTerm = async () => {
+    if (!selectedTerm?.id) return;
+    if (!editTermName.trim() || !editTermDomain) return;
+
+    setIsUpdating(true);
+    try {
+      const payload = {
+        name: editTermName.trim(),
+        display_name: editTermDisplayName.trim() || editTermName.trim(),
+        description: editTermDescription.trim(),
+        semantic_domain_id: parseInt(editTermDomain, 10),
+        data_type: editTermDataType,
+        standard_values: normalizeTokens(editTermValues || []),
+        synonyms: normalizeTokens(editTermSynonyms || []),
+      };
+
+      const updated = await equivalenceService.updateDataDictionaryTerm(selectedTerm.id, payload);
+
+      // Update list (respect current domain filter)
+      setTerms((prev) => {
+        const isInList = prev.some((t) => t.id === updated.id);
+        const shouldKeepInList = !selectedDomain || updated.semantic_domain_id === selectedDomain;
+        if (!shouldKeepInList) {
+          return prev.filter((t) => t.id !== updated.id);
+        }
+        if (!isInList) return [updated, ...prev];
+        return prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t));
+      });
+
+      // Update selected term
+      if (selectedDomain && updated.semantic_domain_id !== selectedDomain) {
+        setSelectedTerm(null);
+      } else {
+        setSelectedTerm((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev));
+      }
+
+      toast.success('Term updated successfully');
+      closeEditModal();
+    } catch (error) {
+      console.error('Update failed:', error);
+      toast.error(error.message || 'Failed to update term');
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -346,7 +580,14 @@ export default function DataDictionaryPage() {
                           
                           {menuOpenId === term.id && (
                             <div className="absolute right-0 top-full mt-1 w-32 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg shadow-lg z-10 py-1">
-                              <button className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedTerm(term);
+                                  openEditTermModal(term);
+                                }}
+                                className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200"
+                              >
                                 <Pencil className="w-3.5 h-3.5" />
                                 Edit
                               </button>
@@ -398,7 +639,10 @@ export default function DataDictionaryPage() {
                       {selectedTerm.description}
                     </p>
                   </div>
-                  <button className="px-4 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg">
+                  <button
+                    onClick={() => openEditTermModal(selectedTerm)}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg"
+                  >
                     Edit Term
                   </button>
                 </div>
@@ -622,36 +866,22 @@ export default function DataDictionaryPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Standard Values
-                  </label>
-                  <input 
-                    type="text"
-                    placeholder="Comma-separated values (e.g., M, F, O)"
-                    value={newTermValues}
-                    onChange={(e) => setNewTermValues(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm"
+                  <TokensInput
+                    label="Standard Values"
+                    placeholder="Type values and separate with space/comma (e.g., M, F, O)"
+                    helper="Press space, comma, Enter or Tab to create a value. Leave empty if no value normalization is needed (e.g., email, dates)."
+                    tokens={newTermValues}
+                    onChange={setNewTermValues}
                   />
-                  <p className="text-xs text-gray-500">
-                    Leave empty if no value normalization is needed (e.g., email, dates).
-                  </p>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Synonyms
-                  </label>
-                  <input 
-                    type="text"
-                    placeholder="Comma-separated synonyms (e.g., gender, sexo, genero)"
-                    value={newTermSynonyms}
-                    onChange={(e) => setNewTermSynonyms(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm"
-                  />
-                  <p className="text-xs text-gray-500">
-                    Synonyms help automatically match columns to this term.
-                  </p>
-                </div>
+                <TokensInput
+                  label="Synonyms"
+                  placeholder="Type synonyms and separate with space/comma (e.g., gender, sexo, genero)"
+                  helper="Press space, comma, Enter or Tab to create a synonym."
+                  tokens={newTermSynonyms}
+                  onChange={setNewTermSynonyms}
+                />
               </div>
 
               <div className="p-4 border-t border-gray-100 dark:border-zinc-800 flex justify-end gap-3 sticky bottom-0 bg-white dark:bg-zinc-900">
@@ -668,6 +898,142 @@ export default function DataDictionaryPage() {
                 >
                   {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                   Create Term
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Modal */}
+        {isEditModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl max-w-lg w-full border border-gray-200 dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-auto">
+              <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-zinc-800 sticky top-0 bg-white dark:bg-zinc-900">
+                <h3 className="font-semibold text-lg text-gray-900 dark:text-white flex items-center gap-2">
+                  <Pencil className="w-5 h-5 text-blue-500" />
+                  Edit Dictionary Term
+                </h3>
+                <button
+                  onClick={closeEditModal}
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Sex/Gender"
+                      value={editTermName}
+                      onChange={(e) => setEditTermName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Display Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Sexo/Gênero"
+                      value={editTermDisplayName}
+                      onChange={(e) => setEditTermDisplayName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Description
+                  </label>
+                  <textarea
+                    placeholder="Describe what this term represents..."
+                    value={editTermDescription}
+                    onChange={(e) => setEditTermDescription(e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm resize-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Semantic Domain <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={editTermDomain}
+                      onChange={(e) => setEditTermDomain(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm"
+                    >
+                      <option value="">Select domain...</option>
+                      {domains.map((domain) => (
+                        <option key={domain.id} value={domain.id}>
+                          {domain.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Data Type <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={editTermDataType}
+                      onChange={(e) => setEditTermDataType(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm"
+                    >
+                      {DATA_TYPES.map((type) => (
+                        <option key={type.value} value={type.value}>
+                          {type.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <TokensInput
+                    label="Standard Values"
+                    placeholder="Type values and separate with space/comma (e.g., M, F, O)"
+                    helper="Press space, comma, Enter or Tab to create a value."
+                    tokens={editTermValues}
+                    onChange={setEditTermValues}
+                  />
+                </div>
+
+                <TokensInput
+                  label="Synonyms"
+                  placeholder="Type synonyms and separate with space/comma (e.g., gender, sexo, genero)"
+                  helper="Press space, comma, Enter or Tab to create a synonym."
+                  tokens={editTermSynonyms}
+                  onChange={setEditTermSynonyms}
+                />
+              </div>
+
+              <div className="p-4 border-t border-gray-100 dark:border-zinc-800 flex justify-end gap-3 sticky bottom-0 bg-white dark:bg-zinc-900">
+                <button
+                  onClick={closeEditModal}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpdateTerm}
+                  disabled={!editTermName.trim() || !editTermDomain || isUpdating}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Save Changes
                 </button>
               </div>
             </div>
