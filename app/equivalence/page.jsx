@@ -18,7 +18,8 @@ import {
   Layers,
   Link as LinkIcon,
   Loader2,
-  RefreshCw
+  Search,
+  Filter
 } from 'lucide-react';
 import { useDisclosure } from '@/hooks';
 import {
@@ -26,22 +27,24 @@ import {
   DropdownMenu,
   DropdownItem,
   EmptyState,
+  Select
 } from '@/components/ui';
 import { Input, SearchInput, Textarea } from '@/components/ui/Input';
-import { equivalenceService } from '../../lib/api/services/equivalence';
+import { equivalenceService } from '@/lib/api/services/equivalence';
+import { connectionService } from '@/lib/api/services/connection';
+import { metadataService } from '@/lib/api/services/metadata';
 import { toast } from 'sonner';
 
-// Helper to generate a consistent color based on connection type/name
 const getConnectionColor = (type) => {
   const map = {
-    'postgres': '#3b82f6', // blue
-    'mysql': '#22c55e',    // green
-    'sqlserver': '#ef4444', // red
-    'oracle': '#f97316',   // orange
-    'mongodb': '#a855f7',  // purple
-    's3': '#ec4899',       // pink
+    'postgres': '#3b82f6',
+    'mysql': '#22c55e',
+    'sqlserver': '#ef4444',
+    'oracle': '#f97316',
+    'mongodb': '#a855f7',
+    's3': '#ec4899',
   };
-  return map[type?.toLowerCase()] || '#64748b'; // default slate
+  return map[type?.toLowerCase()] || '#64748b';
 };
 
 const formatDate = (dateString) => {
@@ -52,10 +55,6 @@ const formatDate = (dateString) => {
     year: 'numeric'
   });
 };
-
-// ===========================================
-// Group List Item Component
-// ===========================================
 
 const GroupListItem = memo(function GroupListItem({
   group,
@@ -115,7 +114,7 @@ const GroupListItem = memo(function GroupListItem({
                 menuDisclosure.onToggle();
               }}
               className="p-1 rounded hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-400"
-              aria-label="Menu de ações"
+              aria-label="Menu actions"
             >
               <MoreVertical className="w-4 h-4" />
             </button>
@@ -137,10 +136,6 @@ const GroupListItem = memo(function GroupListItem({
     </div>
   );
 });
-
-// ===========================================
-// Column Mapping Card Component
-// ===========================================
 
 const ColumnMappingCard = memo(function ColumnMappingCard({
   mapping,
@@ -175,7 +170,7 @@ const ColumnMappingCard = memo(function ColumnMappingCard({
         <button
           onClick={() => onRemove(mapping.id)}
           className="p-1 text-gray-400 hover:text-red-500"
-          aria-label="Remover mapeamento"
+          aria-label="Remove mapping"
         >
           <X className="w-4 h-4" />
         </button>
@@ -183,10 +178,6 @@ const ColumnMappingCard = memo(function ColumnMappingCard({
     </div>
   );
 });
-
-// ===========================================
-// Value Mappings Table Component
-// ===========================================
 
 const ValueMappingsTable = memo(function ValueMappingsTable({
   mappings,
@@ -233,6 +224,7 @@ const ValueMappingsTable = memo(function ValueMappingsTable({
                 <code className="px-2 py-1 text-sm bg-gray-100 dark:bg-zinc-900 text-gray-700 dark:text-gray-300 rounded">
                   {mapping.source_value}
                 </code>
+                <div className="text-[10px] text-gray-400 mt-1">{mapping.source_column_name}</div>
               </td>
               <td className="px-4 py-3 text-center">
                 <ArrowRight className="w-4 h-4 text-gray-300 dark:text-gray-600 mx-auto" />
@@ -249,7 +241,7 @@ const ValueMappingsTable = memo(function ValueMappingsTable({
                 <button
                   onClick={() => onRemove(mapping.id)}
                   className="p-1 text-gray-400 hover:text-red-500"
-                  aria-label="Remover mapeamento"
+                  aria-label="Remove mapping"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -262,199 +254,210 @@ const ValueMappingsTable = memo(function ValueMappingsTable({
   );
 });
 
-// ===========================================
-// Detail Panel Component
-// ===========================================
+const AddColumnMappingModal = memo(function AddColumnMappingModal({
+  isOpen,
+  onClose,
+  onAdd,
+  groupId
+}) {
+  const [connections, setConnections] = useState([]);
+  const [selectedConnection, setSelectedConnection] = useState('');
+  const [availableColumns, setAvailableColumns] = useState([]);
+  const [isLoadingCols, setIsLoadingCols] = useState(false);
+  const [search, setSearch] = useState('');
 
-const DetailPanel = memo(function DetailPanel({ group, isLoading }) {
-  if (isLoading) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center text-gray-500 dark:text-gray-400">
-        <Loader2 className="w-8 h-8 mb-4 animate-spin text-purple-500" />
-        <p className="text-sm">Loading group details...</p>
-      </div>
-    );
-  }
-
-  if (!group) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center text-gray-500 dark:text-gray-400">
-        <GitMerge className="w-16 h-16 mb-4 opacity-30" />
-        <h3 className="text-lg font-medium mb-2">Select a Column Group</h3>
-        <p className="text-sm text-center max-w-md">
-          Choose a column group from the list to view and manage its column mappings and value
-          transformations.
-        </p>
-      </div>
-    );
-  }
-
-  const handleRemoveColumnMapping = async (id) => {
-    if (!confirm('Remove this column mapping?')) return;
-    try {
-      await equivalenceService.deleteColumnMapping(id);
-      toast.success('Column mapping removed');
-      // Trigger a refresh logic here usually via context or callback prop
-    } catch (error) {
-      console.error(error);
-      toast.error('Failed to remove mapping');
+  useEffect(() => {
+    if (isOpen) {
+      connectionService.list().then(setConnections).catch(console.error);
     }
-  };
+  }, [isOpen]);
 
-  const handleRemoveValueMapping = async (id) => {
-    if (!confirm('Remove this value mapping?')) return;
-    try {
-      await equivalenceService.deleteValueMapping(id);
-      toast.success('Value mapping removed');
-      // Trigger refresh
-    } catch (error) {
-      console.error(error);
-      toast.error('Failed to remove mapping');
+  useEffect(() => {
+    if (isOpen) {
+      setIsLoadingCols(true);
+      equivalenceService.getAvailableColumns({
+        connection_id: selectedConnection ? parseInt(selectedConnection) : undefined,
+        exclude_mapped: true
+      })
+      .then(res => setAvailableColumns(res.columns || []))
+      .catch(console.error)
+      .finally(() => setIsLoadingCols(false));
     }
-  };
+  }, [isOpen, selectedConnection]);
 
-  // Determine standard values (from Dictionary or Custom)
-  const standardValues = group.standard_values || []; 
-  const hasDictionaryTerm = !!group.data_dictionary_term_id;
+  const filteredColumns = availableColumns.filter(col => 
+    col.column_name.toLowerCase().includes(search.toLowerCase()) ||
+    col.table_name.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <header className="p-6 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">{group.name}</h2>
-              {group.data_dictionary_term_id && (
-                <Link
-                  href={`/equivalence/data-dictionary?term=${group.data_dictionary_term_id}`}
-                  className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
-                >
-                  <BookOpen className="w-3 h-3" />
-                  {group.data_dictionary_term_name}
-                </Link>
-              )}
-            </div>
-            <p className="text-gray-500 dark:text-gray-400 mt-1">{group.description}</p>
-            <p className="text-xs text-gray-400 mt-2">Last updated: {formatDate(group.data_atualizacao)}</p>
+    <Modal isOpen={isOpen} onClose={onClose} title="Add Column Mapping" size="lg">
+      <div className="space-y-4">
+        <div className="flex gap-4">
+          <div className="w-1/3">
+            <Select
+              label="Filter by Connection"
+              value={selectedConnection}
+              onChange={setSelectedConnection}
+              options={[
+                { value: '', label: 'All Connections' },
+                ...connections.map(c => ({ value: c.id.toString(), label: c.name }))
+              ]}
+            />
           </div>
-          <button className="px-4 py-2 text-sm font-medium text-white bg-purple-500 hover:bg-purple-600 rounded-lg">
-            Edit Group
-          </button>
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Search Columns</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by table or column name..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+              />
+            </div>
+          </div>
         </div>
 
-        {/* Standard Values Information */}
-        <div className="mt-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Standard Values
-            </span>
-            {standardValues.length > 0 ? (
-              hasDictionaryTerm ? (
-                <span className="text-xs flex items-center gap-1 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded">
-                  <LinkIcon className="w-3 h-3" />
-                  From Dictionary Term
-                </span>
-              ) : (
-                <span className="text-xs flex items-center gap-1 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded">
-                  <Pencil className="w-3 h-3" />
-                  Custom Values
-                </span>
-              )
-            ) : (
-              <span className="text-xs flex items-center gap-1 text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-zinc-800 px-2 py-0.5 rounded">
-                <Layers className="w-3 h-3" />
-                Semantic Grouping Only
-              </span>
-            )}
-          </div>
-          
-          {standardValues.length > 0 ? (
-            <>
-              <div className="flex flex-wrap items-center gap-2">
-                {standardValues.map((val) => (
-                  <span
-                    key={val}
-                    className="px-3 py-1 text-sm font-mono bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full"
-                  >
-                    {val}
-                  </span>
-                ))}
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                {hasDictionaryTerm
-                  ? 'Using standard values from the linked dictionary term.'
-                  : 'Values defined in property rules.'}
-              </p>
-            </>
-          ) : (
-            <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                This group unifies columns <strong>semantically</strong> without strict value
-                normalization.
-              </p>
-              <p className="text-xs text-gray-500 mt-2">
-                Useful for: federated queries, LGPD mapping, data cataloging, impact analysis.
-              </p>
+        <div className="h-64 overflow-y-auto border border-gray-200 dark:border-zinc-700 rounded-lg bg-gray-50 dark:bg-zinc-900">
+          {isLoadingCols ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="w-6 h-6 animate-spin text-purple-500" />
             </div>
+          ) : filteredColumns.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-500">
+              <Database className="w-8 h-8 mb-2 opacity-50" />
+              <p className="text-sm">No available columns found</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm text-left">
+              <thead className="bg-white dark:bg-zinc-800 sticky top-0">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Table</th>
+                  <th className="px-4 py-2 font-medium">Column</th>
+                  <th className="px-4 py-2 font-medium">Type</th>
+                  <th className="px-4 py-2 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
+                {filteredColumns.slice(0, 50).map((col) => (
+                  <tr key={col.id} className="hover:bg-white dark:hover:bg-zinc-800">
+                    <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{col.table_name}</td>
+                    <td className="px-4 py-2 font-medium text-gray-900 dark:text-white">{col.column_name}</td>
+                    <td className="px-4 py-2 text-gray-500 text-xs">{col.data_type}</td>
+                    <td className="px-4 py-2 text-right">
+                      <button
+                        onClick={() => onAdd(col.id)}
+                        className="text-xs px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded hover:bg-purple-200"
+                      >
+                        Add
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
-      </header>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-6 space-y-6">
-        {/* Column Mappings */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <Database className="w-4 h-4 text-gray-400" />
-              Column Mappings
-            </h3>
-            <button className="text-sm text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium flex items-center gap-1">
-              <Plus className="w-4 h-4" />
-              Add Column
-            </button>
-          </div>
-
-          <div className="space-y-2">
-            {group.column_mappings && group.column_mappings.map((mapping) => (
-              <ColumnMappingCard
-                key={mapping.id}
-                mapping={mapping}
-                onRemove={handleRemoveColumnMapping}
-              />
-            ))}
-            {(!group.column_mappings || group.column_mappings.length === 0) && (
-              <p className="text-sm text-gray-500 italic">No columns mapped yet.</p>
-            )}
-          </div>
-        </section>
-
-        {/* Value Mappings */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <ArrowRight className="w-4 h-4 text-gray-400" />
-              Value Mappings
-            </h3>
-            {group.value_mappings && group.value_mappings.length > 0 && (
-              <button className="text-sm text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium flex items-center gap-1">
-                <Plus className="w-4 h-4" />
-                Add Mapping
-              </button>
-            )}
-          </div>
-
-          <ValueMappingsTable mappings={group.value_mappings || []} onRemove={handleRemoveValueMapping} />
-        </section>
+        <p className="text-xs text-gray-500 text-right">Showing top 50 matches</p>
       </div>
-    </div>
+      <div className="mt-4 flex justify-end">
+        <button
+          onClick={onClose}
+          className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg"
+        >
+          Done
+        </button>
+      </div>
+    </Modal>
   );
 });
 
-// ===========================================
-// Create Group Modal Component
-// ===========================================
+const AddValueMappingModal = memo(function AddValueMappingModal({
+  isOpen,
+  onClose,
+  onAdd,
+  mappedColumns,
+  standardValues
+}) {
+  const [sourceColumnId, setSourceColumnId] = useState('');
+  const [sourceValue, setSourceValue] = useState('');
+  const [standardValue, setStandardValue] = useState('');
+  const [customStandardValue, setCustomStandardValue] = useState('');
+
+  const handleSubmit = () => {
+    if (!sourceColumnId || !sourceValue) return;
+    const finalStandardValue = standardValues.length > 0 ? standardValue : customStandardValue;
+    if (!finalStandardValue) return;
+
+    onAdd({
+      source_column_id: parseInt(sourceColumnId),
+      source_value: sourceValue,
+      standard_value: finalStandardValue
+    });
+    
+    setSourceValue('');
+    setCustomStandardValue('');
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Add Value Mapping">
+      <div className="space-y-4">
+        <Select
+          label="Source Column"
+          value={sourceColumnId}
+          onChange={setSourceColumnId}
+          required
+          options={mappedColumns.map(mc => ({
+            value: mc.column_id.toString(),
+            label: `${mc.table_name}.${mc.column_name} (${mc.data_source_name})`
+          }))}
+        />
+
+        <Input
+          label="Source Value"
+          placeholder="Original value in database (e.g., 'masculino')"
+          value={sourceValue}
+          onChange={(e) => setSourceValue(e.target.value)}
+          required
+        />
+
+        {standardValues && standardValues.length > 0 ? (
+          <Select
+            label="Standard Value"
+            value={standardValue}
+            onChange={setStandardValue}
+            required
+            options={standardValues.map(v => ({ value: v, label: v }))}
+          />
+        ) : (
+          <Input
+            label="Standard Value"
+            placeholder="Normalized target value (e.g., 'M')"
+            value={customStandardValue}
+            onChange={(e) => setCustomStandardValue(e.target.value)}
+            required
+          />
+        )}
+      </div>
+      <div className="flex justify-end gap-3 mt-6">
+        <button
+          onClick={onClose}
+          className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSubmit}
+          className="px-4 py-2 text-sm font-medium text-white bg-purple-500 hover:bg-purple-600 rounded-lg"
+        >
+          Add Mapping
+        </button>
+      </div>
+    </Modal>
+  );
+});
 
 const CreateGroupModal = memo(function CreateGroupModal({
   isOpen,
@@ -467,7 +470,6 @@ const CreateGroupModal = memo(function CreateGroupModal({
   const [termId, setTermId] = useState('');
   const [terms, setTerms] = useState([]);
 
-  // Fetch terms when modal opens
   useEffect(() => {
     if (isOpen) {
       equivalenceService.listDataDictionary()
@@ -550,21 +552,253 @@ const CreateGroupModal = memo(function CreateGroupModal({
   );
 });
 
-// ===========================================
-// Main Page Component
-// ===========================================
+const DetailPanel = memo(function DetailPanel({ 
+  group, 
+  isLoading,
+  onRefresh
+}) {
+  const [isColumnModalOpen, setIsColumnModalOpen] = useState(false);
+  const [isValueModalOpen, setIsValueModalOpen] = useState(false);
+
+  if (isLoading) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-gray-500 dark:text-gray-400">
+        <Loader2 className="w-8 h-8 mb-4 animate-spin text-purple-500" />
+        <p className="text-sm">Loading group details...</p>
+      </div>
+    );
+  }
+
+  if (!group) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-gray-500 dark:text-gray-400">
+        <GitMerge className="w-16 h-16 mb-4 opacity-30" />
+        <h3 className="text-lg font-medium mb-2">Select a Column Group</h3>
+        <p className="text-sm text-center max-w-md">
+          Choose a column group from the list to view and manage its column mappings and value
+          transformations.
+        </p>
+      </div>
+    );
+  }
+
+  const handleAddColumnMapping = async (columnId) => {
+    try {
+      await equivalenceService.createColumnMapping({
+        group_id: group.id,
+        column_id: columnId
+      });
+      toast.success('Column added');
+      onRefresh();
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to add column');
+    }
+  };
+
+  const handleAddValueMapping = async (data) => {
+    try {
+      await equivalenceService.createValueMapping({
+        group_id: group.id,
+        ...data
+      });
+      toast.success('Value mapping added');
+      onRefresh();
+      setIsValueModalOpen(false);
+    } catch (error) {
+      console.error(error);
+      toast.error(error.message || 'Failed to add value mapping');
+    }
+  };
+
+  const handleRemoveColumnMapping = async (id) => {
+    if (!confirm('Remove this column mapping?')) return;
+    try {
+      await equivalenceService.deleteColumnMapping(id);
+      toast.success('Column mapping removed');
+      onRefresh();
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to remove mapping');
+    }
+  };
+
+  const handleRemoveValueMapping = async (id) => {
+    if (!confirm('Remove this value mapping?')) return;
+    try {
+      await equivalenceService.deleteValueMapping(id);
+      toast.success('Value mapping removed');
+      onRefresh();
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to remove mapping');
+    }
+  };
+
+  const standardValues = group.standard_values || []; 
+  const hasDictionaryTerm = !!group.data_dictionary_term_id;
+
+  return (
+    <div className="h-full flex flex-col">
+      <header className="p-6 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">{group.name}</h2>
+              {group.data_dictionary_term_id && (
+                <Link
+                  href={`/equivalence/data-dictionary?term=${group.data_dictionary_term_id}`}
+                  className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                >
+                  <BookOpen className="w-3 h-3" />
+                  {group.data_dictionary_term_name}
+                </Link>
+              )}
+            </div>
+            <p className="text-gray-500 dark:text-gray-400 mt-1">{group.description}</p>
+            <p className="text-xs text-gray-400 mt-2">Last updated: {formatDate(group.data_atualizacao)}</p>
+          </div>
+          <button className="px-4 py-2 text-sm font-medium text-white bg-purple-500 hover:bg-purple-600 rounded-lg">
+            Edit Group
+          </button>
+        </div>
+
+        <div className="mt-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              Standard Values
+            </span>
+            {standardValues.length > 0 ? (
+              hasDictionaryTerm ? (
+                <span className="text-xs flex items-center gap-1 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded">
+                  <LinkIcon className="w-3 h-3" />
+                  From Dictionary Term
+                </span>
+              ) : (
+                <span className="text-xs flex items-center gap-1 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded">
+                  <Pencil className="w-3 h-3" />
+                  Custom Values
+                </span>
+              )
+            ) : (
+              <span className="text-xs flex items-center gap-1 text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-zinc-800 px-2 py-0.5 rounded">
+                <Layers className="w-3 h-3" />
+                Semantic Grouping Only
+              </span>
+            )}
+          </div>
+          
+          {standardValues.length > 0 ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                {standardValues.map((val) => (
+                  <span
+                    key={val}
+                    className="px-3 py-1 text-sm font-mono bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full"
+                  >
+                    {val}
+                  </span>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                {hasDictionaryTerm
+                  ? 'Using standard values from the linked dictionary term.'
+                  : 'Values defined in property rules.'}
+              </p>
+            </>
+          ) : (
+            <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                This group unifies columns <strong>semantically</strong> without strict value
+                normalization.
+              </p>
+              <p className="text-xs text-gray-500 mt-2">
+                Useful for: federated queries, LGPD mapping, data cataloging, impact analysis.
+              </p>
+            </div>
+          )}
+        </div>
+      </header>
+
+      <div className="flex-1 overflow-auto p-6 space-y-6">
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <Database className="w-4 h-4 text-gray-400" />
+              Column Mappings
+            </h3>
+            <button 
+              onClick={() => setIsColumnModalOpen(true)}
+              className="text-sm text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium flex items-center gap-1"
+            >
+              <Plus className="w-4 h-4" />
+              Add Column
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {group.column_mappings && group.column_mappings.map((mapping) => (
+              <ColumnMappingCard
+                key={mapping.id}
+                mapping={mapping}
+                onRemove={handleRemoveColumnMapping}
+              />
+            ))}
+            {(!group.column_mappings || group.column_mappings.length === 0) && (
+              <p className="text-sm text-gray-500 italic">No columns mapped yet.</p>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <ArrowRight className="w-4 h-4 text-gray-400" />
+              Value Mappings
+            </h3>
+            {group.column_mappings && group.column_mappings.length > 0 && (
+              <button 
+                onClick={() => setIsValueModalOpen(true)}
+                className="text-sm text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium flex items-center gap-1"
+              >
+                <Plus className="w-4 h-4" />
+                Add Mapping
+              </button>
+            )}
+          </div>
+
+          <ValueMappingsTable mappings={group.value_mappings || []} onRemove={handleRemoveValueMapping} />
+        </section>
+      </div>
+
+      <AddColumnMappingModal 
+        isOpen={isColumnModalOpen}
+        onClose={() => setIsColumnModalOpen(false)}
+        onAdd={handleAddColumnMapping}
+        groupId={group.id}
+      />
+
+      <AddValueMappingModal
+        isOpen={isValueModalOpen}
+        onClose={() => setIsValueModalOpen(false)}
+        onAdd={handleAddValueMapping}
+        mappedColumns={group.column_mappings || []}
+        standardValues={standardValues}
+      />
+    </div>
+  );
+});
 
 export default function EquivalencePage() {
   const [groups, setGroups] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedGroup, setSelectedGroup] = useState(null); // This holds the full detail object
+  const [selectedGroup, setSelectedGroup] = useState(null);
   const [isLoadingList, setIsLoadingList] = useState(true);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   
   const createModal = useDisclosure();
 
-  // Load Groups
   const fetchGroups = useCallback(async () => {
     setIsLoadingList(true);
     try {
@@ -582,14 +816,10 @@ export default function EquivalencePage() {
     fetchGroups();
   }, [fetchGroups]);
 
-  // Load Details for Selected Group
-  const handleSelectGroup = useCallback(async (groupSummary) => {
+  const fetchGroupDetails = useCallback(async (groupId) => {
     setIsLoadingDetails(true);
-    // Optimistically set selection with basic info while loading details
-    setSelectedGroup(groupSummary);
-    
     try {
-      const fullDetails = await equivalenceService.getColumnGroup(groupSummary.id);
+      const fullDetails = await equivalenceService.getColumnGroup(groupId);
       setSelectedGroup(fullDetails);
     } catch (error) {
       console.error('Failed to fetch group details:', error);
@@ -599,7 +829,11 @@ export default function EquivalencePage() {
     }
   }, []);
 
-  // Filtered groups
+  const handleSelectGroup = useCallback((groupSummary) => {
+    setSelectedGroup(groupSummary);
+    fetchGroupDetails(groupSummary.id);
+  }, [fetchGroupDetails]);
+
   const filteredGroups = groups.filter(
     (g) =>
       g.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -628,8 +862,6 @@ export default function EquivalencePage() {
       setGroups((prev) => [newGroup, ...prev]);
       createModal.onClose();
       toast.success('Column group created');
-      
-      // Select the new group
       handleSelectGroup(newGroup);
     } catch (error) {
       console.error(error);
@@ -642,9 +874,7 @@ export default function EquivalencePage() {
   return (
     <DashboardLayout>
       <div className="h-screen flex bg-gray-50 dark:bg-zinc-950">
-        {/* Left Panel - Groups List */}
         <aside className="w-96 border-r border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col">
-          {/* Header */}
           <header className="p-4 border-b border-gray-200 dark:border-zinc-800">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -668,7 +898,6 @@ export default function EquivalencePage() {
             />
           </header>
 
-          {/* Groups List */}
           <div className="flex-1 overflow-auto p-2">
             {isLoadingList ? (
               <div className="flex items-center justify-center py-8">
@@ -696,15 +925,14 @@ export default function EquivalencePage() {
           </div>
         </aside>
 
-        {/* Right Panel - Group Details */}
         <main className="flex-1 overflow-auto">
           <DetailPanel 
             group={selectedGroup} 
             isLoading={isLoadingDetails && (!selectedGroup || !selectedGroup.column_mappings)} 
+            onRefresh={() => fetchGroupDetails(selectedGroup.id)}
           />
         </main>
 
-        {/* Create Modal */}
         <CreateGroupModal
           isOpen={createModal.isOpen}
           onClose={createModal.onClose}
