@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import {
   ChevronLeft,
@@ -27,6 +27,7 @@ import {
   Loader2,
   AlertCircle,
   RefreshCw,
+  Save,
 } from 'lucide-react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
@@ -69,16 +70,29 @@ const TRANSFORMATION_TYPES = [
   { value: 'template', label: 'Template Rule', description: 'Apply normalization rule' },
 ];
 
-export default function NewSilverDatasetPage() {
+export default function EditSilverDatasetPage() {
   const router = useRouter();
+  const params = useParams();
+
+  // Parse config ID and type from URL (format: p_123 or v_456)
+  const configId = params.id;
+  const isVirtualized = configId?.startsWith('v_');
+  const isPersistent = configId?.startsWith('p_');
+  const actualId = configId?.replace(/^[pv]_/, '');
+
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
   // Loading states
+  const [isLoadingConfig, setIsLoadingConfig] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [isLoadingBronze, setIsLoadingBronze] = useState(true);
   const [isLoadingConnections, setIsLoadingConnections] = useState(true);
   const [isLoadingRules, setIsLoadingRules] = useState(true);
+
+  // Original config
+  const [originalConfig, setOriginalConfig] = useState(null);
 
   // Data from API
   const [bronzeDatasets, setBronzeDatasets] = useState([]);
@@ -112,6 +126,86 @@ export default function NewSilverDatasetPage() {
   // Step 4: Filters
   const [filterConditions, setFilterConditions] = useState([]);
   const [filterLogic, setFilterLogic] = useState('AND');
+
+  // Load existing config
+  useEffect(() => {
+    const loadConfig = async () => {
+      if (!actualId) return;
+
+      setIsLoadingConfig(true);
+      setLoadError(null);
+
+      try {
+        const config = isVirtualized
+          ? await silverService.virtualized.get(parseInt(actualId))
+          : await silverService.persistent.get(parseInt(actualId));
+
+        setOriginalConfig(config);
+        setDatasetType(isVirtualized ? 'virtualized' : 'persistent');
+        setDatasetName(config.name || '');
+        setDescription(config.description || '');
+
+        // Set source
+        if (!isVirtualized) {
+          setSourceBronzeId(config.source_bronze_config_id);
+          if (config.source_bronze_version !== null && config.source_bronze_version !== undefined) {
+            setUseLatestVersion(false);
+            setSourceBronzeVersion(config.source_bronze_version);
+          } else {
+            setUseLatestVersion(true);
+            setSourceBronzeVersion(null);
+          }
+        } else {
+          // For virtualized, load selected tables
+          if (config.tables) {
+            setSelectedTables(config.tables.map((t) => t.table_id));
+          }
+        }
+
+        // Load transformations
+        if (config.column_transformations && config.column_transformations.length > 0) {
+          setTransformations(
+            config.column_transformations.map((t, idx) => ({
+              id: String(idx),
+              columnId: t.column_id,
+              type: t.type,
+              ruleId: t.rule_id || null,
+            }))
+          );
+        }
+
+        // Load filters
+        if (config.filters && config.filters.conditions && config.filters.conditions.length > 0) {
+          setFilterLogic(config.filters.logic || 'AND');
+          setFilterConditions(
+            config.filters.conditions.map((c, idx) => ({
+              id: String(idx),
+              columnId: c.column_id,
+              operator: c.operator,
+              value: c.value || '',
+              valueMin: c.value_min || '',
+              valueMax: c.value_max || '',
+            }))
+          );
+        }
+
+        // Load equivalence settings
+        if (config.column_group_ids) {
+          setSelectedColumnGroups(config.column_group_ids);
+        }
+        if (config.exclude_unified_source_columns) {
+          setExcludeSourceColumns(true);
+        }
+      } catch (err) {
+        console.error('Failed to load config:', err);
+        setLoadError(err?.message || 'Failed to load dataset configuration');
+      } finally {
+        setIsLoadingConfig(false);
+      }
+    };
+
+    loadConfig();
+  }, [actualId, isVirtualized]);
 
   // Load Bronze datasets
   useEffect(() => {
@@ -211,7 +305,7 @@ export default function NewSilverDatasetPage() {
         setBronzeVersions([]);
         return;
       }
-      
+
       setIsLoadingVersions(true);
       try {
         const response = await bronzeService.persistent.getVersions(sourceBronzeId);
@@ -230,7 +324,6 @@ export default function NewSilverDatasetPage() {
   useEffect(() => {
     const loadColumns = async () => {
       if (datasetType === 'persistent' && sourceBronzeId) {
-        // For persistent, columns come from Bronze config's tables
         const bronzeConfig = bronzeDatasets.find((b) => b.id === sourceBronzeId);
         if (bronzeConfig && bronzeConfig.tables) {
           const allColumns = [];
@@ -255,7 +348,6 @@ export default function NewSilverDatasetPage() {
           setAvailableColumns(allColumns);
         }
       } else if (datasetType === 'virtualized' && selectedTables.length > 0) {
-        // For virtualized, columns come from selected tables
         const allColumns = [];
         for (const tableId of selectedTables) {
           for (const conn of connections) {
@@ -366,9 +458,7 @@ export default function NewSilverDatasetPage() {
   };
 
   const handleTransformationChange = (id, field, value) => {
-    setTransformations(
-      transformations.map((t) => (t.id === id ? { ...t, [field]: value } : t))
-    );
+    setTransformations(transformations.map((t) => (t.id === id ? { ...t, [field]: value } : t)));
   };
 
   const handleAddFilterCondition = () => {
@@ -383,9 +473,7 @@ export default function NewSilverDatasetPage() {
   };
 
   const handleFilterConditionChange = (id, field, value) => {
-    setFilterConditions(
-      filterConditions.map((c) => (c.id === id ? { ...c, [field]: value } : c))
-    );
+    setFilterConditions(filterConditions.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
   };
 
   const canProceed = () => {
@@ -406,16 +494,11 @@ export default function NewSilverDatasetPage() {
 
     try {
       if (datasetType === 'persistent') {
-        // Build persistent config request
-        // If useLatestVersion is true, send null (or undefined) to always get latest
-        // If useLatestVersion is false, send the specific version number
         const request = {
           name: datasetName,
           description: description || undefined,
-          source_bronze_config_id: sourceBronzeId,
-          source_bronze_version: useLatestVersion ? null : (sourceBronzeVersion || undefined),
-          column_group_ids:
-            selectedColumnGroups.length > 0 ? selectedColumnGroups : undefined,
+          source_bronze_version: useLatestVersion ? null : sourceBronzeVersion,
+          column_group_ids: selectedColumnGroups.length > 0 ? selectedColumnGroups : undefined,
           exclude_unified_source_columns: excludeSourceColumns || undefined,
           column_transformations:
             transformations.length > 0
@@ -452,18 +535,8 @@ export default function NewSilverDatasetPage() {
               : undefined,
         };
 
-        const result = await silverService.persistent.create(request);
-        
-        // Execute immediately after creation
-        try {
-          await silverService.persistent.execute(result.id);
-        } catch (execErr) {
-          console.error('Execution failed (config was created):', execErr);
-        }
-        
-        router.push(`/silver/p_${result.id}`);
+        await silverService.persistent.update(parseInt(actualId), request);
       } else {
-        // Build virtualized config request
         const request = {
           name: datasetName,
           description: description || undefined,
@@ -506,12 +579,13 @@ export default function NewSilverDatasetPage() {
               : undefined,
         };
 
-        const result = await silverService.virtualized.create(request);
-        router.push(`/silver/v_${result.id}`);
+        await silverService.virtualized.update(parseInt(actualId), request);
       }
+
+      router.push('/silver');
     } catch (err) {
-      console.error('Failed to create dataset:', err);
-      setSubmitError(err.message || 'Failed to create dataset');
+      console.error('Failed to update dataset:', err);
+      setSubmitError(err.message || 'Failed to update dataset');
     } finally {
       setIsSubmitting(false);
     }
@@ -519,6 +593,38 @@ export default function NewSilverDatasetPage() {
 
   // Get selected Bronze dataset info
   const selectedBronze = bronzeDatasets.find((b) => b.id === sourceBronzeId);
+
+  // Loading state
+  if (isLoadingConfig) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-96">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-8 h-8 text-purple-500 animate-spin" />
+            <span className="text-gray-500 dark:text-gray-400">Loading dataset configuration...</span>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Error state
+  if (loadError) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-96">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <AlertCircle className="w-12 h-12 text-red-500" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Failed to load dataset</h2>
+            <p className="text-gray-500 dark:text-gray-400">{loadError}</p>
+            <Link href="/silver" className="text-purple-600 hover:text-purple-700 dark:text-purple-400">
+              ← Back to Silver Layer
+            </Link>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -533,15 +639,24 @@ export default function NewSilverDatasetPage() {
               >
                 <ChevronLeft className="w-5 h-5" />
               </Link>
-              <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
-                <Sparkles className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+              <div
+                className={clsx(
+                  'p-2 rounded-lg',
+                  datasetType === 'persistent'
+                    ? 'bg-purple-100 dark:bg-purple-900/30'
+                    : 'bg-cyan-100 dark:bg-cyan-900/30'
+                )}
+              >
+                {datasetType === 'persistent' ? (
+                  <Sparkles className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                ) : (
+                  <Zap className="w-6 h-6 text-cyan-600 dark:text-cyan-400" />
+                )}
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-                  New Silver Dataset
-                </h1>
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white">Edit Silver Dataset</h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Configure data transformation or virtualized view
+                  {datasetType === 'persistent' ? 'Persistent' : 'Virtualized'}: {originalConfig?.name}
                 </p>
               </div>
             </div>
@@ -558,7 +673,10 @@ export default function NewSilverDatasetPage() {
 
               return (
                 <React.Fragment key={step.id}>
-                  <div className="flex flex-col items-center gap-2">
+                  <button
+                    onClick={() => setCurrentStep(step.id)}
+                    className="flex flex-col items-center gap-2"
+                  >
                     <div
                       className={clsx(
                         'w-10 h-10 rounded-full flex items-center justify-center transition-colors',
@@ -583,7 +701,7 @@ export default function NewSilverDatasetPage() {
                     >
                       {step.title}
                     </span>
-                  </div>
+                  </button>
                   {index < STEPS.length - 1 && (
                     <div
                       className={clsx(
@@ -604,57 +722,56 @@ export default function NewSilverDatasetPage() {
             {/* Step 1: Type & Source */}
             {currentStep === 1 && (
               <div className="space-y-6">
+                {/* Dataset Type - Read Only */}
                 <div className="bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 p-6">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">
-                    Choose Dataset Type
-                  </h2>
-
-                  <div className="grid grid-cols-2 gap-4 mb-6">
-                    <button
-                      onClick={() => setDatasetType('persistent')}
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Dataset Type</h2>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div
                       className={clsx(
-                        'p-4 rounded-xl border-2 text-left transition-all',
+                        'p-4 rounded-xl border-2 cursor-not-allowed',
                         datasetType === 'persistent'
                           ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
-                          : 'border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600'
+                          : 'border-gray-200 dark:border-zinc-700 opacity-50'
                       )}
                     >
                       <div className="flex items-center gap-3 mb-2">
                         <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
                           <Sparkles className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                         </div>
-                        <span className="font-semibold text-gray-900 dark:text-white">
-                          Persistent
-                        </span>
+                        <span className="font-semibold text-gray-900 dark:text-white">Persistent</span>
                       </div>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Persist data to Silver Delta Lake. Best for ETL pipelines.
+                        Persist data to Silver Delta Lake.
                       </p>
-                    </button>
+                    </div>
 
-                    <button
-                      onClick={() => setDatasetType('virtualized')}
+                    <div
                       className={clsx(
-                        'p-4 rounded-xl border-2 text-left transition-all',
+                        'p-4 rounded-xl border-2 cursor-not-allowed',
                         datasetType === 'virtualized'
                           ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20'
-                          : 'border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600'
+                          : 'border-gray-200 dark:border-zinc-700 opacity-50'
                       )}
                     >
                       <div className="flex items-center gap-3 mb-2">
                         <div className="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-900/30">
                           <Zap className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
                         </div>
-                        <span className="font-semibold text-gray-900 dark:text-white">
-                          Virtualized
-                        </span>
+                        <span className="font-semibold text-gray-900 dark:text-white">Virtualized</span>
                       </div>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Query source data on-demand. Best for exploration and APIs.
+                        Query source data on-demand.
                       </p>
-                    </button>
+                    </div>
                   </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    Dataset type cannot be changed after creation.
+                  </p>
+                </div>
 
+                {/* Basic Info */}
+                <div className="bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 p-6">
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Basic Information</h2>
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -687,242 +804,226 @@ export default function NewSilverDatasetPage() {
                 {/* Source Selection */}
                 <div className="bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 p-6">
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                    {datasetType === 'persistent' ? 'Select Bronze Dataset' : 'Select Source Tables'}
+                    {datasetType === 'persistent' ? 'Source Bronze Dataset' : 'Source Tables'}
                   </h2>
 
                   {datasetType === 'persistent' ? (
-                    isLoadingBronze ? (
-                      <div className="flex items-center justify-center py-12">
-                        <Loader2 className="w-8 h-8 text-purple-500 animate-spin" />
+                    <>
+                      {/* Bronze Source - Read Only for edit */}
+                      <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 mb-6">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/40">
+                            <Layers className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                          </div>
+                          <div>
+                            <div className="font-semibold text-amber-800 dark:text-amber-200">
+                              {selectedBronze?.name || originalConfig?.source_bronze_config_name || `Bronze ID: ${sourceBronzeId}`}
+                            </div>
+                            <div className="text-xs text-amber-700 dark:text-amber-300">
+                              Source cannot be changed after creation
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    ) : bronzeDatasets.length === 0 ? (
-                      <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                        <Database className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                        <p className="text-sm">No Bronze datasets available</p>
-                        <p className="text-xs mt-1">Create a Bronze dataset first</p>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="grid grid-cols-2 gap-3">
-                          {bronzeDatasets.map((dataset) => (
-                            <button
-                              key={dataset.id}
-                              onClick={() => {
-                                setSourceBronzeId(dataset.id);
-                                setUseLatestVersion(true);
-                                setSourceBronzeVersion(null);
-                              }}
-                              className={clsx(
-                                'p-4 rounded-lg border-2 text-left transition-all',
-                                sourceBronzeId === dataset.id
-                                  ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
-                                  : 'border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600'
-                              )}
-                            >
-                              <div className="flex items-center gap-2 mb-1">
-                                <Layers className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                                <span className="font-medium text-gray-900 dark:text-white text-sm">
-                                  {dataset.name}
-                                </span>
-                              </div>
-                              <div className="text-xs text-gray-500 dark:text-gray-400">
-                                {dataset.tables?.length || 0} tables
-                                {dataset.current_delta_version !== undefined && dataset.current_delta_version !== null && (
-                                  <span className="ml-2">• v{dataset.current_delta_version}</span>
-                                )}
-                              </div>
-                            </button>
-                          ))}
+
+                      {/* Version Strategy */}
+                      <div className="mb-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Bronze Version Strategy
+                          </h3>
+                          {!isLoadingVersions && bronzeVersions.length > 0 && (
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {bronzeVersions.length} version{bronzeVersions.length !== 1 ? 's' : ''} available
+                            </span>
+                          )}
                         </div>
 
-                        {/* Version Selection */}
-                        {sourceBronzeId && (
-                          <div className="mt-6">
-                            <div className="flex items-center justify-between mb-3">
-                              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Bronze Version Strategy
-                              </h3>
-                              {!isLoadingVersions && bronzeVersions.length > 0 && (
-                                <span className="text-xs text-gray-500 dark:text-gray-400">
-                                  {bronzeVersions.length} version{bronzeVersions.length !== 1 ? 's' : ''} available
-                                </span>
-                              )}
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-3">
-                              {/* Latest Version Card */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setUseLatestVersion(true);
-                                  setSourceBronzeVersion(null);
-                                }}
-                                className={clsx(
-                                  'relative p-4 rounded-xl border-2 text-left transition-all',
-                                  useLatestVersion
-                                    ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                                    : 'border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600'
-                                )}
-                              >
-                                {useLatestVersion && (
-                                  <div className="absolute top-2 right-2">
-                                    <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
-                                      <Check className="w-3 h-3 text-white" />
-                                    </div>
-                                  </div>
-                                )}
-                                <div className="flex items-center gap-3 mb-2">
-                                  <div className={clsx(
-                                    'p-2 rounded-lg',
-                                    useLatestVersion 
-                                      ? 'bg-green-100 dark:bg-green-900/40' 
-                                      : 'bg-gray-100 dark:bg-zinc-800'
-                                  )}>
-                                    <RefreshCw className={clsx(
-                                      'w-5 h-5',
-                                      useLatestVersion 
-                                        ? 'text-green-600 dark:text-green-400' 
-                                        : 'text-gray-500 dark:text-gray-400'
-                                    )} />
-                                  </div>
-                                  <div>
-                                    <span className={clsx(
-                                      'font-semibold text-sm',
-                                      useLatestVersion 
-                                        ? 'text-green-700 dark:text-green-300' 
-                                        : 'text-gray-900 dark:text-white'
-                                    )}>
-                                      Always Latest
-                                    </span>
-                                    {!isLoadingVersions && bronzeVersions.length > 0 && (
-                                      <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                                        (currently v{bronzeVersions[0]?.version})
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 pl-11">
-                                  Auto-updates with each Bronze execution
-                                </p>
-                              </button>
-
-                              {/* Pinned Version Card */}
-                              <button
-                                type="button"
-                                onClick={() => setUseLatestVersion(false)}
-                                disabled={isLoadingVersions || bronzeVersions.length === 0}
-                                className={clsx(
-                                  'relative p-4 rounded-xl border-2 text-left transition-all',
-                                  !useLatestVersion
-                                    ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
-                                    : 'border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600',
-                                  (isLoadingVersions || bronzeVersions.length === 0) && 'opacity-50 cursor-not-allowed'
-                                )}
-                              >
-                                {!useLatestVersion && (
-                                  <div className="absolute top-2 right-2">
-                                    <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center">
-                                      <Check className="w-3 h-3 text-white" />
-                                    </div>
-                                  </div>
-                                )}
-                                <div className="flex items-center gap-3 mb-2">
-                                  <div className={clsx(
-                                    'p-2 rounded-lg',
-                                    !useLatestVersion 
-                                      ? 'bg-amber-100 dark:bg-amber-900/40' 
-                                      : 'bg-gray-100 dark:bg-zinc-800'
-                                  )}>
-                                    <GitCommit className={clsx(
-                                      'w-5 h-5',
-                                      !useLatestVersion 
-                                        ? 'text-amber-600 dark:text-amber-400' 
-                                        : 'text-gray-500 dark:text-gray-400'
-                                    )} />
-                                  </div>
-                                  <span className={clsx(
-                                    'font-semibold text-sm',
-                                    !useLatestVersion 
-                                      ? 'text-amber-700 dark:text-amber-300' 
-                                      : 'text-gray-900 dark:text-white'
-                                  )}>
-                                    Pin to Version
-                                  </span>
-                                </div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 pl-11">
-                                  {isLoadingVersions 
-                                    ? 'Loading versions...' 
-                                    : bronzeVersions.length === 0 
-                                      ? 'No versions available yet'
-                                      : 'Lock to specific version for reproducibility'
-                                  }
-                                </p>
-                              </button>
-                            </div>
-
-                            {/* Version Selector - appears when Pin to Version is selected */}
-                            {!useLatestVersion && bronzeVersions.length > 0 && (
-                              <div className="mt-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50">
-                                <label className="block text-xs font-medium text-amber-700 dark:text-amber-300 mb-2">
-                                  Select Version to Pin
-                                </label>
-                                <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-auto">
-                                  {bronzeVersions.map((v, idx) => (
-                                    <button
-                                      key={v.version}
-                                      type="button"
-                                      onClick={() => setSourceBronzeVersion(v.version)}
-                                      className={clsx(
-                                        'flex items-center justify-between p-3 rounded-lg border text-left transition-all',
-                                        sourceBronzeVersion === v.version
-                                          ? 'border-amber-500 bg-white dark:bg-zinc-800 shadow-sm'
-                                          : 'border-amber-200 dark:border-amber-800/30 bg-white/50 dark:bg-zinc-800/50 hover:bg-white dark:hover:bg-zinc-800'
-                                      )}
-                                    >
-                                      <div className="flex items-center gap-3">
-                                        <div className={clsx(
-                                          'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold',
-                                          sourceBronzeVersion === v.version
-                                            ? 'bg-amber-500 text-white'
-                                            : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-                                        )}>
-                                          {v.version}
-                                        </div>
-                                        <div>
-                                          <div className="flex items-center gap-2">
-                                            <span className="font-medium text-sm text-gray-900 dark:text-white">
-                                              Version {v.version}
-                                            </span>
-                                            {idx === 0 && (
-                                              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
-                                                LATEST
-                                              </span>
-                                            )}
-                                          </div>
-                                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                                            {new Date(v.timestamp).toLocaleDateString()} at {new Date(v.timestamp).toLocaleTimeString()}
-                                            {v.total_rows && ` • ${v.total_rows.toLocaleString()} rows`}
-                                          </span>
-                                        </div>
-                                      </div>
-                                      {sourceBronzeVersion === v.version && (
-                                        <Check className="w-5 h-5 text-amber-500" />
-                                      )}
-                                    </button>
-                                  ))}
+                        <div className="grid grid-cols-2 gap-3">
+                          {/* Latest Version Card */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUseLatestVersion(true);
+                              setSourceBronzeVersion(null);
+                            }}
+                            className={clsx(
+                              'relative p-4 rounded-xl border-2 text-left transition-all',
+                              useLatestVersion
+                                ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                                : 'border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600'
+                            )}
+                          >
+                            {useLatestVersion && (
+                              <div className="absolute top-2 right-2">
+                                <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+                                  <Check className="w-3 h-3 text-white" />
                                 </div>
                               </div>
                             )}
+                            <div className="flex items-center gap-3 mb-2">
+                              <div
+                                className={clsx(
+                                  'p-2 rounded-lg',
+                                  useLatestVersion
+                                    ? 'bg-green-100 dark:bg-green-900/40'
+                                    : 'bg-gray-100 dark:bg-zinc-800'
+                                )}
+                              >
+                                <RefreshCw
+                                  className={clsx(
+                                    'w-5 h-5',
+                                    useLatestVersion
+                                      ? 'text-green-600 dark:text-green-400'
+                                      : 'text-gray-500 dark:text-gray-400'
+                                  )}
+                                />
+                              </div>
+                              <div>
+                                <span
+                                  className={clsx(
+                                    'font-semibold text-sm',
+                                    useLatestVersion
+                                      ? 'text-green-700 dark:text-green-300'
+                                      : 'text-gray-900 dark:text-white'
+                                  )}
+                                >
+                                  Always Latest
+                                </span>
+                                {!isLoadingVersions && bronzeVersions.length > 0 && (
+                                  <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                                    (currently v{bronzeVersions[0]?.version})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 pl-11">
+                              Auto-updates with each Bronze execution
+                            </p>
+                          </button>
+
+                          {/* Pinned Version Card */}
+                          <button
+                            type="button"
+                            onClick={() => setUseLatestVersion(false)}
+                            disabled={isLoadingVersions || bronzeVersions.length === 0}
+                            className={clsx(
+                              'relative p-4 rounded-xl border-2 text-left transition-all',
+                              !useLatestVersion
+                                ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
+                                : 'border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600',
+                              (isLoadingVersions || bronzeVersions.length === 0) && 'opacity-50 cursor-not-allowed'
+                            )}
+                          >
+                            {!useLatestVersion && (
+                              <div className="absolute top-2 right-2">
+                                <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center">
+                                  <Check className="w-3 h-3 text-white" />
+                                </div>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-3 mb-2">
+                              <div
+                                className={clsx(
+                                  'p-2 rounded-lg',
+                                  !useLatestVersion
+                                    ? 'bg-amber-100 dark:bg-amber-900/40'
+                                    : 'bg-gray-100 dark:bg-zinc-800'
+                                )}
+                              >
+                                <GitCommit
+                                  className={clsx(
+                                    'w-5 h-5',
+                                    !useLatestVersion
+                                      ? 'text-amber-600 dark:text-amber-400'
+                                      : 'text-gray-500 dark:text-gray-400'
+                                  )}
+                                />
+                              </div>
+                              <span
+                                className={clsx(
+                                  'font-semibold text-sm',
+                                  !useLatestVersion
+                                    ? 'text-amber-700 dark:text-amber-300'
+                                    : 'text-gray-900 dark:text-white'
+                                )}
+                              >
+                                Pin to Version
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 pl-11">
+                              {isLoadingVersions
+                                ? 'Loading versions...'
+                                : bronzeVersions.length === 0
+                                ? 'No versions available yet'
+                                : 'Lock to specific version for reproducibility'}
+                            </p>
+                          </button>
+                        </div>
+
+                        {/* Version Selector */}
+                        {!useLatestVersion && bronzeVersions.length > 0 && (
+                          <div className="mt-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50">
+                            <label className="block text-xs font-medium text-amber-700 dark:text-amber-300 mb-2">
+                              Select Version to Pin
+                            </label>
+                            <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-auto">
+                              {bronzeVersions.map((v, idx) => (
+                                <button
+                                  key={v.version}
+                                  type="button"
+                                  onClick={() => setSourceBronzeVersion(v.version)}
+                                  className={clsx(
+                                    'flex items-center justify-between p-3 rounded-lg border text-left transition-all',
+                                    sourceBronzeVersion === v.version
+                                      ? 'border-amber-500 bg-white dark:bg-zinc-800 shadow-sm'
+                                      : 'border-amber-200 dark:border-amber-800/30 bg-white/50 dark:bg-zinc-800/50 hover:bg-white dark:hover:bg-zinc-800'
+                                  )}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div
+                                      className={clsx(
+                                        'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold',
+                                        sourceBronzeVersion === v.version
+                                          ? 'bg-amber-500 text-white'
+                                          : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                                      )}
+                                    >
+                                      {v.version}
+                                    </div>
+                                    <div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-sm text-gray-900 dark:text-white">
+                                          Version {v.version}
+                                        </span>
+                                        {idx === 0 && (
+                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                                            LATEST
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                                        {new Date(v.timestamp).toLocaleDateString()} at{' '}
+                                        {new Date(v.timestamp).toLocaleTimeString()}
+                                        {v.total_rows && ` • ${v.total_rows.toLocaleString()} rows`}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  {sourceBronzeVersion === v.version && (
+                                    <Check className="w-5 h-5 text-amber-500" />
+                                  )}
+                                </button>
+                              ))}
+                            </div>
                           </div>
                         )}
-                      </>
-                    )
+                      </div>
+                    </>
                   ) : (
                     <>
+                      {/* Virtualized - Table Selection */}
                       <div className="flex items-center justify-between mb-4">
-                        <span className="text-sm text-gray-500">
-                          {selectedTables.length} table(s) selected
-                        </span>
+                        <span className="text-sm text-gray-500">{selectedTables.length} table(s) selected</span>
                       </div>
 
                       <div className="relative mb-4">
@@ -952,15 +1053,11 @@ export default function NewSilverDatasetPage() {
                                 className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700"
                               >
                                 <div className="flex items-center gap-3">
-                                  <div
-                                    className="w-3 h-3 rounded-full bg-blue-500"
-                                  />
+                                  <div className="w-3 h-3 rounded-full bg-blue-500" />
                                   <span className="font-medium text-gray-900 dark:text-white text-sm">
                                     {conn.name}
                                   </span>
-                                  <span className="text-xs text-gray-500">
-                                    {conn.tables?.length || 0} tables
-                                  </span>
+                                  <span className="text-xs text-gray-500">{conn.tables?.length || 0} tables</span>
                                 </div>
                                 <ChevronDown
                                   className={clsx(
@@ -975,17 +1072,14 @@ export default function NewSilverDatasetPage() {
                                   {(conn.tables || [])
                                     .filter(
                                       (t) =>
-                                        !tableSearch ||
-                                        t.name.toLowerCase().includes(tableSearch.toLowerCase())
+                                        !tableSearch || t.name.toLowerCase().includes(tableSearch.toLowerCase())
                                     )
                                     .map((table) => (
                                       <div
                                         key={table.id}
                                         onClick={() => {
                                           if (selectedTables.includes(table.id)) {
-                                            setSelectedTables(
-                                              selectedTables.filter((id) => id !== table.id)
-                                            );
+                                            setSelectedTables(selectedTables.filter((id) => id !== table.id));
                                           } else {
                                             setSelectedTables([...selectedTables, table.id]);
                                           }
@@ -1011,9 +1105,7 @@ export default function NewSilverDatasetPage() {
                                             )}
                                           </div>
                                           <Table2 className="w-4 h-4 text-gray-400" />
-                                          <span className="text-sm text-gray-900 dark:text-white">
-                                            {table.name}
-                                          </span>
+                                          <span className="text-sm text-gray-900 dark:text-white">{table.name}</span>
                                         </div>
                                         <span className="text-xs text-gray-500">
                                           {table.columns?.length || 0} columns
@@ -1037,9 +1129,7 @@ export default function NewSilverDatasetPage() {
               <div className="bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      Column Transformations
-                    </h2>
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Column Transformations</h2>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                       Apply text transformations to specific columns
                     </p>
@@ -1134,8 +1224,8 @@ export default function NewSilverDatasetPage() {
 
                 <div className="mt-6 p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
                   <p className="text-sm text-blue-700 dark:text-blue-300">
-                    <strong>Tip:</strong> For value mappings (e.g., M to Masculino), use Column Groups
-                    in the next step instead of transformations.
+                    <strong>Tip:</strong> For value mappings (e.g., M to Masculino), use Column Groups in the
+                    Equivalence step.
                   </p>
                 </div>
               </div>
@@ -1304,9 +1394,7 @@ export default function NewSilverDatasetPage() {
               <div className="bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      Filter Conditions
-                    </h2>
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Filter Conditions</h2>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                       Define WHERE conditions to filter your data (optional)
                     </p>
@@ -1331,9 +1419,7 @@ export default function NewSilverDatasetPage() {
                     {/* Logic selector */}
                     {filterConditions.length > 1 && (
                       <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-zinc-800">
-                        <span className="text-sm text-gray-600 dark:text-gray-400">
-                          Combine conditions with:
-                        </span>
+                        <span className="text-sm text-gray-600 dark:text-gray-400">Combine conditions with:</span>
                         <div className="flex gap-2">
                           <button
                             onClick={() => setFilterLogic('AND')}
@@ -1364,9 +1450,7 @@ export default function NewSilverDatasetPage() {
                     {/* Conditions */}
                     <div className="space-y-3">
                       {filterConditions.map((condition, index) => {
-                        const selectedOperator = FILTER_OPERATORS.find(
-                          (op) => op.value === condition.operator
-                        );
+                        const selectedOperator = FILTER_OPERATORS.find((op) => op.value === condition.operator);
                         const requiresValue = selectedOperator?.requiresValue !== false;
 
                         return (
@@ -1379,19 +1463,13 @@ export default function NewSilverDatasetPage() {
                                 {filterLogic}
                               </span>
                             )}
-                            {index === 0 && filterConditions.length > 1 && (
-                              <span className="w-10"></span>
-                            )}
+                            {index === 0 && filterConditions.length > 1 && <span className="w-10"></span>}
 
                             <div className="relative flex-1">
                               <select
                                 value={condition.columnId || ''}
                                 onChange={(e) =>
-                                  handleFilterConditionChange(
-                                    condition.id,
-                                    'columnId',
-                                    Number(e.target.value) || null
-                                  )
+                                  handleFilterConditionChange(condition.id, 'columnId', Number(e.target.value) || null)
                                 }
                                 className="w-full appearance-none px-3 py-2 pr-8 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
                               >
@@ -1422,18 +1500,17 @@ export default function NewSilverDatasetPage() {
                               <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                             </div>
 
-                            {requiresValue &&
-                              condition.operator !== 'BETWEEN' && (
-                                <input
-                                  type="text"
-                                  value={condition.value}
-                                  onChange={(e) =>
-                                    handleFilterConditionChange(condition.id, 'value', e.target.value)
-                                  }
-                                  placeholder="Value..."
-                                  className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
-                                />
-                              )}
+                            {requiresValue && condition.operator !== 'BETWEEN' && (
+                              <input
+                                type="text"
+                                value={condition.value}
+                                onChange={(e) =>
+                                  handleFilterConditionChange(condition.id, 'value', e.target.value)
+                                }
+                                placeholder="Value..."
+                                className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
+                              />
+                            )}
 
                             {condition.operator === 'BETWEEN' && (
                               <>
@@ -1481,16 +1558,14 @@ export default function NewSilverDatasetPage() {
                   <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
                     <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
                       <AlertCircle className="w-5 h-5" />
-                      <span className="font-medium">Error creating dataset</span>
+                      <span className="font-medium">Error saving changes</span>
                     </div>
                     <p className="mt-2 text-sm text-red-600 dark:text-red-300">{submitError}</p>
                   </div>
                 )}
 
                 <div className="bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 p-6">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">
-                    Review Configuration
-                  </h2>
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Review Changes</h2>
 
                   <div className="space-y-6">
                     {/* Basic Info */}
@@ -1505,16 +1580,12 @@ export default function NewSilverDatasetPage() {
                           {datasetType === 'persistent' ? (
                             <>
                               <Sparkles className="w-4 h-4 text-purple-500" />
-                              <span className="font-semibold text-gray-900 dark:text-white">
-                                Persistent
-                              </span>
+                              <span className="font-semibold text-gray-900 dark:text-white">Persistent</span>
                             </>
                           ) : (
                             <>
                               <Zap className="w-4 h-4 text-cyan-500" />
-                              <span className="font-semibold text-gray-900 dark:text-white">
-                                Virtualized
-                              </span>
+                              <span className="font-semibold text-gray-900 dark:text-white">Virtualized</span>
                             </>
                           )}
                         </p>
@@ -1523,18 +1594,15 @@ export default function NewSilverDatasetPage() {
 
                     {/* Source */}
                     <div>
-                      <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
-                        Source
-                      </h3>
+                      <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Source</h3>
                       <div className="p-4 rounded-lg bg-gray-50 dark:bg-zinc-800">
                         {datasetType === 'persistent' ? (
                           <div className="space-y-2">
                             <div className="flex items-center gap-2">
                               <Layers className="w-4 h-4 text-amber-500" />
                               <span className="text-gray-900 dark:text-white">
-                                {selectedBronze?.name || `Bronze ID: ${sourceBronzeId}`}
+                                {selectedBronze?.name || originalConfig?.source_bronze_config_name || `Bronze ID: ${sourceBronzeId}`}
                               </span>
-                              <span className="text-xs text-gray-500">(Bronze Dataset)</span>
                             </div>
                             <div className="flex items-center gap-2 text-sm">
                               <span className="text-gray-500 dark:text-gray-400">Version:</span>
@@ -1603,35 +1671,32 @@ export default function NewSilverDatasetPage() {
                     )}
 
                     {/* Filters */}
-                    {filterConditions.length > 0 &&
-                      filterConditions.some((c) => c.columnId) && (
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
-                            Filter Conditions ({filterConditions.filter((c) => c.columnId).length})
-                          </h3>
-                          <div className="p-4 rounded-lg bg-zinc-900 dark:bg-zinc-950">
-                            <code className="text-sm text-green-400 font-mono">
-                              WHERE{' '}
-                              {filterConditions
-                                .filter((c) => c.columnId && c.operator)
-                                .map((c) => {
-                                  const col = availableColumns.find((col) => col.id === c.columnId);
-                                  const colName = col
-                                    ? `${col.tableName}.${col.name}`
-                                    : `column_${c.columnId}`;
-                                  if (['IS NULL', 'IS NOT NULL'].includes(c.operator)) {
-                                    return `${colName} ${c.operator}`;
-                                  }
-                                  if (c.operator === 'BETWEEN') {
-                                    return `${colName} BETWEEN ${c.valueMin} AND ${c.valueMax}`;
-                                  }
-                                  return `${colName} ${c.operator} '${c.value}'`;
-                                })
-                                .join(` ${filterLogic} `)}
-                            </code>
-                          </div>
+                    {filterConditions.length > 0 && filterConditions.some((c) => c.columnId) && (
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
+                          Filter Conditions ({filterConditions.filter((c) => c.columnId).length})
+                        </h3>
+                        <div className="p-4 rounded-lg bg-zinc-900 dark:bg-zinc-950">
+                          <code className="text-sm text-green-400 font-mono">
+                            WHERE{' '}
+                            {filterConditions
+                              .filter((c) => c.columnId && c.operator)
+                              .map((c) => {
+                                const col = availableColumns.find((col) => col.id === c.columnId);
+                                const colName = col ? `${col.tableName}.${col.name}` : `column_${c.columnId}`;
+                                if (['IS NULL', 'IS NOT NULL'].includes(c.operator)) {
+                                  return `${colName} ${c.operator}`;
+                                }
+                                if (c.operator === 'BETWEEN') {
+                                  return `${colName} BETWEEN ${c.valueMin} AND ${c.valueMax}`;
+                                }
+                                return `${colName} ${c.operator} '${c.value}'`;
+                              })
+                              .join(` ${filterLogic} `)}
+                          </code>
                         </div>
-                      )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1668,14 +1733,14 @@ export default function NewSilverDatasetPage() {
               <button
                 onClick={handleSubmit}
                 disabled={isSubmitting}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-purple-500 hover:bg-purple-600 rounded-lg disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg disabled:opacity-50"
               >
                 {isSubmitting ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Check className="w-4 h-4" />
+                  <Save className="w-4 h-4" />
                 )}
-                {datasetType === 'persistent' ? 'Create & Execute' : 'Create Dataset'}
+                Save Changes
               </button>
             )}
           </div>

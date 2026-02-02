@@ -275,15 +275,6 @@ const VersionHistory = memo(function VersionHistory({
           </div>
         )}
       </div>
-      {versions && versions.length > 0 && (
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 flex items-center gap-1">
-          <GitCommit className="w-3 h-3" />
-          Time travel available: query any version using{' '}
-          <code className="px-1 py-0.5 bg-gray-100 dark:bg-zinc-800 rounded text-xs">
-            VERSION AS OF {currentVersion}
-          </code>
-        </p>
-      )}
       </>
       )}
       </div>

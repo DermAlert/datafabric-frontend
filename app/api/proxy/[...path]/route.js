@@ -61,9 +61,14 @@ async function proxyRequest(request, params, method) {
 
     const response = await fetch(fullUrl, fetchOptions);
     
+    // Handle 204 No Content - return empty response
+    if (response.status === 204) {
+      return new NextResponse(null, { status: 204 });
+    }
+    
     const data = await response.text();
     
-    return new NextResponse(data, {
+    return new NextResponse(data || null, {
       status: response.status,
       headers: {
         'Content-Type': response.headers.get('Content-Type') || 'application/json',

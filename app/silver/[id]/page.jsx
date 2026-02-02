@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
-  ArrowLeft, 
-  Table2, 
+import {
+  ArrowLeft,
+  Table2,
   Download,
   Filter,
   Search,
@@ -24,244 +24,72 @@ import {
   Database,
   Timer,
   Info,
-  Share2
+  Share2,
+  GitCommit,
+  ChevronDown,
 } from 'lucide-react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
+import { silverService } from '@/lib/api/services/silver';
+import { formatBytes, formatDate } from '@/lib/utils';
+import { useDisclosure } from '@/hooks';
+import { DropdownMenu, DropdownItem, DropdownDivider } from '@/components/ui';
 
-// Mock datasets - Persistent (materialized data)
-const MOCK_DATASETS = {
-  'silver_1': {
-    id: 'silver_1',
-    name: 'patients_normalized',
-    description: 'Normalized patient data with CPF formatting and gender unification',
-    datasetType: 'persistent',
-    sourceBronzeDataset: 'patients_raw',
-    columns: [
-      { key: 'id', label: 'ID', type: 'number', width: 80 },
-      { key: 'name', label: 'Patient Name', type: 'string', width: 180 },
-      { key: 'cpf', label: 'CPF', type: 'string', width: 140 },
-      { key: 'email', label: 'Email', type: 'string', width: 220 },
-      { key: 'gender', label: 'Gender', type: 'string', width: 100 },
-      { key: 'birth_date', label: 'Birth Date', type: 'date', width: 120 },
-      { key: 'status', label: 'Status', type: 'string', width: 100 },
-    ],
-    data: [
-      { id: 1, name: 'MARIA SANTOS', cpf: '123.456.789-00', email: 'maria.santos@email.com', gender: 'Female', birth_date: '1985-03-15', status: 'Active' },
-      { id: 2, name: 'PEDRO OLIVEIRA', cpf: '234.567.890-11', email: 'pedro.o@email.com', gender: 'Male', birth_date: '1972-08-22', status: 'Active' },
-      { id: 3, name: 'ANA PAULA FERREIRA', cpf: '345.678.901-22', email: 'ana.ferreira@email.com', gender: 'Female', birth_date: '1990-11-30', status: 'Active' },
-      { id: 4, name: 'LUCAS RODRIGUES', cpf: '456.789.012-33', email: 'lucas.r@email.com', gender: 'Male', birth_date: '1968-05-14', status: 'Active' },
-      { id: 5, name: 'JULIANA ALMEIDA', cpf: '567.890.123-44', email: 'ju.almeida@email.com', gender: 'Female', birth_date: '1995-09-08', status: 'Active' },
-      { id: 6, name: 'ROBERTO NASCIMENTO', cpf: '678.901.234-55', email: 'roberto.n@email.com', gender: 'Male', birth_date: '1958-12-03', status: 'Active' },
-      { id: 7, name: 'FERNANDA GOMES', cpf: '789.012.345-66', email: 'fernanda.g@email.com', gender: 'Female', birth_date: '1982-07-19', status: 'Active' },
-      { id: 8, name: 'THIAGO BARBOSA', cpf: '890.123.456-77', email: 'thiago.b@email.com', gender: 'Male', birth_date: '1975-02-28', status: 'Active' },
-    ],
-    totalRows: 125430,
-    sizeBytes: 89456712,
-    lastExecution: '2026-01-13T09:30:00Z',
-  },
-  'silver_3': {
-    id: 'silver_3',
-    name: 'customer_360_silver',
-    description: 'Clean customer data with phone normalization',
-    datasetType: 'persistent',
-    sourceBronzeDataset: 'customer_360',
-    columns: [
-      { key: 'id', label: 'ID', type: 'number', width: 80 },
-      { key: 'name', label: 'Customer Name', type: 'string', width: 180 },
-      { key: 'email', label: 'Email', type: 'string', width: 200 },
-      { key: 'phone', label: 'Phone', type: 'string', width: 140 },
-      { key: 'cep', label: 'CEP', type: 'string', width: 100 },
-      { key: 'city', label: 'City', type: 'string', width: 140 },
-      { key: 'created_at', label: 'Created', type: 'date', width: 120 },
-    ],
-    data: [
-      { id: 1, name: 'Tech Solutions Inc', email: 'contact@techsolutions.com', phone: '(11) 99999-1234', cep: '01310-100', city: 'São Paulo', created_at: '2025-06-15' },
-      { id: 2, name: 'Global Trade LLC', email: 'info@globaltrade.com', phone: '(21) 98888-5678', cep: '20040-020', city: 'Rio de Janeiro', created_at: '2025-07-22' },
-      { id: 3, name: 'StartUp Brasil', email: 'hello@startupbr.io', phone: '(31) 97777-9012', cep: '30130-000', city: 'Belo Horizonte', created_at: '2025-08-10' },
-      { id: 4, name: 'DataCorp', email: 'data@datacorp.com', phone: '(41) 96666-3456', cep: '80010-000', city: 'Curitiba', created_at: '2025-09-05' },
-      { id: 5, name: 'Innovation Labs', email: 'labs@innovation.tech', phone: '(51) 95555-7890', cep: '90010-000', city: 'Porto Alegre', created_at: '2025-10-18' },
-    ],
-    totalRows: 89234,
-    sizeBytes: 45678901,
-    lastExecution: '2026-01-13T10:45:00Z',
-  },
-  'silver_5': {
-    id: 'silver_5',
-    name: 'transactions_clean',
-    description: 'Transaction data with value formatting',
-    datasetType: 'persistent',
-    sourceBronzeDataset: 'orders_unified',
-    columns: [
-      { key: 'id', label: 'TX ID', type: 'string', width: 120 },
-      { key: 'customer', label: 'Customer', type: 'string', width: 160 },
-      { key: 'amount', label: 'Amount', type: 'string', width: 120 },
-      { key: 'description', label: 'Description', type: 'string', width: 200 },
-      { key: 'status', label: 'Status', type: 'string', width: 100 },
-      { key: 'date', label: 'Date', type: 'date', width: 120 },
-    ],
-    data: [
-      { id: 'TX-2026-001', customer: 'Tech Solutions', amount: 'R$ 4.999,99', description: 'Enterprise License', status: 'Completed', date: '2026-01-13' },
-      { id: 'TX-2026-002', customer: 'Global Trade', amount: 'R$ 2.999,99', description: 'Cloud Storage Package', status: 'Completed', date: '2026-01-13' },
-      { id: 'TX-2026-003', customer: 'StartUp Brasil', amount: 'R$ 1.499,00', description: 'API Integration', status: 'Completed', date: '2026-01-12' },
-      { id: 'TX-2026-004', customer: 'Maria Santos', amount: 'R$ 599,99', description: 'Premium Support', status: 'Completed', date: '2026-01-12' },
-      { id: 'TX-2026-005', customer: 'DataCorp', amount: 'R$ 8.997,00', description: 'Analytics Suite x3', status: 'Completed', date: '2026-01-11' },
-    ],
-    totalRows: 456789,
-    sizeBytes: 234567890,
-    lastExecution: '2026-01-12T22:00:00Z',
-  },
-  // Virtualized datasets - query on-demand
-  'silver_2': {
-    id: 'silver_2',
-    name: 'orders_exploration',
-    description: 'Virtualized view of orders for API consumption',
-    datasetType: 'virtualized',
-    sourceQuery: `SELECT 
-  o.order_id,
-  o.customer_id,
-  c.customer_name,
-  o.total_amount,
-  o.status,
-  o.created_at
-FROM orders o
-JOIN customers c ON o.customer_id = c.id
-WHERE o.status = 'completed'
-ORDER BY o.created_at DESC
-LIMIT 100`,
-    columns: [
-      { key: 'order_id', label: 'Order ID', type: 'string', width: 120 },
-      { key: 'customer_id', label: 'Customer ID', type: 'number', width: 100 },
-      { key: 'customer_name', label: 'Customer', type: 'string', width: 180 },
-      { key: 'total_amount', label: 'Amount', type: 'number', width: 120 },
-      { key: 'status', label: 'Status', type: 'string', width: 100 },
-      { key: 'created_at', label: 'Created', type: 'date', width: 140 },
-    ],
-    data: [
-      { order_id: 'ORD-2026-0150', customer_id: 1, customer_name: 'Tech Solutions Inc', total_amount: 4999.99, status: 'completed', created_at: '2026-01-13 10:30:00' },
-      { order_id: 'ORD-2026-0149', customer_id: 2, customer_name: 'Global Trade LLC', total_amount: 2999.99, status: 'completed', created_at: '2026-01-13 09:45:00' },
-      { order_id: 'ORD-2026-0148', customer_id: 3, customer_name: 'StartUp Brasil', total_amount: 1499.00, status: 'completed', created_at: '2026-01-13 08:20:00' },
-      { order_id: 'ORD-2026-0147', customer_id: 5, customer_name: 'Innovation Labs', total_amount: 899.99, status: 'completed', created_at: '2026-01-12 16:55:00' },
-      { order_id: 'ORD-2026-0146', customer_id: 4, customer_name: 'DataCorp', total_amount: 8997.00, status: 'completed', created_at: '2026-01-12 14:30:00' },
-    ],
-    totalRows: 0,
-    sizeBytes: 0,
-    lastExecution: null,
-  },
-  'silver_4': {
-    id: 'silver_4',
-    name: 'inventory_api',
-    description: 'Real-time inventory data for external APIs',
-    datasetType: 'virtualized',
-    sourceQuery: `SELECT 
-  i.product_id,
-  p.product_name,
-  p.category,
-  i.quantity,
-  i.warehouse,
-  i.last_updated
-FROM inventory i
-JOIN products p ON i.product_id = p.id
-WHERE i.quantity > 0
-ORDER BY i.last_updated DESC
-LIMIT 50`,
-    columns: [
-      { key: 'product_id', label: 'Product ID', type: 'number', width: 100 },
-      { key: 'product_name', label: 'Product', type: 'string', width: 200 },
-      { key: 'category', label: 'Category', type: 'string', width: 140 },
-      { key: 'quantity', label: 'Qty', type: 'number', width: 80 },
-      { key: 'warehouse', label: 'Warehouse', type: 'string', width: 120 },
-      { key: 'last_updated', label: 'Updated', type: 'date', width: 140 },
-    ],
-    data: [
-      { product_id: 101, product_name: 'Premium Watch', category: 'Accessories', quantity: 45, warehouse: 'WH-SP-01', last_updated: '2026-01-13 10:15:00' },
-      { product_id: 102, product_name: 'Wireless Headphones', category: 'Electronics', quantity: 120, warehouse: 'WH-SP-01', last_updated: '2026-01-13 10:14:00' },
-      { product_id: 103, product_name: 'Running Shoes', category: 'Footwear', quantity: 200, warehouse: 'WH-RJ-02', last_updated: '2026-01-13 10:12:00' },
-      { product_id: 104, product_name: 'Leather Backpack', category: 'Bags', quantity: 62, warehouse: 'WH-SP-01', last_updated: '2026-01-13 10:10:00' },
-      { product_id: 105, product_name: 'Fitness Tracker', category: 'Electronics', quantity: 140, warehouse: 'WH-RJ-02', last_updated: '2026-01-13 10:08:00' },
-    ],
-    totalRows: 0,
-    sizeBytes: 0,
-    lastExecution: null,
-  },
-};
+// ===========================================
+// Data Table Component
+// ===========================================
 
-const formatBytes = (bytes) => {
-  if (bytes === 0) return '—';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-};
-
-const formatDate = (dateString) => {
-  if (!dateString) return 'Never';
-  return new Date(dateString).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
-
-// Table Component
 const DataTable = ({ columns, data }) => {
+  if (!columns || columns.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-12 text-gray-500 dark:text-gray-400">
+        <p>No columns to display</p>
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-auto rounded-xl border border-gray-200 dark:border-zinc-700">
       <table className="w-full">
         <thead>
           <tr className="bg-gray-50 dark:bg-zinc-800 border-b border-gray-200 dark:border-zinc-700">
-            {columns.map(col => (
-              <th 
-                key={col.key}
-                className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider"
-                style={{ width: col.width }}
+            {columns.map((col) => (
+              <th
+                key={col}
+                className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap"
               >
-                {col.label}
+                {col}
               </th>
             ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
           {data.map((row, idx) => (
-            <tr 
-              key={idx} 
+            <tr
+              key={idx}
               className="bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
             >
-              {columns.map(col => (
-                <td key={col.key} className="px-4 py-3 text-sm">
-                  {col.type === 'number' && typeof row[col.key] === 'number' ? (
-                    <span className="font-medium text-gray-900 dark:text-white">
-                      {col.key.includes('amount') || col.key.includes('price') 
-                        ? `$${row[col.key].toFixed(2)}`
-                        : row[col.key].toLocaleString()
-                      }
+              {columns.map((col) => (
+                <td key={col} className="px-4 py-3 text-sm whitespace-nowrap">
+                  {typeof row[col] === 'boolean' ? (
+                    <span
+                      className={clsx(
+                        'px-2 py-0.5 rounded-full text-xs font-medium',
+                        row[col]
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                          : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                      )}
+                    >
+                      {row[col] ? 'true' : 'false'}
                     </span>
-                  ) : col.type === 'date' ? (
-                    <span className="text-gray-600 dark:text-gray-400">
-                      {row[col.key]}
-                    </span>
-                  ) : col.key === 'status' ? (
-                    <span className={clsx(
-                      'px-2 py-0.5 rounded-full text-xs font-medium',
-                      row[col.key] === 'Active' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-                      row[col.key] === 'Completed' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-                      row[col.key] === 'completed' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-                      row[col.key] === 'Pending' && 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-                    )}>
-                      {row[col.key]}
-                    </span>
-                  ) : col.key === 'gender' ? (
-                    <span className={clsx(
-                      'px-2 py-0.5 rounded-full text-xs font-medium',
-                      row[col.key] === 'Female' && 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
-                      row[col.key] === 'Male' && 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-                    )}>
-                      {row[col.key]}
-                    </span>
+                  ) : row[col] === null || row[col] === undefined ? (
+                    <span className="text-gray-400 dark:text-gray-500 italic">null</span>
+                  ) : typeof row[col] === 'object' ? (
+                    <code className="text-xs bg-gray-100 dark:bg-zinc-800 px-1 py-0.5 rounded">
+                      {JSON.stringify(row[col])}
+                    </code>
                   ) : (
-                    <span className="text-gray-900 dark:text-white">{row[col.key]}</span>
+                    <span className="text-gray-900 dark:text-white">{String(row[col])}</span>
                   )}
                 </td>
               ))}
@@ -273,19 +101,11 @@ const DataTable = ({ columns, data }) => {
   );
 };
 
-// Virtualized Query Preview Component
-const VirtualizedPreview = ({ 
-  dataset, 
-  isLoading, 
-  onRefresh 
-}) => {
-  const [queryTime, setQueryTime] = useState(null);
+// ===========================================
+// Virtualized Preview Component
+// ===========================================
 
-  useEffect(() => {
-    // Simulate query time
-    setQueryTime(Math.floor(Math.random() * 200) + 50);
-  }, [dataset.data]);
-
+const VirtualizedPreview = ({ configId, isLoading, data, columns, queryTime, onRefresh, error }) => {
   return (
     <div className="space-y-4">
       {/* Virtualized Info Banner */}
@@ -299,7 +119,8 @@ const VirtualizedPreview = ({
               Live Query Preview
             </h4>
             <p className="text-sm text-cyan-700 dark:text-cyan-300 mt-1">
-              This is a virtualized dataset. Data is queried on-demand from source systems — no data is stored in this layer.
+              This is a virtualized dataset. Data is queried on-demand from source systems — no data
+              is stored in this layer.
             </p>
           </div>
           <button
@@ -317,35 +138,42 @@ const VirtualizedPreview = ({
         </div>
       </div>
 
-      {/* Query Stats */}
-      <div className="flex items-center gap-4 text-sm">
-        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-          <Timer className="w-4 h-4" />
-          <span>Query time: <strong className="text-gray-900 dark:text-white">{queryTime}ms</strong></span>
-        </div>
-        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-          <Rows3 className="w-4 h-4" />
-          <span>Sample: <strong className="text-gray-900 dark:text-white">{dataset.data.length} rows</strong></span>
-        </div>
-        <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-          <Info className="w-4 h-4" />
-          <span className="text-xs">Limited preview (LIMIT 100)</span>
-        </div>
-      </div>
-
-      {/* Source Query */}
-      {dataset.sourceQuery && (
-        <div className="rounded-xl overflow-hidden border border-zinc-700">
-          <div className="px-4 py-2 bg-zinc-800 border-b border-zinc-700 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm text-gray-400">
-              <Code2 className="w-4 h-4" />
-              Source Query
-            </div>
-            <button className="text-xs text-cyan-400 hover:text-cyan-300">Copy SQL</button>
+      {/* Error State */}
+      {error && (
+        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+          <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
+            <AlertCircle className="w-5 h-5" />
+            <span className="font-medium">Query Failed</span>
           </div>
-          <pre className="p-4 bg-zinc-900 dark:bg-zinc-950 text-sm text-green-400 font-mono overflow-x-auto">
-            {dataset.sourceQuery}
-          </pre>
+          <p className="mt-2 text-sm text-red-600 dark:text-red-300">{error}</p>
+        </div>
+      )}
+
+      {/* Query Stats */}
+      {!error && data && (
+        <div className="flex items-center gap-4 text-sm">
+          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+            <Timer className="w-4 h-4" />
+            <span>
+              Query time:{' '}
+              <strong className="text-gray-900 dark:text-white">
+                {queryTime ? `${(queryTime * 1000).toFixed(0)}ms` : '—'}
+              </strong>
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+            <Rows3 className="w-4 h-4" />
+            <span>
+              Rows:{' '}
+              <strong className="text-gray-900 dark:text-white">
+                {data.length.toLocaleString()}
+              </strong>
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+            <Info className="w-4 h-4" />
+            <span className="text-xs">Limited preview</span>
+          </div>
         </div>
       )}
 
@@ -355,44 +183,177 @@ const VirtualizedPreview = ({
           <Loader2 className="w-10 h-10 text-cyan-500 animate-spin mb-4" />
           <p className="text-gray-600 dark:text-gray-400">Executing query...</p>
         </div>
-      ) : (
-        <DataTable columns={dataset.columns} data={dataset.data} />
-      )}
+      ) : !error && data && columns ? (
+        <DataTable columns={columns} data={data} />
+      ) : null}
     </div>
   );
 };
 
+// ===========================================
+// Main Page Component
+// ===========================================
+
 export default function SilverDatasetViewPage() {
   const params = useParams();
   const router = useRouter();
-  const datasetId = params.id;
+  const versionDropdown = useDisclosure();
+
+  // Parse ID: format is p_<id> for persistent, v_<id> for virtualized
+  const rawId = params.id;
+  const isPersistent = rawId.startsWith('p_');
+  const isVirtualized = rawId.startsWith('v_');
+  const datasetId = parseInt(rawId.replace(/^[pv]_/, ''), 10);
+
+  const [config, setConfig] = useState(null);
+  const [versions, setVersions] = useState(null);
+  const [selectedVersion, setSelectedVersion] = useState(null);
+  const [data, setData] = useState(null);
+  const [columns, setColumns] = useState([]);
+  const [totalRows, setTotalRows] = useState(0);
+  const [queryTime, setQueryTime] = useState(null);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(true);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [error, setError] = useState(null);
+  const [dataError, setDataError] = useState(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [isLoading, setIsLoading] = useState(false);
+  const itemsPerPage = 50;
 
-  const itemsPerPage = 12;
+  // Load config
+  useEffect(() => {
+    const loadConfig = async () => {
+      setIsLoadingConfig(true);
+      setError(null);
+      try {
+        if (isPersistent) {
+          const [configData, versionsData] = await Promise.all([
+            silverService.persistent.get(datasetId),
+            silverService.persistent.getVersions(datasetId, 10),
+          ]);
+          setConfig(configData);
+          setVersions(versionsData);
+          // If there's a current version, default to showing that version's data
+          if (versionsData?.current_version !== undefined) {
+            setSelectedVersion(versionsData.current_version);
+          }
+        } else if (isVirtualized) {
+          const configData = await silverService.virtualized.get(datasetId);
+          setConfig(configData);
+        }
+      } catch (err) {
+        console.error('Failed to load config:', err);
+        setError(err.message || 'Failed to load dataset configuration');
+      } finally {
+        setIsLoadingConfig(false);
+      }
+    };
 
-  // Get dataset
-  const dataset = MOCK_DATASETS[datasetId];
+    if (datasetId) {
+      loadConfig();
+    }
+  }, [datasetId, isPersistent, isVirtualized]);
 
-  // Simulate refresh for virtualized
-  const handleRefresh = () => {
-    setIsLoading(true);
-    setTimeout(() => setIsLoading(false), 800);
+  // Load data for persistent configs
+  const loadPersistentData = useCallback(
+    async (version) => {
+      if (!isPersistent) return;
+      setIsLoadingData(true);
+      setDataError(null);
+      try {
+        const result = await silverService.persistent.queryData(datasetId, {
+          limit: 1000,
+          offset: 0,
+          version: version,
+        });
+        setColumns(result.columns || []);
+        setData(result.data || []);
+        setTotalRows(result.total_rows || result.row_count || 0);
+        setQueryTime(result.execution_time_seconds);
+      } catch (err) {
+        console.error('Failed to load data:', err);
+        setDataError(err.message || 'Failed to load data');
+        setData([]);
+        setColumns([]);
+      } finally {
+        setIsLoadingData(false);
+      }
+    },
+    [datasetId, isPersistent]
+  );
+
+  // Load data when selectedVersion changes
+  useEffect(() => {
+    if (isPersistent && selectedVersion !== null && config) {
+      loadPersistentData(selectedVersion);
+    }
+  }, [selectedVersion, isPersistent, config, loadPersistentData]);
+
+  // Query virtualized data
+  const queryVirtualizedData = useCallback(async () => {
+    if (!isVirtualized) return;
+    setIsLoadingData(true);
+    setDataError(null);
+    try {
+      const result = await silverService.virtualized.query(datasetId, {
+        limit: 1000,
+        offset: 0,
+      });
+      setColumns(result.columns || []);
+      setData(result.data || []);
+      setTotalRows(result.total_rows || result.row_count || 0);
+      setQueryTime(result.execution_time_seconds);
+    } catch (err) {
+      console.error('Failed to query data:', err);
+      setDataError(err.message || 'Failed to query data');
+      setData([]);
+      setColumns([]);
+    } finally {
+      setIsLoadingData(false);
+    }
+  }, [datasetId, isVirtualized]);
+
+  // Initial load for virtualized
+  useEffect(() => {
+    if (isVirtualized && config && !data) {
+      queryVirtualizedData();
+    }
+  }, [isVirtualized, config, data, queryVirtualizedData]);
+
+  // Execute transformation
+  const handleExecute = async () => {
+    setIsExecuting(true);
+    try {
+      const result = await silverService.persistent.execute(datasetId);
+      if (result) {
+        // Reload versions and data
+        const versionsData = await silverService.persistent.getVersions(datasetId, 10);
+        setVersions(versionsData);
+        if (versionsData?.current_version !== undefined) {
+          setSelectedVersion(versionsData.current_version);
+        }
+      }
+    } catch (err) {
+      console.error('Execution failed:', err);
+      setError(err.message || 'Execution failed');
+    } finally {
+      setIsExecuting(false);
+    }
   };
 
   // Filter data based on search
   const filteredData = useMemo(() => {
-    if (!dataset) return [];
-    if (!searchQuery) return dataset.data;
-    
-    return dataset.data.filter(row => 
-      Object.values(row).some(value => 
+    if (!data) return [];
+    if (!searchQuery) return data;
+
+    return data.filter((row) =>
+      Object.values(row).some((value) =>
         String(value).toLowerCase().includes(searchQuery.toLowerCase())
       )
     );
-  }, [dataset, searchQuery]);
+  }, [data, searchQuery]);
 
   // Pagination
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
@@ -401,14 +362,35 @@ export default function SilverDatasetViewPage() {
     currentPage * itemsPerPage
   );
 
-  if (!dataset) {
+  // Version history
+  const versionHistory = versions?.versions || [];
+  const currentVersion = versions?.current_version;
+
+  // Loading state
+  if (isLoadingConfig) {
     return (
       <DashboardLayout>
         <div className="h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-zinc-950">
-          <Sparkles className="w-16 h-16 text-gray-300 dark:text-zinc-700 mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Dataset Not Found</h2>
-          <p className="text-gray-500 dark:text-gray-400 mb-4">The dataset you're looking for doesn't exist.</p>
-          <Link 
+          <Loader2 className="w-10 h-10 text-purple-500 animate-spin mb-4" />
+          <p className="text-gray-500 dark:text-gray-400">Loading dataset...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Error state
+  if (error || !config) {
+    return (
+      <DashboardLayout>
+        <div className="h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-zinc-950">
+          <AlertCircle className="w-16 h-16 text-red-400 mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+            {error || 'Dataset Not Found'}
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400 mb-4">
+            The dataset you&apos;re looking for doesn&apos;t exist or could not be loaded.
+          </p>
+          <Link
             href="/silver"
             className="flex items-center gap-2 px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-sm font-medium transition-colors"
           >
@@ -419,8 +401,6 @@ export default function SilverDatasetViewPage() {
       </DashboardLayout>
     );
   }
-
-  const isVirtualized = dataset.datasetType === 'virtualized';
 
   return (
     <DashboardLayout>
@@ -436,91 +416,156 @@ export default function SilverDatasetViewPage() {
             </Link>
             <div className="flex-1">
               <div className="flex items-center gap-3">
-                <div className={clsx(
-                  "p-2 rounded-lg",
-                  isVirtualized 
-                    ? "bg-cyan-100 dark:bg-cyan-900/30" 
-                    : "bg-purple-100 dark:bg-purple-900/30"
-                )}>
-                  {isVirtualized 
-                    ? <Zap className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
-                    : <Sparkles className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                  }
+                <div
+                  className={clsx(
+                    'p-2 rounded-lg',
+                    isVirtualized
+                      ? 'bg-cyan-100 dark:bg-cyan-900/30'
+                      : 'bg-purple-100 dark:bg-purple-900/30'
+                  )}
+                >
+                  {isVirtualized ? (
+                    <Zap className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
+                  ) : (
+                    <Sparkles className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                  )}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h1 className="text-xl font-bold text-gray-900 dark:text-white">{dataset.name}</h1>
-                    <span className={clsx(
-                      "px-2 py-0.5 rounded-md text-xs font-medium",
-                      isVirtualized 
-                        ? "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300"
-                        : "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
-                    )}>
+                    <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+                      {config.name}
+                    </h1>
+                    <span
+                      className={clsx(
+                        'px-2 py-0.5 rounded-md text-xs font-medium',
+                        isVirtualized
+                          ? 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300'
+                          : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                      )}
+                    >
                       {isVirtualized ? 'Virtualized' : 'Persistent'}
                     </span>
+                    {/* Version Selector for Persistent */}
+                    {isPersistent && versionHistory.length > 0 && (
+                      <DropdownMenu
+                        isOpen={versionDropdown.isOpen}
+                        onClose={versionDropdown.onClose}
+                        trigger={
+                          <button
+                            onClick={versionDropdown.onToggle}
+                            className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                          >
+                            <GitCommit className="w-3 h-3" />v{selectedVersion}
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                        }
+                      >
+                        {versionHistory.map((entry) => (
+                          <DropdownItem
+                            key={entry.version}
+                            onClick={() => {
+                              setSelectedVersion(entry.version);
+                              versionDropdown.onClose();
+                            }}
+                          >
+                            <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400">
+                              v{entry.version}
+                            </span>
+                            <span
+                              className={clsx(
+                                'ml-2 text-xs px-1.5 py-0.5 rounded',
+                                entry.operation === 'WRITE' &&
+                                  'bg-blue-100 dark:bg-blue-900/30 text-blue-600',
+                                entry.operation === 'OVERWRITE' &&
+                                  'bg-blue-100 dark:bg-blue-900/30 text-blue-600',
+                                entry.operation === 'MERGE' &&
+                                  'bg-purple-100 dark:bg-purple-900/30 text-purple-600'
+                              )}
+                            >
+                              {entry.operation}
+                            </span>
+                          </DropdownItem>
+                        ))}
+                      </DropdownMenu>
+                    )}
                   </div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{dataset.description}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {config.description || 'No description'}
+                  </p>
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {!isVirtualized && (
+              {isPersistent && (
                 <Link
-                  href={`/sharing?dataset=silver.${dataset.name}`}
+                  href={`/sharing?dataset=silver.${config.name}`}
                   className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 hover:bg-violet-200 dark:hover:bg-violet-900/50 rounded-lg transition-colors"
                 >
                   <Share2 className="w-4 h-4" />
                   Share
                 </Link>
               )}
-              {!isVirtualized && (
+              {isPersistent && (
                 <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-lg transition-colors">
                   <Download className="w-4 h-4" />
                   Export
                 </button>
               )}
-              <button className={clsx(
-                "flex items-center gap-2 px-3 py-2 text-sm font-medium text-white rounded-lg transition-colors",
-                isVirtualized 
-                  ? "bg-cyan-500 hover:bg-cyan-600"
-                  : "bg-purple-500 hover:bg-purple-600"
-              )}>
-                {isVirtualized ? (
-                  <>
-                    <Play className="w-4 h-4" />
-                    Run Query
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4" />
-                    Re-execute
-                  </>
+              <button
+                onClick={isPersistent ? handleExecute : queryVirtualizedData}
+                disabled={isExecuting || isLoadingData}
+                className={clsx(
+                  'flex items-center gap-2 px-3 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50',
+                  isVirtualized ? 'bg-cyan-500 hover:bg-cyan-600' : 'bg-purple-500 hover:bg-purple-600'
                 )}
+              >
+                {isExecuting || isLoadingData ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : isVirtualized ? (
+                  <Play className="w-4 h-4" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                {isVirtualized ? 'Run Query' : 'Re-execute'}
               </button>
             </div>
           </div>
 
           {/* Stats - only for Persistent */}
-          {!isVirtualized && (
+          {isPersistent && (
             <div className="flex items-center gap-6 text-sm">
               <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                 <Rows3 className="w-4 h-4" />
-                <span>{dataset.totalRows.toLocaleString()} rows</span>
-              </div>
-              <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                <Layers className="w-4 h-4" />
-                <span>{formatBytes(dataset.sizeBytes)}</span>
+                <span>{totalRows.toLocaleString()} rows</span>
               </div>
               <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                 <Clock className="w-4 h-4" />
-                <span>{formatDate(dataset.lastExecution)}</span>
+                <span>{formatDate(config.updated_at)}</span>
               </div>
-              {dataset.sourceBronzeDataset && (
+              {config.source_bronze_config_name && (
                 <div className="flex items-center gap-2">
                   <Database className="w-4 h-4 text-amber-500" />
                   <span className="text-gray-600 dark:text-gray-400">
-                    Source: <span className="font-medium text-amber-600 dark:text-amber-400">{dataset.sourceBronzeDataset}</span>
+                    Source:{' '}
+                    <span className="font-medium text-amber-600 dark:text-amber-400">
+                      {config.source_bronze_config_name}
+                    </span>
+                    {config.source_bronze_version !== null && config.source_bronze_version !== undefined ? (
+                      <span className="ml-1 px-1.5 py-0.5 rounded text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                        v{config.source_bronze_version}
+                      </span>
+                    ) : (
+                      <span className="ml-1 px-1.5 py-0.5 rounded text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                        latest
+                      </span>
+                    )}
                   </span>
+                </div>
+              )}
+              {queryTime && (
+                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                  <Timer className="w-4 h-4" />
+                  <span>{(queryTime * 1000).toFixed(0)}ms</span>
                 </div>
               )}
             </div>
@@ -528,12 +573,12 @@ export default function SilverDatasetViewPage() {
         </div>
 
         {/* Toolbar - only for Persistent */}
-        {!isVirtualized && (
+        {isPersistent && (
           <div className="px-6 py-3 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input 
+                <input
                   type="text"
                   placeholder="Search data..."
                   value={searchQuery}
@@ -559,35 +604,58 @@ export default function SilverDatasetViewPage() {
         {/* Content Area */}
         <div className="flex-1 overflow-auto p-6">
           {isVirtualized ? (
-            <VirtualizedPreview 
-              dataset={dataset} 
-              isLoading={isLoading} 
-              onRefresh={handleRefresh}
+            <VirtualizedPreview
+              configId={datasetId}
+              isLoading={isLoadingData}
+              data={data}
+              columns={columns}
+              queryTime={queryTime}
+              onRefresh={queryVirtualizedData}
+              error={dataError}
             />
           ) : (
             <>
-              {filteredData.length === 0 ? (
+              {dataError ? (
+                <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                  <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
+                    <AlertCircle className="w-5 h-5" />
+                    <span className="font-medium">Failed to load data</span>
+                  </div>
+                  <p className="mt-2 text-sm text-red-600 dark:text-red-300">{dataError}</p>
+                </div>
+              ) : isLoadingData ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Loader2 className="w-10 h-10 text-purple-500 animate-spin mb-4" />
+                  <p className="text-gray-600 dark:text-gray-400">Loading data...</p>
+                </div>
+              ) : filteredData.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-gray-500 dark:text-gray-400">
                   <Search className="w-12 h-12 mb-4 opacity-30" />
                   <p className="text-lg font-medium">No results found</p>
-                  <p className="text-sm">Try adjusting your search query</p>
+                  <p className="text-sm">
+                    {data?.length === 0
+                      ? 'No data available. Try executing the transformation first.'
+                      : 'Try adjusting your search query'}
+                  </p>
                 </div>
               ) : (
-                <DataTable columns={dataset.columns} data={paginatedData} />
+                <DataTable columns={columns} data={paginatedData} />
               )}
             </>
           )}
         </div>
 
         {/* Pagination - only for Persistent */}
-        {!isVirtualized && totalPages > 1 && (
+        {isPersistent && totalPages > 1 && (
           <div className="px-6 py-4 border-t border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
             <span className="text-sm text-gray-500 dark:text-gray-400">
-              Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredData.length)} of {filteredData.length} items
+              Showing {(currentPage - 1) * itemsPerPage + 1} to{' '}
+              {Math.min(currentPage * itemsPerPage, filteredData.length)} of {filteredData.length}{' '}
+              items
             </span>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-400 transition-colors"
               >
@@ -595,7 +663,7 @@ export default function SilverDatasetViewPage() {
               </button>
               <div className="flex items-center gap-1">
                 {Array.from({ length: totalPages }, (_, i) => i + 1)
-                  .filter(page => page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1)
+                  .filter((page) => page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1)
                   .map((page, idx, arr) => (
                     <React.Fragment key={page}>
                       {idx > 0 && arr[idx - 1] !== page - 1 && (
@@ -604,10 +672,10 @@ export default function SilverDatasetViewPage() {
                       <button
                         onClick={() => setCurrentPage(page)}
                         className={clsx(
-                          "w-8 h-8 rounded-lg text-sm font-medium transition-colors",
+                          'w-8 h-8 rounded-lg text-sm font-medium transition-colors',
                           currentPage === page
-                            ? "bg-purple-500 text-white"
-                            : "hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-400"
+                            ? 'bg-purple-500 text-white'
+                            : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-400'
                         )}
                       >
                         {page}
@@ -616,7 +684,7 @@ export default function SilverDatasetViewPage() {
                   ))}
               </div>
               <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-400 transition-colors"
               >

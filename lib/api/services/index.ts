@@ -19,3 +19,9 @@ export { federationService } from './federation';
 
 export * from './bronze';
 export { bronzeService } from './bronze';
+
+export * from './silver';
+export { silverService } from './silver';
+
+export * from './deltaSharing';
+export { deltaSharingService } from './deltaSharing';
