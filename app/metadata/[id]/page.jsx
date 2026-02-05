@@ -224,7 +224,31 @@ function SchemaEditorContent() {
     }
   }, [connectionId]);
 
-  // Fetch schemas - filter to only show the schema defined in connection params
+  // Helper function to get the target schema name based on connection type
+  // This generalizes schema resolution for different database types
+  const getTargetSchemaName = useCallback((conn, connType) => {
+    const params = conn?.connection_params;
+    if (!params) return null;
+    
+    // Check if there's an explicit schema configured
+    if (params.schema) {
+      return params.schema;
+    }
+    
+    // For PostgreSQL-like databases, default to 'public' schema
+    // PostgreSQL has separate concepts of database and schema
+    const postgresLikeTypes = ['postgresql', 'postgres'];
+    if (connType && postgresLikeTypes.some(t => 
+      connType.name.toLowerCase().includes(t)
+    )) {
+      return 'public';
+    }
+    
+    // For other databases (MySQL, MongoDB, etc.), database = schema
+    return params.database;
+  }, []);
+
+  // Fetch schemas - filter to only show the target schema for the connection
   useEffect(() => {
     const fetchSchemas = async () => {
       if (!connection) return; // Wait for connection to be loaded
@@ -233,18 +257,18 @@ function SchemaEditorContent() {
       try {
         const schemaList = await metadataService.listSchemas(connectionId);
         
-        // Get the configured database/schema name from connection params
-        const configuredDbName = connection.connection_params?.database;
+        // Get the target schema name based on connection type
+        const targetSchemaName = getTargetSchemaName(connection, connectionType);
         
-        // Filter schemas to only include the one configured in the connection
+        // Filter schemas to only include the target schema
         let filteredSchemas = schemaList;
-        if (configuredDbName) {
+        if (targetSchemaName) {
           filteredSchemas = schemaList.filter(
-            schema => schema.schema_name.toLowerCase() === configuredDbName.toLowerCase()
+            schema => schema.schema_name.toLowerCase() === targetSchemaName.toLowerCase()
           );
           // If no match found, fallback to all schemas (shouldn't happen normally)
           if (filteredSchemas.length === 0) {
-            console.warn(`Configured database "${configuredDbName}" not found in schemas, showing all`);
+            console.warn(`Target schema "${targetSchemaName}" not found in schemas, showing all`);
             filteredSchemas = schemaList;
           }
         }
@@ -265,7 +289,7 @@ function SchemaEditorContent() {
     if (connectionId && connection) {
       fetchSchemas();
     }
-  }, [connectionId, connection]);
+  }, [connectionId, connection, connectionType, getTargetSchemaName]);
 
   // Fetch tables and related data
   const refreshData = useCallback(async (isSilent = false) => {

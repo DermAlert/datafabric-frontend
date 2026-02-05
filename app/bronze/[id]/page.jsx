@@ -200,7 +200,7 @@ const PersistentDataView = ({
             >
               <option value="">Current (v{deltaVersion ?? 0})</option>
               {versions.map((v) => (
-                <option key={v.version} value={v.version}>
+                <option key={`${v.version}-${v.timestamp}`} value={v.version}>
                   v{v.version} - {v.operation} ({formatDate(v.timestamp)})
                 </option>
               ))}

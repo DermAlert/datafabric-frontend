@@ -159,7 +159,6 @@ const CreateRecipientModal = memo(function CreateRecipientModal({
   isLoading,
 }) {
   const [formData, setFormData] = useState({
-    identifier: '',
     name: '',
     email: '',
     organization_name: '',
@@ -168,9 +167,8 @@ const CreateRecipientModal = memo(function CreateRecipientModal({
   const [copiedNew, setCopiedNew] = useState(false);
 
   const handleSubmit = async () => {
-    if (!formData.identifier.trim() || !formData.name.trim()) return;
+    if (!formData.name.trim()) return;
     const result = await onCreate({
-      identifier: formData.identifier.trim(),
       name: formData.name.trim(),
       email: formData.email.trim() || undefined,
       organization_name: formData.organization_name.trim() || undefined,
@@ -189,7 +187,7 @@ const CreateRecipientModal = memo(function CreateRecipientModal({
   };
 
   const handleClose = () => {
-    setFormData({ identifier: '', name: '', email: '', organization_name: '' });
+    setFormData({ name: '', email: '', organization_name: '' });
     setCreatedToken(null);
     setCopiedNew(false);
     onClose();
@@ -220,12 +218,6 @@ const CreateRecipientModal = memo(function CreateRecipientModal({
                 </code>
               </div>
             </div>
-          </div>
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 mt-3">
-            <p className="text-xs text-red-700 dark:text-red-400">
-              <strong>Important:</strong> This token will only be shown once. Make sure to copy it
-              now!
-            </p>
           </div>
         </div>
         <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-zinc-800">
@@ -263,29 +255,23 @@ const CreateRecipientModal = memo(function CreateRecipientModal({
       </p>
       <div className="space-y-4">
         <Input
-          label="Identifier *"
-          placeholder="e.g., partner_company"
-          value={formData.identifier}
-          onChange={(e) => setFormData({ ...formData, identifier: e.target.value })}
-          required
-        />
-        <Input
-          label="Name *"
-          placeholder="e.g., Partner Company Inc."
+          label="Name"
+          placeholder="e.g., Data Team, Analytics Department"
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           required
+          hint="Must be unique"
         />
         <Input
           label="Email"
           type="email"
-          placeholder="contact@partner.com"
+          placeholder="contact@example.com"
           value={formData.email}
           onChange={(e) => setFormData({ ...formData, email: e.target.value })}
         />
         <Input
           label="Organization"
-          placeholder="Partner Company Inc."
+          placeholder="Company Inc."
           value={formData.organization_name}
           onChange={(e) => setFormData({ ...formData, organization_name: e.target.value })}
         />
@@ -313,7 +299,7 @@ const CreateRecipientModal = memo(function CreateRecipientModal({
         </button>
         <button
           onClick={handleSubmit}
-          disabled={!formData.identifier.trim() || !formData.name.trim() || isLoading}
+          disabled={!formData.name.trim() || isLoading}
           className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
         >
           {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -370,22 +356,23 @@ const EditRecipientModal = memo(function EditRecipientModal({
     <Modal isOpen={isOpen} onClose={onClose} title="Edit Recipient">
       <div className="space-y-4">
         <Input
-          label="Name *"
-          placeholder="e.g., Partner Company Inc."
+          label="Name"
+          placeholder="e.g., Data Team, Analytics Department"
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           required
+          hint="Must be unique"
         />
         <Input
           label="Email"
           type="email"
-          placeholder="contact@partner.com"
+          placeholder="contact@example.com"
           value={formData.email}
           onChange={(e) => setFormData({ ...formData, email: e.target.value })}
         />
         <Input
           label="Organization"
-          placeholder="Partner Company Inc."
+          placeholder="Company Inc."
           value={formData.organization_name}
           onChange={(e) => setFormData({ ...formData, organization_name: e.target.value })}
         />

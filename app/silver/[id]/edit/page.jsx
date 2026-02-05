@@ -970,7 +970,7 @@ export default function EditSilverDatasetPage() {
                             <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-auto">
                               {bronzeVersions.map((v, idx) => (
                                 <button
-                                  key={v.version}
+                                  key={`${v.version}-${v.timestamp}`}
                                   type="button"
                                   onClick={() => setSourceBronzeVersion(v.version)}
                                   className={clsx(

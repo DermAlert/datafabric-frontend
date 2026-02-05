@@ -43,6 +43,53 @@ import { connectionService } from '@/lib/api/services/connection';
 import { relationshipsService } from '@/lib/api/services/relationships';
 
 // ===========================================
+// Helper: Check if there are pending changes
+// ===========================================
+
+/**
+ * Compares current config with the last executed version to determine if there are pending changes.
+ * Returns true if:
+ * - No versions exist (first execution)
+ * - Current config differs from the config_snapshot of the last version
+ */
+const hasPendingChanges = (currentConfig, versions) => {
+  // If no current config, nothing to compare
+  if (!currentConfig) return false;
+  
+  // Get version history array
+  const versionHistory = versions?.versions || versions || [];
+  
+  // If no versions exist, it's the first execution - show pending
+  if (!versionHistory || versionHistory.length === 0) return true;
+  
+  // Get the most recent version's config snapshot
+  const lastVersion = versionHistory[0];
+  const lastConfig = lastVersion?.config_snapshot;
+  
+  // If no config snapshot in last version, show pending
+  if (!lastConfig) return true;
+  
+  // Compare key fields
+  if (currentConfig.name !== lastConfig.name) return true;
+  if (currentConfig.description !== lastConfig.description) return true;
+  if (currentConfig.enable_federated_joins !== lastConfig.enable_federated_joins) return true;
+  if (currentConfig.write_mode !== lastConfig.write_mode) return true;
+  if (currentConfig.output_format !== lastConfig.output_format) return true;
+  
+  // Compare tables
+  const currentTableIds = new Set((currentConfig.tables || []).map(t => t.table_id));
+  const lastTableIds = new Set((lastConfig.tables || []).map(t => t.table_id));
+  
+  if (currentTableIds.size !== lastTableIds.size) return true;
+  for (const id of currentTableIds) {
+    if (!lastTableIds.has(id)) return true;
+  }
+  
+  // No changes detected
+  return false;
+};
+
+// ===========================================
 // Dataset List Item Component
 // ===========================================
 
@@ -77,7 +124,7 @@ const DatasetListItem = memo(function DatasetListItem({
               {dataset.name}
             </span>
             <TypeBadge type={dataset.type} />
-            {dataset.type === 'persistent' && dataset.version !== undefined && (
+            {dataset.type === 'persistent' && dataset.version !== undefined && dataset.version !== 'pending' && (
               <VersionBadge version={dataset.version} />
             )}
           </div>
@@ -175,6 +222,7 @@ const VersionHistory = memo(function VersionHistory({
   isLoading,
   isCollapsed,
   onToggle,
+  showPending, // Only show pending option if there are uncommitted changes
 }) {
   const isViewingPending = selectedVersion === 'pending';
   const currentVersion = dataset?.current_delta_version ?? dataset?.version ?? 0;
@@ -205,36 +253,44 @@ const VersionHistory = memo(function VersionHistory({
       <>
       <div className="bg-white dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700 overflow-hidden">
         <div className="divide-y divide-gray-100 dark:divide-zinc-700">
-          {/* Pending (current config) - always shown at top */}
-          <button
-            onClick={() => onSelectVersion('pending')}
-            className={clsx(
-              'w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-zinc-700/50',
-              isViewingPending && 'bg-green-50/50 dark:bg-green-900/10'
-            )}
-          >
-            <div className="flex items-center gap-3">
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-xs font-mono text-green-700 dark:text-green-400">
-                <Sparkles className="w-3 h-3" />
-                Pending
-              </span>
-              <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-400">
-                Current config
-              </span>
-            </div>
-            <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-              <span>{currentConfig?.tables?.length || dataset?.tables?.length || 0} tables</span>
-              <span>{formatDate(currentConfig?.data_atualizacao || currentConfig?.updated_at || dataset?.updated_at)}</span>
-            </div>
-          </button>
+          {/* Pending (current config) - only shown if there are pending changes */}
+          {showPending && (
+            <button
+              onClick={() => onSelectVersion('pending')}
+              className={clsx(
+                'w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-zinc-700/50',
+                isViewingPending && 'bg-green-50/50 dark:bg-green-900/10'
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-xs font-mono text-green-700 dark:text-green-400">
+                  <Sparkles className="w-3 h-3" />
+                  Pending
+                </span>
+                <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-400">
+                  Current config
+                </span>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                <span>{currentConfig?.tables?.length || dataset?.tables?.length || 0} tables</span>
+                <span>{formatDate(currentConfig?.data_atualizacao || currentConfig?.updated_at || dataset?.updated_at)}</span>
+              </div>
+            </button>
+          )}
           
           {/* Executed versions */}
           {versions && versions.length > 0 && versions.slice(0, 5).map((entry) => (
             <button
-              key={entry.version}
-              onClick={() =>
-                onSelectVersion(entry.version === selectedVersion ? 'pending' : entry.version)
-              }
+              key={`${entry.version}-${entry.timestamp}`}
+              onClick={() => {
+                // If clicking same version, toggle back to pending only if pending exists
+                if (entry.version === selectedVersion) {
+                  if (showPending) onSelectVersion('pending');
+                  // Otherwise do nothing (stay on this version)
+                } else {
+                  onSelectVersion(entry.version);
+                }
+              }}
               className={clsx(
                 'w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-zinc-700/50',
                 entry.version === selectedVersion && !isViewingPending && 'bg-amber-50/50 dark:bg-amber-900/10'
@@ -296,6 +352,7 @@ const DetailPanel = memo(function DetailPanel({
   isLoadingConfig,
   onExecute,
   isExecuting,
+  showPending, // Only show pending option if there are uncommitted changes
 }) {
   const versionDropdown = useDisclosure();
   const [enrichedTables, setEnrichedTables] = useState([]);
@@ -320,11 +377,19 @@ const DetailPanel = memo(function DetailPanel({
   const currentVersion = versions?.current_version ?? dataset?.version ?? 0;
   
   // Check if viewing pending (current unsaved config) or a specific version
-  const isViewingPending = selectedVersion === 'pending';
+  // Only show as pending if there are actually pending changes
+  const isViewingPending = selectedVersion === 'pending' && showPending;
   const selectedVersionData = !isViewingPending && selectedVersion !== null
     ? versionHistory.find(v => v.version === selectedVersion) 
     : null;
-  const isViewingOldVersion = !isViewingPending && selectedVersion !== null;
+  
+  // Determine if viewing an "old" version (not the current state)
+  // - If showPending: any executed version is "old" compared to pending
+  // - If no pending: only versions older than the latest are "old"
+  const latestVersion = versionHistory.length > 0 ? versionHistory[0].version : null;
+  const isViewingOldVersion = selectedVersion !== 'pending' && 
+    selectedVersion !== null && 
+    (showPending || selectedVersion !== latestVersion);
   
   // Get config to display:
   // - If viewing pending: use currentConfig (from GET /persistent/{id})
@@ -565,17 +630,19 @@ const DetailPanel = memo(function DetailPanel({
                   </span>
                 )}
               </div>
-              <button
-                onClick={() => onSelectVersion('pending')}
-                className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30 rounded"
-              >
-                <RotateCcw className="w-3 h-3" />
-                Back to Pending
-              </button>
+              {showPending && (
+                <button
+                  onClick={() => onSelectVersion('pending')}
+                  className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30 rounded"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Back to Pending
+                </button>
+              )}
             </div>
             
             {/* Config Changes Section - comparing old version to pending */}
-            {configChanges && configChanges.length > 0 && (
+            {showPending && configChanges && configChanges.length > 0 && (
               <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
                 <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 mb-2">
                   <GitCommit className="w-4 h-4" />
@@ -639,28 +706,30 @@ const DetailPanel = memo(function DetailPanel({
                             : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-700'
                       )}
                     >
-                      {isLoadingConfig ? (
+                      {isLoadingConfig || isLoadingVersions || (selectedVersion === 'pending' && !isViewingPending) ? (
                         <Loader2 className="w-3 h-3 animate-spin" />
                       ) : (
                         <GitCommit className="w-3 h-3" />
                       )}
-                      {isViewingPending ? 'Pending' : `v${selectedVersion}`}
+                      {isLoadingVersions || (selectedVersion === 'pending' && !isViewingPending) ? '' : isViewingPending ? 'Pending' : `v${selectedVersion}`}
                       <ChevronDown className="w-3 h-3" />
                     </button>
                   }
                 >
-                  {/* Pending (current config) option - always at top */}
-                  <DropdownItem
-                    onClick={() => {
-                      onSelectVersion('pending');
-                      versionDropdown.onClose();
-                    }}
-                  >
-                    <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
-                      Pending
-                    </span>
-                    <span className="ml-2 text-gray-500 dark:text-gray-400">Current config</span>
-                  </DropdownItem>
+                  {/* Pending (current config) option - only if there are pending changes */}
+                  {showPending && (
+                    <DropdownItem
+                      onClick={() => {
+                        onSelectVersion('pending');
+                        versionDropdown.onClose();
+                      }}
+                    >
+                      <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                        Pending
+                      </span>
+                      <span className="ml-2 text-gray-500 dark:text-gray-400">Current config</span>
+                    </DropdownItem>
+                  )}
                   
                   {versionHistory.length > 0 && (
                     <>
@@ -670,7 +739,7 @@ const DetailPanel = memo(function DetailPanel({
                       </div>
                       {versionHistory.map((entry) => (
                         <DropdownItem
-                          key={entry.version}
+                          key={`${entry.version}-${entry.timestamp}`}
                           onClick={() => {
                             onSelectVersion(entry.version);
                             versionDropdown.onClose();
@@ -833,9 +902,17 @@ const DetailPanel = memo(function DetailPanel({
                 Version
               </div>
               <div className="font-semibold text-gray-900 dark:text-white text-sm">
-                {isViewingPending ? 'Pending' : `v${selectedVersion}`}
-                {isViewingPending && versionHistory.length > 0 && (
-                  <span className="text-xs font-normal text-gray-500 ml-1">(last: v{currentVersion})</span>
+                {isLoadingVersions || (selectedVersion === 'pending' && !isViewingPending) ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : isViewingPending ? (
+                  <>
+                    Pending
+                    {versionHistory.length > 0 && (
+                      <span className="text-xs font-normal text-gray-500 ml-1">(last: v{currentVersion})</span>
+                    )}
+                  </>
+                ) : (
+                  `v${selectedVersion}`
                 )}
               </div>
             </div>
@@ -1068,6 +1145,7 @@ const DetailPanel = memo(function DetailPanel({
         {/* Version History */}
         {dataset.type === 'persistent' && (
           <VersionHistory
+            key={dataset.id}
             dataset={dataset}
             currentConfig={currentConfig}
             versions={versionHistory}
@@ -1076,6 +1154,7 @@ const DetailPanel = memo(function DetailPanel({
             isLoading={isLoadingVersions}
             isCollapsed={collapsedSections.versionHistory}
             onToggle={() => toggleSection('versionHistory')}
+            showPending={showPending}
           />
         )}
       </div>
@@ -1115,14 +1194,19 @@ export default function BronzeLayerPage() {
   useEffect(() => {
     const loadVersionsAndConfig = async () => {
       if (selectedDataset && selectedDataset.type === 'persistent') {
+        console.log(`[Bronze] Loading dataset ID: ${selectedDataset.id}, name: ${selectedDataset.name}`);
         setIsLoadingVersions(true);
         setIsLoadingConfig(true);
+        setVersions(null);
+        setCurrentConfig(null);
+        setSelectedVersion('pending'); // Reset version when dataset changes
         try {
           // Fetch both versions and current config in parallel
           const [versionData, configData] = await Promise.all([
             getVersions(selectedDataset.id),
             bronzeService.persistent.get(selectedDataset.id),
           ]);
+          console.log(`[Bronze] Loaded versions for ${selectedDataset.name}:`, versionData);
           setVersions(versionData);
           setCurrentConfig(configData);
         } catch (err) {
@@ -1134,6 +1218,7 @@ export default function BronzeLayerPage() {
       } else {
         setVersions(null);
         setCurrentConfig(null);
+        setSelectedVersion('pending');
       }
     };
     loadVersionsAndConfig();
@@ -1142,7 +1227,7 @@ export default function BronzeLayerPage() {
   // Handlers
   const handleSelectDataset = useCallback((dataset) => {
     setSelectedDataset(dataset);
-    setSelectedVersion('pending'); // Default to showing pending (current) config
+    // Note: selectedVersion is reset in the useEffect above
   }, []);
 
   const handleDeleteDataset = useCallback(async (id, type) => {
@@ -1182,6 +1267,22 @@ export default function BronzeLayerPage() {
     const prefix = type === 'persistent' ? 'p' : 'v';
     router.push(`/bronze/${prefix}_${id}/edit`);
   }, [router]);
+
+  // Calculate if there are pending changes (config differs from last executed version)
+  const showPending = useMemo(() => {
+    return hasPendingChanges(currentConfig, versions);
+  }, [currentConfig, versions]);
+
+  // Auto-select the latest version if no pending changes
+  useEffect(() => {
+    if (!isLoadingConfig && !isLoadingVersions && selectedVersion === 'pending' && !showPending) {
+      // No pending changes, auto-select the latest executed version
+      const versionHistory = versions?.versions || [];
+      if (versionHistory.length > 0) {
+        setSelectedVersion(versionHistory[0].version);
+      }
+    }
+  }, [isLoadingConfig, isLoadingVersions, selectedVersion, showPending, versions]);
 
   // Filtered datasets
   const filteredDatasets = configs.filter((d) => {
@@ -1363,6 +1464,7 @@ export default function BronzeLayerPage() {
           {/* Detail Panel */}
           <main className="flex-1 overflow-auto">
             <DetailPanel
+              key={selectedDataset ? `${selectedDataset.type}_${selectedDataset.id}` : 'empty'}
               dataset={selectedDataset}
               currentConfig={currentConfig}
               versions={versions}
@@ -1372,6 +1474,7 @@ export default function BronzeLayerPage() {
               isLoadingConfig={isLoadingConfig}
               onExecute={handleExecute}
               isExecuting={isExecuting && executingId === selectedDataset?.id}
+              showPending={showPending}
             />
           </main>
         </div>

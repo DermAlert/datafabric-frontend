@@ -462,7 +462,7 @@ export default function SilverDatasetViewPage() {
                       >
                         {versionHistory.map((entry) => (
                           <DropdownItem
-                            key={entry.version}
+                            key={`${entry.version}-${entry.timestamp}`}
                             onClick={() => {
                               setSelectedVersion(entry.version);
                               versionDropdown.onClose();
