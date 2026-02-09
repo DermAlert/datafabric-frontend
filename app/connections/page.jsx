@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, memo, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import {
   Plus,
@@ -570,10 +571,10 @@ export default function ConnectionsPage() {
     }
   }, [editingConnection, editFormData, connectionTypes, handleCloseEditModal]);
 
+  const router = useRouter();
   const handleBrowse = useCallback((id) => {
-    // TODO: Implement file browser
-    alert(`Browsing files for connection ${id}... (Feature Coming Soon)`);
-  }, []);
+    router.push(`/connections/browse/${id}`);
+  }, [router]);
 
   // Render form field based on schema property for edit modal
   const renderEditFormField = useCallback((key, property, isRequired) => {

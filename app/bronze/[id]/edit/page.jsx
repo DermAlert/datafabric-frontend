@@ -24,7 +24,8 @@ import {
   X,
   Loader2,
   AlertCircle,
-  Save
+  Save,
+  Lock
 } from 'lucide-react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
@@ -431,20 +432,20 @@ export default function EditBronzeDatasetPage() {
         column_ids: t.selectAll ? null : t.columnIds,
       }));
 
-      // Backend auto-detects relationships, just send enable_federated_joins flag
+      // Federated joins cannot be changed after creation - send the original value
       if (datasetType === 'persistent') {
         await bronzeService.persistent.update(parseInt(actualId), {
           name,
           description: description || undefined,
           tables,
-          enable_federated_joins: enableFederatedJoins,
+          enable_federated_joins: originalConfig?.enable_federated_joins ?? enableFederatedJoins,
         });
       } else {
         await bronzeService.virtualized.update(parseInt(actualId), {
           name,
           description: description || undefined,
           tables,
-          enable_federated_joins: enableFederatedJoins,
+          enable_federated_joins: originalConfig?.enable_federated_joins ?? enableFederatedJoins,
         });
       }
 
@@ -768,40 +769,68 @@ export default function EditBronzeDatasetPage() {
                   )}
                 </div>
 
-                {/* Federated Joins Toggle - Only show when cross-connection relationships exist */}
+                {/* Federated Joins Status - Read-only after creation */}
                 {crossConnectionRelationships.length > 0 && (
-                  <div className="mt-4 bg-white dark:bg-zinc-900 rounded-xl border border-purple-200 dark:border-purple-800/50 p-4">
+                  <div className={clsx(
+                    "mt-4 rounded-xl border p-4",
+                    enableFederatedJoins 
+                      ? "bg-purple-50/50 dark:bg-purple-900/10 border-purple-200 dark:border-purple-800/50" 
+                      : "bg-gray-50 dark:bg-zinc-900 border-gray-200 dark:border-zinc-700"
+                  )}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <Zap className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                        <Zap className={clsx(
+                          "w-5 h-5",
+                          enableFederatedJoins 
+                            ? "text-purple-600 dark:text-purple-400" 
+                            : "text-gray-400 dark:text-gray-500"
+                        )} />
                         <div>
-                          <div className="font-medium text-gray-900 dark:text-white text-sm">
-                            Enable Federated Joins
+                          <div className="font-medium text-gray-900 dark:text-white text-sm flex items-center gap-2">
+                            Federated Joins
+                            <span className={clsx(
+                              "px-2 py-0.5 rounded-full text-xs font-medium",
+                              enableFederatedJoins 
+                                ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300" 
+                                : "bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-400"
+                            )}>
+                              {enableFederatedJoins ? 'Enabled' : 'Disabled'}
+                            </span>
                           </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                             {crossConnectionRelationships.length} cross-database relationship(s) available
                           </div>
                         </div>
                       </div>
-                      <button
-                        onClick={() => setEnableFederatedJoins(!enableFederatedJoins)}
-                        className={clsx(
-                          "relative w-12 h-6 rounded-full transition-colors",
-                          enableFederatedJoins ? "bg-purple-500" : "bg-gray-300 dark:bg-zinc-600"
-                        )}
-                      >
-                        <div className={clsx(
-                          "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
-                          enableFederatedJoins ? "left-7" : "left-1"
-                        )} />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <Lock className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                        <div
+                          className={clsx(
+                            "relative w-12 h-6 rounded-full cursor-not-allowed opacity-50",
+                            enableFederatedJoins ? "bg-purple-500" : "bg-gray-300 dark:bg-zinc-600"
+                          )}
+                          title="This setting cannot be changed after creation. Create a new dataset to use a different configuration."
+                        >
+                          <div className={clsx(
+                            "absolute top-1 w-4 h-4 rounded-full bg-white",
+                            enableFederatedJoins ? "left-7" : "left-1"
+                          )} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30">
+                      <Info className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        This setting cannot be changed after the dataset is created. To use a different federated joins configuration, create a new dataset.
+                      </p>
                     </div>
                     
                     {/* Show available relationships */}
                     {enableFederatedJoins && (
                       <div className="mt-4 pt-4 border-t border-purple-100 dark:border-purple-800/30 space-y-2">
                         <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
-                          Available Relationships:
+                          Active Relationships:
                         </div>
                         {crossConnectionRelationships.map(rel => (
                           <div 
