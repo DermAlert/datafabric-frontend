@@ -20,6 +20,7 @@ import type {
   QueryVirtualizedRequest,
   QueryVirtualizedResponse,
 } from '@/types/api/bronze';
+import type { DataQueryRequest, DataQueryResponse } from '@/types/api/silver';
 
 const PERSISTENT_BASE_PATH = '/api/bronze/configs/persistent';
 const VIRTUALIZED_BASE_PATH = '/api/bronze/configs/virtualized';
@@ -101,6 +102,19 @@ export async function queryPersistentConfigData(
     : `${PERSISTENT_BASE_PATH}/${id}/data`;
   
   return apiClient.get<QueryDataResponse>(url);
+}
+
+/**
+ * Query data with server-side filters, sorting and pagination
+ */
+export async function queryBronzePersistentDataWithFilters(
+  id: number,
+  data: DataQueryRequest
+): Promise<DataQueryResponse> {
+  return apiClient.post<DataQueryResponse>(
+    `${PERSISTENT_BASE_PATH}/${id}/data/query`,
+    data
+  );
 }
 
 /**
@@ -209,6 +223,7 @@ export const bronzeService = {
     execute: executePersistentConfig,
     preview: previewPersistentConfig,
     queryData: queryPersistentConfigData,
+    queryWithFilters: queryBronzePersistentDataWithFilters,
     getVersions: getPersistentConfigVersions,
     getExecutions: getPersistentConfigExecutions,
   },

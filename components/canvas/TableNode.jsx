@@ -91,6 +91,12 @@ const TableNode = memo(function TableNode({
             <span className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">
               {data.label}
             </span>
+            {/* Schema badge for tables from non-primary schemas */}
+            {data.schemaBadge && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-medium shrink-0">
+                {data.schemaBadge}
+              </span>
+            )}
             {data.active === false && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-zinc-700 text-gray-500 dark:text-gray-400 font-medium shrink-0">
                 Inactive

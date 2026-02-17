@@ -10,6 +10,8 @@ export interface SchemaProperty {
   default?: string | number | boolean;
   enum?: string[];
   format?: 'password' | 'textarea' | string;
+  // Nested object properties (used by tunnel)
+  properties?: Record<string, SchemaProperty>;
 }
 
 // Connection params schema (JSON Schema format)
@@ -19,6 +21,21 @@ export interface ConnectionParamsSchema {
   required?: string[];
   additionalProperties?: boolean;
 }
+
+// SSH Tunnel configuration
+export interface TunnelConfig {
+  enabled: boolean;
+  ssh_host?: string;
+  ssh_port?: number;
+  ssh_username?: string;
+  auth_method?: 'password' | 'private_key';
+  ssh_password?: string;
+  ssh_private_key?: string;
+  ssh_passphrase?: string;
+}
+
+// Sentinel value for encrypted fields returned by the API
+export const ENCRYPTED_SENTINEL = '[ENCRYPTED]';
 
 // Connection Type entity
 export interface ConnectionType {

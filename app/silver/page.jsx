@@ -31,6 +31,7 @@ import {
   RotateCcw,
   AlertCircle,
   ArrowRightLeft,
+  BrainCircuit,
 } from 'lucide-react';
 import { useDisclosure, useSilverConfigs } from '@/hooks';
 import {
@@ -45,6 +46,7 @@ import {
 import { SearchInput } from '@/components/ui/Input';
 import { formatBytes, formatDate } from '@/lib/utils';
 import { silverService } from '@/lib/api/services/silver';
+import { equivalenceService } from '@/lib/api/services/equivalence';
 
 // ===========================================
 // Helper: Check if there are pending changes
@@ -492,6 +494,7 @@ const TransformationsSection = memo(function TransformationsSection({
 
 const ColumnGroupsSection = memo(function ColumnGroupsSection({
   columnGroupIds,
+  columnGroupMeta,
   isViewingOldVersion,
   isCollapsed,
   onToggle,
@@ -531,18 +534,24 @@ const ColumnGroupsSection = memo(function ColumnGroupsSection({
       >
         <div className="flex flex-wrap gap-2">
           {columnGroupIds.map((groupId) => (
-            <span
+            <Link
               key={groupId}
+              href={`/equivalence?group_id=${groupId}`}
               className={clsx(
-                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm',
+                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors',
                 isViewingOldVersion
-                  ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
-                  : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                  ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/40'
+                  : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/40'
               )}
             >
               <GitMerge className="w-3.5 h-3.5" />
-              Group ID: {groupId}
-            </span>
+              {columnGroupMeta?.[groupId]?.name || `Group ${groupId}`}
+              {columnGroupMeta?.[groupId]?.dataDictionary && (
+                <span className="ml-1 px-1.5 py-0.5 rounded bg-white/70 dark:bg-zinc-800/70 text-[11px]">
+                  {columnGroupMeta[groupId].dataDictionary}
+                </span>
+              )}
+            </Link>
           ))}
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
@@ -628,6 +637,90 @@ const FiltersSection = memo(function FiltersSection({
 });
 
 // ===========================================
+// LLM Extractions Section Component
+// ===========================================
+
+const LLMExtractionsSection = memo(function LLMExtractionsSection({
+  llmExtractions,
+  isCollapsed,
+  onToggle,
+}) {
+  if (!llmExtractions || llmExtractions.length === 0) return null;
+
+  return (
+    <section>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-2 mb-3 hover:opacity-80 transition-opacity"
+      >
+        <ChevronRight
+          className={clsx(
+            'w-4 h-4 text-gray-400 transition-transform duration-200',
+            !isCollapsed && 'rotate-90'
+          )}
+        />
+        <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <BrainCircuit className="w-4 h-4 text-gray-400" />
+          LLM Extractions
+          <span className="text-xs font-normal text-gray-500 ml-1">
+            ({llmExtractions.length})
+          </span>
+        </h3>
+      </button>
+      <div
+        className={clsx(
+          'overflow-hidden transition-all duration-200',
+          isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[2000px] opacity-100'
+        )}
+      >
+        <div className="space-y-2">
+          {llmExtractions.map((ext, i) => (
+            <div
+              key={i}
+              className="p-3 rounded-lg bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <code className="px-2 py-0.5 rounded text-sm font-mono bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+                  {ext.new_column_name}
+                </code>
+                <span
+                  className={clsx(
+                    'px-2 py-0.5 rounded text-xs font-medium',
+                    ext.output_type === 'bool'
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                  )}
+                >
+                  {ext.output_type}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                {ext.prompt}
+              </p>
+              {ext.enum_values && ext.enum_values.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {ext.enum_values.map((v) => (
+                    <span
+                      key={v}
+                      className="px-1.5 py-0.5 text-[10px] rounded bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300"
+                    >
+                      {v}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                Source column ID: {ext.source_column_id}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+});
+
+// ===========================================
 // Detail Panel Component
 // ===========================================
 
@@ -635,6 +728,7 @@ const DetailPanel = memo(function DetailPanel({
   dataset,
   currentConfig,
   versions,
+  columnGroupMeta,
   selectedVersion,
   onSelectVersion,
   isLoadingVersions,
@@ -651,6 +745,7 @@ const DetailPanel = memo(function DetailPanel({
     transformations: false,
     columnGroups: false,
     filters: false,
+    llmExtractions: false,
     versionHistory: false,
   });
 
@@ -1076,6 +1171,7 @@ const DetailPanel = memo(function DetailPanel({
             {/* Column Groups (Equivalence) */}
             <ColumnGroupsSection
               columnGroupIds={displayConfig?.column_group_ids || displayConfig?.columnGroupIds}
+              columnGroupMeta={columnGroupMeta}
               isViewingOldVersion={isViewingOldVersion}
               isCollapsed={collapsedSections.columnGroups}
               onToggle={() => toggleSection('columnGroups')}
@@ -1088,6 +1184,15 @@ const DetailPanel = memo(function DetailPanel({
               isCollapsed={collapsedSections.filters}
               onToggle={() => toggleSection('filters')}
             />
+
+            {/* LLM Extractions */}
+            {dataset.type === 'persistent' && (
+              <LLMExtractionsSection
+                llmExtractions={displayConfig?.llm_extractions}
+                isCollapsed={collapsedSections.llmExtractions}
+                onToggle={() => toggleSection('llmExtractions')}
+              />
+            )}
           </>
         )}
 
@@ -1134,6 +1239,7 @@ export default function SilverLayerPage() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedVersion, setSelectedVersion] = useState('pending');
   const [versions, setVersions] = useState(null);
+  const [columnGroupMeta, setColumnGroupMeta] = useState({});
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -1169,6 +1275,28 @@ export default function SilverLayerPage() {
     };
     loadVersionsAndConfig();
   }, [selectedDataset, getVersions]);
+
+  // Load Equivalence Column Group names for display
+  useEffect(() => {
+    const loadColumnGroupNames = async () => {
+      try {
+        const groups = await equivalenceService.listColumnGroups();
+        const metaMap = Object.fromEntries(
+          groups.map((g) => [
+            g.id,
+            {
+              name: g.name,
+              dataDictionary: g.data_dictionary_term_display_name || g.data_dictionary_term_name || null,
+            },
+          ])
+        );
+        setColumnGroupMeta(metaMap);
+      } catch (err) {
+        console.error('Failed to load column group names:', err);
+      }
+    };
+    loadColumnGroupNames();
+  }, []);
 
   // Handlers
   const handleSelectDataset = useCallback((dataset) => {
@@ -1431,6 +1559,7 @@ export default function SilverLayerPage() {
               dataset={selectedDataset}
               currentConfig={currentConfig}
               versions={versions}
+              columnGroupMeta={columnGroupMeta}
               selectedVersion={selectedVersion}
               onSelectVersion={setSelectedVersion}
               isLoadingVersions={isLoadingVersions}

@@ -5,9 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import {
   ArrowLeft,
-  Table2,
   Download,
-  Filter,
   Search,
   ChevronLeft,
   ChevronRight,
@@ -33,162 +31,27 @@ import { clsx } from 'clsx';
 import { silverService } from '@/lib/api/services/silver';
 import { formatBytes, formatDate } from '@/lib/utils';
 import { useDisclosure } from '@/hooks';
-import { DropdownMenu, DropdownItem, DropdownDivider } from '@/components/ui';
+import { DropdownMenu, DropdownItem, DropdownDivider, DataTable } from '@/components/ui';
 
 // ===========================================
-// Data Table Component
+// Virtualized Info Banner
 // ===========================================
 
-const DataTable = ({ columns, data }) => {
-  if (!columns || columns.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-12 text-gray-500 dark:text-gray-400">
-        <p>No columns to display</p>
+const VirtualizedBanner = () => (
+  <div className="p-4 rounded-xl bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 border border-cyan-200 dark:border-cyan-800">
+    <div className="flex items-start gap-3">
+      <div className="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-900/40">
+        <Zap className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
       </div>
-    );
-  }
-
-  return (
-    <div className="overflow-auto rounded-xl border border-gray-200 dark:border-zinc-700">
-      <table className="w-full">
-        <thead>
-          <tr className="bg-gray-50 dark:bg-zinc-800 border-b border-gray-200 dark:border-zinc-700">
-            {columns.map((col) => (
-              <th
-                key={col}
-                className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap"
-              >
-                {col}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
-          {data.map((row, idx) => (
-            <tr
-              key={idx}
-              className="bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
-            >
-              {columns.map((col) => (
-                <td key={col} className="px-4 py-3 text-sm whitespace-nowrap">
-                  {typeof row[col] === 'boolean' ? (
-                    <span
-                      className={clsx(
-                        'px-2 py-0.5 rounded-full text-xs font-medium',
-                        row[col]
-                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                          : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
-                      )}
-                    >
-                      {row[col] ? 'true' : 'false'}
-                    </span>
-                  ) : row[col] === null || row[col] === undefined ? (
-                    <span className="text-gray-400 dark:text-gray-500 italic">null</span>
-                  ) : typeof row[col] === 'object' ? (
-                    <code className="text-xs bg-gray-100 dark:bg-zinc-800 px-1 py-0.5 rounded">
-                      {JSON.stringify(row[col])}
-                    </code>
-                  ) : (
-                    <span className="text-gray-900 dark:text-white">{String(row[col])}</span>
-                  )}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-};
-
-// ===========================================
-// Virtualized Preview Component
-// ===========================================
-
-const VirtualizedPreview = ({ configId, isLoading, data, columns, queryTime, onRefresh, error }) => {
-  return (
-    <div className="space-y-4">
-      {/* Virtualized Info Banner */}
-      <div className="p-4 rounded-xl bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 border border-cyan-200 dark:border-cyan-800">
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-900/40">
-            <Zap className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
-          </div>
-          <div className="flex-1">
-            <h4 className="font-medium text-cyan-900 dark:text-cyan-200 flex items-center gap-2">
-              Live Query Preview
-            </h4>
-            <p className="text-sm text-cyan-700 dark:text-cyan-300 mt-1">
-              This is a virtualized dataset. Data is queried on-demand from source systems — no data
-              is stored in this layer.
-            </p>
-          </div>
-          <button
-            onClick={onRefresh}
-            disabled={isLoading}
-            className="flex items-center gap-2 px-3 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-cyan-400 text-white rounded-lg text-sm font-medium transition-colors"
-          >
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
-            )}
-            Refresh Query
-          </button>
-        </div>
+      <div>
+        <h4 className="font-medium text-cyan-900 dark:text-cyan-200">Live Query Preview</h4>
+        <p className="text-sm text-cyan-700 dark:text-cyan-300 mt-1">
+          This is a virtualized dataset. Data is queried on-demand — no data is stored in this layer.
+        </p>
       </div>
-
-      {/* Error State */}
-      {error && (
-        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-          <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
-            <AlertCircle className="w-5 h-5" />
-            <span className="font-medium">Query Failed</span>
-          </div>
-          <p className="mt-2 text-sm text-red-600 dark:text-red-300">{error}</p>
-        </div>
-      )}
-
-      {/* Query Stats */}
-      {!error && data && (
-        <div className="flex items-center gap-4 text-sm">
-          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-            <Timer className="w-4 h-4" />
-            <span>
-              Query time:{' '}
-              <strong className="text-gray-900 dark:text-white">
-                {queryTime ? `${(queryTime * 1000).toFixed(0)}ms` : '—'}
-              </strong>
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-            <Rows3 className="w-4 h-4" />
-            <span>
-              Rows:{' '}
-              <strong className="text-gray-900 dark:text-white">
-                {data.length.toLocaleString()}
-              </strong>
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-            <Info className="w-4 h-4" />
-            <span className="text-xs">Limited preview</span>
-          </div>
-        </div>
-      )}
-
-      {/* Data Table */}
-      {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-700">
-          <Loader2 className="w-10 h-10 text-cyan-500 animate-spin mb-4" />
-          <p className="text-gray-600 dark:text-gray-400">Executing query...</p>
-        </div>
-      ) : !error && data && columns ? (
-        <DataTable columns={columns} data={data} />
-      ) : null}
     </div>
-  );
-};
+  </div>
+);
 
 // ===========================================
 // Main Page Component
@@ -218,9 +81,21 @@ export default function SilverDatasetViewPage() {
   const [error, setError] = useState(null);
   const [dataError, setDataError] = useState(null);
 
+  const [groups, setGroups] = useState([]);
+  const [selectedGroupIndex, setSelectedGroupIndex] = useState(0);
+
+  // Server-side query state (persistent only)
+  const [serverFilters, setServerFilters] = useState([]);
+  const [serverFiltersLogic, setServerFiltersLogic] = useState('AND');
+  const [serverSortBy, setServerSortBy] = useState(null);
+  const [serverSortOrder, setServerSortOrder] = useState('asc');
+  const [serverPage, setServerPage] = useState(1);
+  const [serverPageSize, setServerPageSize] = useState(15);
+
+  // Client-side state (virtualized only fallback)
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 50;
+  const [itemsPerPage, setItemsPerPage] = useState(15);
 
   // Load config
   useEffect(() => {
@@ -256,40 +131,85 @@ export default function SilverDatasetViewPage() {
     }
   }, [datasetId, isPersistent, isVirtualized]);
 
-  // Load data for persistent configs
+  // Load data for persistent configs via POST with filters
   const loadPersistentData = useCallback(
-    async (version) => {
+    async ({ version, isCurrentVersion, filters, filtersLogic, sortBy, sortOrder, page, pageSize } = {}) => {
       if (!isPersistent) return;
       setIsLoadingData(true);
       setDataError(null);
       try {
-        const result = await silverService.persistent.queryData(datasetId, {
-          limit: 1000,
-          offset: 0,
-          version: version,
-        });
-        setColumns(result.columns || []);
-        setData(result.data || []);
+        const body = {
+          limit: pageSize ?? serverPageSize,
+          offset: ((page ?? serverPage) - 1) * (pageSize ?? serverPageSize),
+        };
+        // When viewing the current version, don't pass version param
+        if (!isCurrentVersion) {
+          body.version = version ?? selectedVersion;
+        }
+        const f = filters ?? serverFilters;
+        if (f.length > 0) {
+          body.column_filters = f;
+          body.column_filters_logic = filtersLogic ?? serverFiltersLogic;
+        }
+        const sb = sortBy !== undefined ? sortBy : serverSortBy;
+        if (sb) {
+          body.sort_by = sb;
+          body.sort_order = sortOrder ?? serverSortOrder;
+        }
+
+        const result = await silverService.persistent.queryWithFilters(datasetId, body);
+        const cols = result.columns || [];
+        const rows = result.data || [];
+        setColumns(cols);
+        setData(rows);
         setTotalRows(result.total_rows || result.row_count || 0);
         setQueryTime(result.execution_time_seconds);
       } catch (err) {
         console.error('Failed to load data:', err);
-        setDataError(err.message || 'Failed to load data');
+        setDataError(err?.data?.detail || err.message || 'Failed to load data');
         setData([]);
         setColumns([]);
       } finally {
         setIsLoadingData(false);
       }
     },
-    [datasetId, isPersistent]
+    [datasetId, isPersistent, selectedVersion, serverFilters, serverFiltersLogic, serverSortBy, serverSortOrder, serverPage, serverPageSize]
   );
 
   // Load data when selectedVersion changes
   useEffect(() => {
     if (isPersistent && selectedVersion !== null && config) {
-      loadPersistentData(selectedVersion);
+      const isCurrentVersion = versions?.current_version !== undefined &&
+        selectedVersion === versions.current_version;
+      loadPersistentData({ version: selectedVersion, isCurrentVersion });
     }
-  }, [selectedVersion, isPersistent, config, loadPersistentData]);
+  }, [selectedVersion, isPersistent, config, versions, loadPersistentData]);
+
+  // Handle server-side query changes from DataTable
+  const handleQueryChange = useCallback(
+    ({ filters, filtersLogic, sortBy, sortOrder, page, pageSize }) => {
+      setServerFilters(filters);
+      setServerFiltersLogic(filtersLogic);
+      setServerSortBy(sortBy);
+      setServerSortOrder(sortOrder);
+      setServerPage(page);
+      setServerPageSize(pageSize);
+
+      const isCurrentVersion = versions?.current_version !== undefined &&
+        selectedVersion === versions.current_version;
+      loadPersistentData({
+        version: selectedVersion,
+        isCurrentVersion,
+        filters,
+        filtersLogic,
+        sortBy,
+        sortOrder,
+        page,
+        pageSize,
+      });
+    },
+    [selectedVersion, versions, loadPersistentData]
+  );
 
   // Query virtualized data
   const queryVirtualizedData = useCallback(async () => {
@@ -301,9 +221,28 @@ export default function SilverDatasetViewPage() {
         limit: 1000,
         offset: 0,
       });
-      setColumns(result.columns || []);
-      setData(result.data || []);
-      setTotalRows(result.total_rows || result.row_count || 0);
+      // Parse groups from response
+      if (result.groups && result.groups.length > 0) {
+        const parsedGroups = result.groups.map((g) => ({
+          group_name: g.group_name || 'Data',
+          connection_name: g.connection_name || '',
+          columns: g.columns || [],
+          data: g.data || [],
+        }));
+        setGroups(parsedGroups);
+        setSelectedGroupIndex(0);
+        setColumns(parsedGroups[0].columns);
+        setData(parsedGroups[0].data);
+        setTotalRows(result.total_rows || parsedGroups[0].data.length);
+      } else {
+        const cols = result.columns || [];
+        const rows = result.data || [];
+        setGroups([{ group_name: 'All Data', connection_name: '', columns: cols, data: rows }]);
+        setSelectedGroupIndex(0);
+        setColumns(cols);
+        setData(rows);
+        setTotalRows(result.total_rows || result.row_count || 0);
+      }
       setQueryTime(result.execution_time_seconds);
     } catch (err) {
       console.error('Failed to query data:', err);
@@ -343,24 +282,27 @@ export default function SilverDatasetViewPage() {
     }
   };
 
-  // Filter data based on search
+  // Handle group/source tab change
+  const handleGroupChange = (index) => {
+    if (index === selectedGroupIndex) return;
+    setSelectedGroupIndex(index);
+    setColumns(groups[index].columns);
+    setData(groups[index].data);
+    setSearchQuery('');
+    setCurrentPage(1);
+  };
+
+  // Client-side filter (virtualized only)
   const filteredData = useMemo(() => {
     if (!data) return [];
+    if (isPersistent) return data;
     if (!searchQuery) return data;
-
     return data.filter((row) =>
       Object.values(row).some((value) =>
         String(value).toLowerCase().includes(searchQuery.toLowerCase())
       )
     );
-  }, [data, searchQuery]);
-
-  // Pagination
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-  const paginatedData = filteredData.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  }, [data, searchQuery, isPersistent]);
 
   // Version history
   const versionHistory = versions?.versions || [];
@@ -455,7 +397,12 @@ export default function SilverDatasetViewPage() {
                             onClick={versionDropdown.onToggle}
                             className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-700"
                           >
-                            <GitCommit className="w-3 h-3" />v{selectedVersion}
+                            <GitCommit className="w-3 h-3" />
+                            {selectedVersion === null
+                              ? `Current v${currentVersion}`
+                              : selectedVersion === currentVersion
+                                ? `Current v${selectedVersion}`
+                                : `v${selectedVersion}`}
                             <ChevronDown className="w-3 h-3" />
                           </button>
                         }
@@ -471,19 +418,11 @@ export default function SilverDatasetViewPage() {
                             <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400">
                               v{entry.version}
                             </span>
-                            <span
-                              className={clsx(
-                                'ml-2 text-xs px-1.5 py-0.5 rounded',
-                                entry.operation === 'WRITE' &&
-                                  'bg-blue-100 dark:bg-blue-900/30 text-blue-600',
-                                entry.operation === 'OVERWRITE' &&
-                                  'bg-blue-100 dark:bg-blue-900/30 text-blue-600',
-                                entry.operation === 'MERGE' &&
-                                  'bg-purple-100 dark:bg-purple-900/30 text-purple-600'
-                              )}
-                            >
-                              {entry.operation}
-                            </span>
+                            {entry.version === currentVersion && (
+                              <span className="ml-2 text-xs text-green-700 dark:text-green-400">
+                                current
+                              </span>
+                            )}
                           </DropdownItem>
                         ))}
                       </DropdownMenu>
@@ -531,168 +470,103 @@ export default function SilverDatasetViewPage() {
             </div>
           </div>
 
-          {/* Stats - only for Persistent */}
-          {isPersistent && (
-            <div className="flex items-center gap-6 text-sm">
-              <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                <Rows3 className="w-4 h-4" />
-                <span>{totalRows.toLocaleString()} rows</span>
-              </div>
-              <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                <Clock className="w-4 h-4" />
-                <span>{formatDate(config.updated_at)}</span>
-              </div>
-              {config.source_bronze_config_name && (
-                <div className="flex items-center gap-2">
-                  <Database className="w-4 h-4 text-amber-500" />
-                  <span className="text-gray-600 dark:text-gray-400">
-                    Source:{' '}
-                    <span className="font-medium text-amber-600 dark:text-amber-400">
-                      {config.source_bronze_config_name}
-                    </span>
-                    {config.source_bronze_version !== null && config.source_bronze_version !== undefined ? (
-                      <span className="ml-1 px-1.5 py-0.5 rounded text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
-                        v{config.source_bronze_version}
-                      </span>
-                    ) : (
-                      <span className="ml-1 px-1.5 py-0.5 rounded text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
-                        latest
-                      </span>
-                    )}
-                  </span>
-                </div>
-              )}
-              {queryTime && (
-                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                  <Timer className="w-4 h-4" />
-                  <span>{(queryTime * 1000).toFixed(0)}ms</span>
-                </div>
-              )}
+          {/* Stats */}
+          <div className="flex items-center gap-6 text-sm">
+            <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+              <Rows3 className="w-4 h-4" />
+              <span>{(filteredData.length || totalRows || 0).toLocaleString()} rows</span>
             </div>
-          )}
+            <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+              <Clock className="w-4 h-4" />
+              <span>{formatDate(config.updated_at)}</span>
+            </div>
+            {config.source_bronze_config_name && (
+              <div className="flex items-center gap-2">
+                <Database className="w-4 h-4 text-amber-500" />
+                <span className="text-gray-600 dark:text-gray-400">
+                  Source:{' '}
+                  <span className="font-medium text-amber-600 dark:text-amber-400">
+                    {config.source_bronze_config_name}
+                  </span>
+                  {config.source_bronze_version !== null && config.source_bronze_version !== undefined ? (
+                    <span className="ml-1 px-1.5 py-0.5 rounded text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                      v{config.source_bronze_version}
+                    </span>
+                  ) : (
+                    <span className="ml-1 px-1.5 py-0.5 rounded text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                      latest
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
+            {queryTime && (
+              <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                <Timer className="w-4 h-4" />
+                <span>{(queryTime * 1000).toFixed(0)}ms</span>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Toolbar - only for Persistent */}
-        {isPersistent && (
-          <div className="px-6 py-3 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search data..."
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="pl-10 pr-4 py-2 w-72 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-purple-500 outline-none transition-all"
-                />
-              </div>
-              <button className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors">
-                <Filter className="w-4 h-4" />
-                Filters
+        {/* Source Tabs - when multiple groups (virtualized) */}
+        {groups.length > 1 && (
+          <div className="px-6 py-2 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center gap-1 overflow-x-auto">
+            <Database className="w-4 h-4 text-gray-400 mr-1 shrink-0" />
+            {groups.map((group, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleGroupChange(idx)}
+                className={clsx(
+                  'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap',
+                  selectedGroupIndex === idx
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                    : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-zinc-800'
+                )}
+              >
+                {group.connection_name || group.group_name}
+                <span className="ml-1.5 text-xs opacity-70">({group.data.length})</span>
               </button>
-            </div>
-
-            <button className="p-2 rounded-lg bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400">
-              <Table2 className="w-4 h-4" />
-            </button>
+            ))}
           </div>
         )}
 
         {/* Content Area */}
-        <div className="flex-1 overflow-auto p-6">
-          {isVirtualized ? (
-            <VirtualizedPreview
-              configId={datasetId}
-              isLoading={isLoadingData}
-              data={data}
+        <div className="flex-1 overflow-auto p-6 space-y-4">
+          {isVirtualized && groups.length <= 1 && <VirtualizedBanner />}
+
+          {dataError ? (
+            <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+              <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
+                <AlertCircle className="w-5 h-5" />
+                <span className="font-medium">Failed to load data</span>
+              </div>
+              <p className="mt-2 text-sm text-red-600 dark:text-red-300">{dataError}</p>
+            </div>
+          ) : isPersistent ? (
+            <DataTable
               columns={columns}
+              data={data || []}
+              totalRows={totalRows}
+              page={serverPage}
+              pageSize={serverPageSize}
+              filters={serverFilters}
+              filtersLogic={serverFiltersLogic}
+              sortBy={serverSortBy}
+              sortOrder={serverSortOrder}
+              isLoading={isLoadingData}
               queryTime={queryTime}
-              onRefresh={queryVirtualizedData}
-              error={dataError}
+              onQueryChange={handleQueryChange}
             />
+          ) : isLoadingData ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <Loader2 className="w-10 h-10 animate-spin mb-4 text-cyan-500" />
+              <p className="text-gray-600 dark:text-gray-400">Loading data...</p>
+            </div>
           ) : (
-            <>
-              {dataError ? (
-                <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-                  <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
-                    <AlertCircle className="w-5 h-5" />
-                    <span className="font-medium">Failed to load data</span>
-                  </div>
-                  <p className="mt-2 text-sm text-red-600 dark:text-red-300">{dataError}</p>
-                </div>
-              ) : isLoadingData ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <Loader2 className="w-10 h-10 text-purple-500 animate-spin mb-4" />
-                  <p className="text-gray-600 dark:text-gray-400">Loading data...</p>
-                </div>
-              ) : filteredData.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-gray-500 dark:text-gray-400">
-                  <Search className="w-12 h-12 mb-4 opacity-30" />
-                  <p className="text-lg font-medium">No results found</p>
-                  <p className="text-sm">
-                    {data?.length === 0
-                      ? 'No data available. Try executing the transformation first.'
-                      : 'Try adjusting your search query'}
-                  </p>
-                </div>
-              ) : (
-                <DataTable columns={columns} data={paginatedData} />
-              )}
-            </>
+            <DataTable columns={columns} data={filteredData} />
           )}
         </div>
-
-        {/* Pagination - only for Persistent */}
-        {isPersistent && totalPages > 1 && (
-          <div className="px-6 py-4 border-t border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              Showing {(currentPage - 1) * itemsPerPage + 1} to{' '}
-              {Math.min(currentPage * itemsPerPage, filteredData.length)} of {filteredData.length}{' '}
-              items
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-400 transition-colors"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1)
-                  .filter((page) => page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1)
-                  .map((page, idx, arr) => (
-                    <React.Fragment key={page}>
-                      {idx > 0 && arr[idx - 1] !== page - 1 && (
-                        <span className="px-2 text-gray-400">...</span>
-                      )}
-                      <button
-                        onClick={() => setCurrentPage(page)}
-                        className={clsx(
-                          'w-8 h-8 rounded-lg text-sm font-medium transition-colors',
-                          currentPage === page
-                            ? 'bg-purple-500 text-white'
-                            : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-400'
-                        )}
-                      >
-                        {page}
-                      </button>
-                    </React.Fragment>
-                  ))}
-              </div>
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed text-gray-600 dark:text-gray-400 transition-colors"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </DashboardLayout>
   );

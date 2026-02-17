@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import {
@@ -27,6 +27,11 @@ import {
   Loader2,
   AlertCircle,
   RefreshCw,
+  BrainCircuit,
+  Play,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
@@ -36,13 +41,20 @@ import { metadataService } from '@/lib/api/services/metadata';
 import { connectionService } from '@/lib/api/services/connection';
 import { equivalenceService } from '@/lib/api/services/equivalence';
 
-const STEPS = [
-  { id: 1, title: 'Type & Source', icon: Info },
-  { id: 2, title: 'Transformations', icon: Code2 },
-  { id: 3, title: 'Equivalence', icon: GitMerge },
-  { id: 4, title: 'Filters', icon: Filter },
-  { id: 5, title: 'Review', icon: Eye },
+const BASE_STEPS = [
+  { id: 'type_source', title: 'Type & Source', icon: Info },
+  { id: 'transformations', title: 'Transformations', icon: Code2 },
+  { id: 'equivalence', title: 'Equivalence', icon: GitMerge },
+  { id: 'llm_extraction', title: 'LLM Extraction', icon: BrainCircuit, persistentOnly: true },
+  { id: 'filters', title: 'Filters', icon: Filter },
+  { id: 'review', title: 'Review', icon: Eye },
 ];
+
+function getSteps(datasetType) {
+  return BASE_STEPS.filter(
+    (step) => !step.persistentOnly || datasetType === 'persistent'
+  ).map((step, index) => ({ ...step, stepNumber: index + 1 }));
+}
 
 const FILTER_OPERATORS = [
   { value: '=', label: 'equals', requiresValue: true },
@@ -109,9 +121,19 @@ export default function NewSilverDatasetPage() {
   const [selectedColumnGroups, setSelectedColumnGroups] = useState([]);
   const [excludeSourceColumns, setExcludeSourceColumns] = useState(false);
 
-  // Step 4: Filters
+  // Step 4: LLM Extractions (persistent only)
+  const [llmExtractions, setLlmExtractions] = useState([]);
+  const [llmTestStates, setLlmTestStates] = useState({}); // { [extractionId]: { loading, result, error } }
+
+  // Step 5: Filters (after LLM so user sees all columns)
   const [filterConditions, setFilterConditions] = useState([]);
   const [filterLogic, setFilterLogic] = useState('AND');
+
+  // Computed steps based on dataset type
+  const steps = getSteps(datasetType);
+  const totalSteps = steps.length;
+  const currentStepObj = steps.find((s) => s.stepNumber === currentStep);
+  const currentStepId = currentStepObj?.id;
 
   // Load Bronze datasets
   useEffect(() => {
@@ -339,6 +361,71 @@ export default function NewSilverDatasetPage() {
     loadColumnGroups();
   }, [availableColumns]);
 
+  // Compute filterable columns organized by type
+  const filterableColumns = useMemo(() => {
+    const transformedColumnIds = new Set(
+      transformations.filter((t) => t.columnId).map((t) => t.columnId)
+    );
+
+    const transformationMap = {};
+    transformations.forEach((t) => {
+      if (t.columnId) transformationMap[t.columnId] = t.type;
+    });
+
+    const original = [];
+    const transformed = [];
+
+    availableColumns.forEach((col) => {
+      if (transformedColumnIds.has(col.id)) {
+        transformed.push({
+          ...col,
+          category: 'transformed',
+          transformationType: transformationMap[col.id],
+          selectValue: String(col.id),
+        });
+      } else {
+        original.push({
+          ...col,
+          category: 'original',
+          selectValue: String(col.id),
+        });
+      }
+    });
+
+    const equivalence = [];
+    selectedColumnGroups.forEach((groupId) => {
+      const group = columnGroups.find((g) => g.id === groupId);
+      if (group) {
+        equivalence.push({
+          id: `eq_${group.id}`,
+          name: group.name,
+          type: 'varchar',
+          category: 'equivalence',
+          groupId: group.id,
+          groupName: group.name,
+          selectValue: `eq:${group.name}`,
+        });
+      }
+    });
+
+    const llm = [];
+    if (datasetType === 'persistent') {
+      llmExtractions.forEach((ext) => {
+        if (ext.newColumnName) {
+          llm.push({
+            id: `llm_${ext.id}`,
+            name: ext.newColumnName,
+            type: ext.outputType,
+            category: 'llm',
+            selectValue: `llm:${ext.newColumnName}`,
+          });
+        }
+      });
+    }
+
+    return { original, transformed, equivalence, llm };
+  }, [availableColumns, transformations, selectedColumnGroups, columnGroups, llmExtractions, datasetType]);
+
   // Handlers
   const toggleConnection = (connId) => {
     setExpandedConnections((prev) =>
@@ -374,7 +461,17 @@ export default function NewSilverDatasetPage() {
   const handleAddFilterCondition = () => {
     setFilterConditions([
       ...filterConditions,
-      { id: String(Date.now()), columnId: null, operator: '=', value: '', valueMin: '', valueMax: '' },
+      {
+        id: String(Date.now()),
+        columnId: null,
+        columnName: null,
+        columnCategory: null,
+        selectValue: '',
+        operator: '=',
+        value: '',
+        valueMin: '',
+        valueMax: '',
+      },
     ]);
   };
 
@@ -383,18 +480,186 @@ export default function NewSilverDatasetPage() {
   };
 
   const handleFilterConditionChange = (id, field, value) => {
-    setFilterConditions(
-      filterConditions.map((c) => (c.id === id ? { ...c, [field]: value } : c))
+    if (field === 'selectValue') {
+      const sv = value;
+      let columnId = null;
+      let columnName = null;
+      let columnCategory = 'original';
+
+      if (sv.startsWith('llm:')) {
+        columnName = sv.slice(4);
+        columnCategory = 'llm';
+      } else if (sv.startsWith('eq:')) {
+        columnName = sv.slice(3);
+        columnCategory = 'equivalence';
+      } else if (sv) {
+        columnId = Number(sv) || null;
+        const col = availableColumns.find((c) => c.id === columnId);
+        if (col) {
+          const isTransformed = transformations.some((t) => t.columnId === columnId);
+          columnCategory = isTransformed ? 'transformed' : 'original';
+        }
+      }
+
+      setFilterConditions(
+        filterConditions.map((c) =>
+          c.id === id
+            ? { ...c, selectValue: sv, columnId, columnName, columnCategory }
+            : c
+        )
+      );
+    } else {
+      setFilterConditions(
+        filterConditions.map((c) => (c.id === id ? { ...c, [field]: value } : c))
+      );
+    }
+  };
+
+  // LLM Extraction handlers
+  const handleAddLLMExtraction = () => {
+    setLlmExtractions([
+      ...llmExtractions,
+      {
+        id: String(Date.now()),
+        sourceColumnId: null,
+        newColumnName: '',
+        prompt: '',
+        outputType: 'bool',
+        enumValues: [],
+        newEnumValue: '',
+      },
+    ]);
+  };
+
+  const handleRemoveLLMExtraction = (id) => {
+    setLlmExtractions(llmExtractions.filter((e) => e.id !== id));
+    setLlmTestStates((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const handleLLMExtractionChange = (id, field, value) => {
+    setLlmExtractions(
+      llmExtractions.map((e) => {
+        if (e.id !== id) return e;
+        const updated = { ...e, [field]: value };
+        // Clear enum values when switching to bool
+        if (field === 'outputType' && value === 'bool') {
+          updated.enumValues = [];
+          updated.newEnumValue = '';
+        }
+        return updated;
+      })
     );
   };
 
+  const handleAddEnumValue = (extractionId) => {
+    setLlmExtractions(
+      llmExtractions.map((e) => {
+        if (e.id !== extractionId) return e;
+        const trimmed = (e.newEnumValue || '').trim();
+        if (!trimmed || e.enumValues.includes(trimmed)) return e;
+        return {
+          ...e,
+          enumValues: [...e.enumValues, trimmed],
+          newEnumValue: '',
+        };
+      })
+    );
+  };
+
+  const handleRemoveEnumValue = (extractionId, value) => {
+    setLlmExtractions(
+      llmExtractions.map((e) => {
+        if (e.id !== extractionId) return e;
+        return {
+          ...e,
+          enumValues: e.enumValues.filter((v) => v !== value),
+        };
+      })
+    );
+  };
+
+  const handleTestLLMExtraction = async (extraction) => {
+    // Need sample text - use the prompt as a test indicator
+    setLlmTestStates((prev) => ({
+      ...prev,
+      [extraction.id]: { loading: true, result: null, error: null },
+    }));
+
+    try {
+      const testData = {
+        text: extraction.testText || 'Sample text for testing',
+        prompt: extraction.prompt,
+        output_type: extraction.outputType,
+      };
+      if (extraction.outputType === 'enum' && extraction.enumValues.length >= 2) {
+        testData.enum_values = extraction.enumValues;
+      }
+
+      const response = await silverService.llmExtraction.test(testData);
+      setLlmTestStates((prev) => ({
+        ...prev,
+        [extraction.id]: { loading: false, result: response, error: null },
+      }));
+    } catch (err) {
+      setLlmTestStates((prev) => ({
+        ...prev,
+        [extraction.id]: {
+          loading: false,
+          result: null,
+          error: err?.message || 'Test failed',
+        },
+      }));
+    }
+  };
+
+  const validateLLMExtractions = () => {
+    const errors = [];
+    const names = llmExtractions.map((e) => e.newColumnName);
+    const duplicates = names.filter((name, i) => name && names.indexOf(name) !== i);
+    if (duplicates.length > 0) {
+      errors.push(`Duplicate column names: ${[...new Set(duplicates)].join(', ')}`);
+    }
+
+    llmExtractions.forEach((ext, i) => {
+      if (!ext.newColumnName) {
+        errors.push(`Extraction #${i + 1}: Column name is required`);
+      } else if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(ext.newColumnName)) {
+        errors.push(
+          `Extraction #${i + 1}: Column name must contain only letters, numbers, and underscores, starting with a letter or underscore`
+        );
+      }
+      if (!ext.prompt || ext.prompt.trim().length === 0) {
+        errors.push(`Extraction #${i + 1}: Prompt is required`);
+      } else if (ext.prompt.length > 2000) {
+        errors.push(`Extraction #${i + 1}: Prompt must be at most 2000 characters`);
+      }
+      if (ext.outputType === 'enum' && (!ext.enumValues || ext.enumValues.length < 2)) {
+        errors.push(`Extraction #${i + 1}: Enum type requires at least 2 values`);
+      }
+      if (!ext.sourceColumnId) {
+        errors.push(`Extraction #${i + 1}: Source column is required`);
+      }
+    });
+
+    return errors;
+  };
+
   const canProceed = () => {
-    switch (currentStep) {
-      case 1:
+    switch (currentStepId) {
+      case 'type_source':
         if (datasetType === 'persistent') {
           return datasetName && sourceBronzeId;
         }
         return datasetName && selectedTables.length > 0;
+      case 'llm_extraction':
+        if (llmExtractions.length > 0) {
+          return validateLLMExtractions().length === 0;
+        }
+        return true;
       default:
         return true;
     }
@@ -427,17 +692,37 @@ export default function NewSilverDatasetPage() {
                     rule_id: t.type === 'template' ? t.ruleId : undefined,
                   }))
               : undefined,
+          llm_extractions:
+            llmExtractions.length > 0
+              ? llmExtractions
+                  .filter((e) => e.sourceColumnId && e.newColumnName && e.prompt)
+                  .map((e) => ({
+                    source_column_id: e.sourceColumnId,
+                    new_column_name: e.newColumnName,
+                    prompt: e.prompt,
+                    output_type: e.outputType,
+                    enum_values:
+                      e.outputType === 'enum' && e.enumValues.length >= 2
+                        ? e.enumValues
+                        : undefined,
+                  }))
+              : undefined,
           filters:
-            filterConditions.length > 0 && filterConditions.some((c) => c.columnId)
+            filterConditions.length > 0 && filterConditions.some((c) => c.columnId || c.columnName)
               ? {
                   logic: filterLogic,
                   conditions: filterConditions
-                    .filter((c) => c.columnId && c.operator)
+                    .filter((c) => (c.columnId || c.columnName) && c.operator)
                     .map((c) => {
                       const condition = {
-                        column_id: c.columnId,
                         operator: c.operator,
                       };
+                      if (c.columnId) {
+                        condition.column_id = c.columnId;
+                      }
+                      if (c.columnName) {
+                        condition.column_name = c.columnName;
+                      }
                       if (!['IS NULL', 'IS NOT NULL'].includes(c.operator)) {
                         if (c.operator === 'BETWEEN') {
                           condition.value_min = c.valueMin;
@@ -482,16 +767,21 @@ export default function NewSilverDatasetPage() {
                   }))
               : undefined,
           filters:
-            filterConditions.length > 0 && filterConditions.some((c) => c.columnId)
+            filterConditions.length > 0 && filterConditions.some((c) => c.columnId || c.columnName)
               ? {
                   logic: filterLogic,
                   conditions: filterConditions
-                    .filter((c) => c.columnId && c.operator)
+                    .filter((c) => (c.columnId || c.columnName) && c.operator)
                     .map((c) => {
                       const condition = {
-                        column_id: c.columnId,
                         operator: c.operator,
                       };
+                      if (c.columnId) {
+                        condition.column_id = c.columnId;
+                      }
+                      if (c.columnName) {
+                        condition.column_name = c.columnName;
+                      }
                       if (!['IS NULL', 'IS NOT NULL'].includes(c.operator)) {
                         if (c.operator === 'BETWEEN') {
                           condition.value_min = c.valueMin;
@@ -551,10 +841,10 @@ export default function NewSilverDatasetPage() {
         {/* Steps Indicator */}
         <div className="px-6 py-4 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
           <div className="flex items-center justify-between max-w-4xl mx-auto">
-            {STEPS.map((step, index) => {
+            {steps.map((step, index) => {
               const Icon = step.icon;
-              const isActive = currentStep === step.id;
-              const isCompleted = currentStep > step.id;
+              const isActive = currentStep === step.stepNumber;
+              const isCompleted = currentStep > step.stepNumber;
 
               return (
                 <React.Fragment key={step.id}>
@@ -584,11 +874,11 @@ export default function NewSilverDatasetPage() {
                       {step.title}
                     </span>
                   </div>
-                  {index < STEPS.length - 1 && (
+                  {index < steps.length - 1 && (
                     <div
                       className={clsx(
                         'flex-1 h-0.5 mx-2',
-                        currentStep > step.id ? 'bg-green-500' : 'bg-gray-200 dark:bg-zinc-700'
+                        currentStep > step.stepNumber ? 'bg-green-500' : 'bg-gray-200 dark:bg-zinc-700'
                       )}
                     />
                   )}
@@ -601,8 +891,8 @@ export default function NewSilverDatasetPage() {
         {/* Content */}
         <div className="flex-1 overflow-auto p-6">
           <div className="max-w-4xl mx-auto">
-            {/* Step 1: Type & Source */}
-            {currentStep === 1 && (
+            {/* Step: Type & Source */}
+            {currentStepId === 'type_source' && (
               <div className="space-y-6">
                 <div className="bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 p-6">
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">
@@ -1032,8 +1322,8 @@ export default function NewSilverDatasetPage() {
               </div>
             )}
 
-            {/* Step 2: Transformations */}
-            {currentStep === 2 && (
+            {/* Step: Transformations */}
+            {currentStepId === 'transformations' && (
               <div className="bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
@@ -1141,8 +1431,8 @@ export default function NewSilverDatasetPage() {
               </div>
             )}
 
-            {/* Step 3: Equivalence */}
-            {currentStep === 3 && (
+            {/* Step: Equivalence */}
+            {currentStepId === 'equivalence' && (
               <div className="space-y-6">
                 <div className="bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 p-6">
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
@@ -1299,8 +1589,8 @@ export default function NewSilverDatasetPage() {
               </div>
             )}
 
-            {/* Step 4: Filters */}
-            {currentStep === 4 && (
+            {/* Step: Filters */}
+            {currentStepId === 'filters' && (
               <div className="bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
@@ -1308,7 +1598,8 @@ export default function NewSilverDatasetPage() {
                       Filter Conditions
                     </h2>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Define WHERE conditions to filter your data (optional)
+                      Define WHERE conditions to filter your data (optional).
+                      {' '}Columns from all previous steps are available for filtering.
                     </p>
                   </div>
                   <button
@@ -1385,22 +1676,53 @@ export default function NewSilverDatasetPage() {
 
                             <div className="relative flex-1">
                               <select
-                                value={condition.columnId || ''}
+                                value={condition.selectValue || ''}
                                 onChange={(e) =>
                                   handleFilterConditionChange(
                                     condition.id,
-                                    'columnId',
-                                    Number(e.target.value) || null
+                                    'selectValue',
+                                    e.target.value
                                   )
                                 }
                                 className="w-full appearance-none px-3 py-2 pr-8 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
                               >
                                 <option value="">Select column...</option>
-                                {availableColumns.map((col) => (
-                                  <option key={col.id} value={col.id}>
-                                    {col.tableName}.{col.name}
-                                  </option>
-                                ))}
+                                {filterableColumns.original.length > 0 && (
+                                  <optgroup label="Original Columns">
+                                    {filterableColumns.original.map((col) => (
+                                      <option key={col.selectValue} value={col.selectValue}>
+                                        {col.tableName}.{col.name} ({col.type})
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                                {filterableColumns.transformed.length > 0 && (
+                                  <optgroup label="Transformed Columns">
+                                    {filterableColumns.transformed.map((col) => (
+                                      <option key={col.selectValue} value={col.selectValue}>
+                                        {col.tableName}.{col.name} ({col.transformationType})
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                                {filterableColumns.equivalence.length > 0 && (
+                                  <optgroup label="Unified Columns (Equivalence)">
+                                    {filterableColumns.equivalence.map((col) => (
+                                      <option key={col.selectValue} value={col.selectValue}>
+                                        {col.name} (ColumnGroup)
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                                {filterableColumns.llm.length > 0 && (
+                                  <optgroup label="LLM Columns">
+                                    {filterableColumns.llm.map((col) => (
+                                      <option key={col.selectValue} value={col.selectValue}>
+                                        {col.name} ({col.type})
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
                               </select>
                               <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                             </div>
@@ -1474,8 +1796,351 @@ export default function NewSilverDatasetPage() {
               </div>
             )}
 
-            {/* Step 5: Review */}
-            {currentStep === 5 && (
+            {/* Step: LLM Extraction (persistent only) */}
+            {currentStepId === 'llm_extraction' && (
+              <div className="space-y-6">
+                <div className="bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                        LLM Extraction
+                      </h2>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Create derived columns from free-text columns using AI extraction
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleAddLLMExtraction}
+                      className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Extraction
+                    </button>
+                  </div>
+
+                  {llmExtractions.length === 0 ? (
+                    <div className="text-center py-12 text-gray-500 dark:text-gray-400 border-2 border-dashed border-gray-200 dark:border-zinc-700 rounded-lg">
+                      <BrainCircuit className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p className="text-sm">No LLM extractions configured</p>
+                      <p className="text-xs mt-1">
+                        Click &quot;Add Extraction&quot; to create derived columns from text using AI
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {llmExtractions.map((extraction, idx) => {
+                        const testState = llmTestStates[extraction.id] || {};
+                        return (
+                          <div
+                            key={extraction.id}
+                            className="p-5 rounded-xl bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700"
+                          >
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="flex items-center gap-2">
+                                <BrainCircuit className="w-4 h-4 text-purple-500" />
+                                <span className="font-medium text-gray-900 dark:text-white text-sm">
+                                  Extraction #{idx + 1}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => handleRemoveLLMExtraction(extraction.id)}
+                                className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-400 hover:text-red-500"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                              {/* Source Column */}
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                  Source Column *
+                                </label>
+                                <div className="relative">
+                                  <select
+                                    value={extraction.sourceColumnId || ''}
+                                    onChange={(e) =>
+                                      handleLLMExtractionChange(
+                                        extraction.id,
+                                        'sourceColumnId',
+                                        Number(e.target.value) || null
+                                      )
+                                    }
+                                    className="w-full appearance-none px-3 py-2 pr-8 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
+                                  >
+                                    <option value="">Select column...</option>
+                                    {availableColumns.map((c) => (
+                                      <option key={c.id} value={c.id}>
+                                        {c.tableName}.{c.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                                </div>
+                              </div>
+
+                              {/* New Column Name */}
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                  New Column Name *
+                                </label>
+                                <input
+                                  type="text"
+                                  value={extraction.newColumnName}
+                                  onChange={(e) =>
+                                    handleLLMExtractionChange(extraction.id, 'newColumnName', e.target.value)
+                                  }
+                                  placeholder="e.g., has_diabetes"
+                                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-mono"
+                                />
+                                {extraction.newColumnName &&
+                                  !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(extraction.newColumnName) && (
+                                    <p className="text-xs text-red-500 mt-1">
+                                      Must start with letter/underscore, only letters, numbers, underscores
+                                    </p>
+                                  )}
+                              </div>
+                            </div>
+
+                            {/* Output Type */}
+                            <div className="mb-4">
+                              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                                Output Type *
+                              </label>
+                              <div className="flex gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleLLMExtractionChange(extraction.id, 'outputType', 'bool')
+                                  }
+                                  className={clsx(
+                                    'flex-1 px-4 py-2.5 rounded-lg border-2 text-sm font-medium transition-all',
+                                    extraction.outputType === 'bool'
+                                      ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300'
+                                      : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                                  )}
+                                >
+                                  Boolean (true/false)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleLLMExtractionChange(extraction.id, 'outputType', 'enum')
+                                  }
+                                  className={clsx(
+                                    'flex-1 px-4 py-2.5 rounded-lg border-2 text-sm font-medium transition-all',
+                                    extraction.outputType === 'enum'
+                                      ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300'
+                                      : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                                  )}
+                                >
+                                  Enum (categories)
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Enum Values */}
+                            {extraction.outputType === 'enum' && (
+                              <div className="mb-4">
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                                  Enum Values * (at least 2)
+                                </label>
+                                <div className="flex flex-wrap gap-2 mb-2">
+                                  {extraction.enumValues.map((val) => (
+                                    <span
+                                      key={val}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs font-medium"
+                                    >
+                                      {val}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveEnumValue(extraction.id, val)}
+                                        className="hover:text-red-500 ml-0.5"
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </span>
+                                  ))}
+                                </div>
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    value={extraction.newEnumValue || ''}
+                                    onChange={(e) =>
+                                      handleLLMExtractionChange(extraction.id, 'newEnumValue', e.target.value)
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleAddEnumValue(extraction.id);
+                                      }
+                                    }}
+                                    placeholder="Add enum value..."
+                                    className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddEnumValue(extraction.id)}
+                                    className="px-3 py-2 rounded-lg bg-purple-500 text-white text-sm hover:bg-purple-600"
+                                  >
+                                    Add
+                                  </button>
+                                </div>
+                                {extraction.enumValues.length > 0 && extraction.enumValues.length < 2 && (
+                                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                                    Add at least {2 - extraction.enumValues.length} more value(s)
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Prompt */}
+                            <div className="mb-4">
+                              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                Extraction Prompt *
+                              </label>
+                              <textarea
+                                value={extraction.prompt}
+                                onChange={(e) =>
+                                  handleLLMExtractionChange(extraction.id, 'prompt', e.target.value)
+                                }
+                                placeholder={
+                                  extraction.outputType === 'bool'
+                                    ? 'e.g., Does the text mention that the patient had a stroke (AVC)?'
+                                    : 'e.g., Classify the severity of the clinical condition described in the text.'
+                                }
+                                rows={3}
+                                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm resize-none"
+                              />
+                              <div className="flex justify-between mt-1">
+                                <p className="text-xs text-gray-400">
+                                  Be specific about what constitutes a positive/negative result
+                                </p>
+                                <span
+                                  className={clsx(
+                                    'text-xs',
+                                    extraction.prompt.length > 2000
+                                      ? 'text-red-500'
+                                      : 'text-gray-400'
+                                  )}
+                                >
+                                  {extraction.prompt.length}/2000
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Test Section */}
+                            <div className="p-4 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700">
+                              <div className="flex items-center justify-between mb-3">
+                                <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                                  Test Extraction
+                                </span>
+                              </div>
+                              <textarea
+                                value={extraction.testText || ''}
+                                onChange={(e) =>
+                                  handleLLMExtractionChange(extraction.id, 'testText', e.target.value)
+                                }
+                                placeholder="Paste sample text here to test the prompt..."
+                                rows={2}
+                                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-sm resize-none mb-3"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleTestLLMExtraction(extraction)}
+                                disabled={
+                                  !extraction.prompt ||
+                                  !extraction.testText ||
+                                  testState.loading ||
+                                  (extraction.outputType === 'enum' && extraction.enumValues.length < 2)
+                                }
+                                className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {testState.loading ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Play className="w-4 h-4" />
+                                )}
+                                Run Test
+                              </button>
+
+                              {/* Test Result */}
+                              {testState.result && (
+                                <div
+                                  className={clsx(
+                                    'mt-3 p-3 rounded-lg border text-sm',
+                                    testState.result.success
+                                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                                      : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                                  )}
+                                >
+                                  <div className="flex items-center gap-2 mb-1">
+                                    {testState.result.success ? (
+                                      <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400" />
+                                    ) : (
+                                      <XCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                                    )}
+                                    <span
+                                      className={clsx(
+                                        'font-medium',
+                                        testState.result.success
+                                          ? 'text-green-700 dark:text-green-300'
+                                          : 'text-red-700 dark:text-red-300'
+                                      )}
+                                    >
+                                      {testState.result.success ? 'Extraction Successful' : 'Extraction Failed'}
+                                    </span>
+                                  </div>
+                                  {testState.result.success && (
+                                    <div className="flex items-center gap-2 mt-2">
+                                      <span className="text-gray-600 dark:text-gray-400">Result:</span>
+                                      <span className="font-mono font-semibold text-gray-900 dark:text-white px-2 py-0.5 bg-gray-100 dark:bg-zinc-700 rounded">
+                                        {String(testState.result.result)}
+                                      </span>
+                                      <span className="text-xs text-gray-400">
+                                        (model: {testState.result.model_used})
+                                      </span>
+                                    </div>
+                                  )}
+                                  {testState.result.error && (
+                                    <p className="text-red-600 dark:text-red-300 mt-1">
+                                      {testState.result.error}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+
+                              {testState.error && (
+                                <div className="mt-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                                  <div className="flex items-center gap-2 text-red-600 dark:text-red-400 text-sm">
+                                    <XCircle className="w-4 h-4" />
+                                    <span>{testState.error}</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="mt-6 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                      <div className="text-sm text-amber-700 dark:text-amber-300">
+                        <strong>Performance Note:</strong> Each row requires an individual LLM call.
+                        For large tables, execution may take several minutes and incur API costs.
+                        Consider testing with a small sample first.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Step: Review */}
+            {currentStepId === 'review' && (
               <div className="space-y-6">
                 {submitError && (
                   <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
@@ -1602,23 +2267,87 @@ export default function NewSilverDatasetPage() {
                       </div>
                     )}
 
+                    {/* LLM Extractions */}
+                    {llmExtractions.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
+                          LLM Extractions ({llmExtractions.length})
+                        </h3>
+                        <div className="space-y-2">
+                          {llmExtractions.map((ext) => {
+                            const sourceCol = availableColumns.find((c) => c.id === ext.sourceColumnId);
+                            return (
+                              <div
+                                key={ext.id}
+                                className="p-3 rounded-lg bg-gray-50 dark:bg-zinc-800"
+                              >
+                                <div className="flex items-center gap-2 mb-1">
+                                  <BrainCircuit className="w-4 h-4 text-purple-500" />
+                                  <code className="text-sm font-mono text-gray-900 dark:text-white">
+                                    {ext.newColumnName || '(unnamed)'}
+                                  </code>
+                                  <span className="px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs">
+                                    {ext.outputType}
+                                  </span>
+                  </div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 ml-6">
+                                  Source: {sourceCol ? `${sourceCol.tableName}.${sourceCol.name}` : '(column)'}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 ml-6 mt-1 line-clamp-2">
+                                  Prompt: {ext.prompt}
+                                </p>
+                                {ext.outputType === 'enum' && ext.enumValues.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 ml-6 mt-1">
+                                    {ext.enumValues.map((v) => (
+                                      <span
+                                        key={v}
+                                        className="px-1.5 py-0.5 text-[10px] rounded bg-gray-200 dark:bg-zinc-700 text-gray-600 dark:text-gray-300"
+                                      >
+                                        {v}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Performance Warning */}
+                        <div className="mt-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                            <p className="text-xs text-amber-700 dark:text-amber-300">
+                              This configuration includes LLM extractions that process each row individually.
+                              Execution time will depend on the number of rows in the Bronze dataset.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Filters */}
                     {filterConditions.length > 0 &&
-                      filterConditions.some((c) => c.columnId) && (
+                      filterConditions.some((c) => c.columnId || c.columnName) && (
                         <div>
                           <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
-                            Filter Conditions ({filterConditions.filter((c) => c.columnId).length})
+                            Filter Conditions ({filterConditions.filter((c) => c.columnId || c.columnName).length})
                           </h3>
                           <div className="p-4 rounded-lg bg-zinc-900 dark:bg-zinc-950">
                             <code className="text-sm text-green-400 font-mono">
                               WHERE{' '}
                               {filterConditions
-                                .filter((c) => c.columnId && c.operator)
+                                .filter((c) => (c.columnId || c.columnName) && c.operator)
                                 .map((c) => {
-                                  const col = availableColumns.find((col) => col.id === c.columnId);
-                                  const colName = col
-                                    ? `${col.tableName}.${col.name}`
-                                    : `column_${c.columnId}`;
+                                  let colName;
+                                  if (c.columnName) {
+                                    colName = c.columnName;
+                                  } else {
+                                    const col = availableColumns.find((col) => col.id === c.columnId);
+                                    colName = col
+                                      ? `${col.tableName}.${col.name}`
+                                      : `column_${c.columnId}`;
+                                  }
                                   if (['IS NULL', 'IS NOT NULL'].includes(c.operator)) {
                                     return `${colName} ${c.operator}`;
                                   }
@@ -1652,10 +2381,10 @@ export default function NewSilverDatasetPage() {
             </button>
 
             <div className="text-sm text-gray-500 dark:text-gray-400">
-              Step {currentStep} of {STEPS.length}
+              Step {currentStep} of {totalSteps}
             </div>
 
-            {currentStep < STEPS.length ? (
+            {currentStep < totalSteps ? (
               <button
                 onClick={() => setCurrentStep(currentStep + 1)}
                 disabled={!canProceed()}

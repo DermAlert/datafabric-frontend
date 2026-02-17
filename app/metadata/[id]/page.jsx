@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import SchemaCanvas from '@/components/metadata/SchemaCanvas';
@@ -40,7 +40,7 @@ import { clsx } from 'clsx';
 import { metadataService, connectionService, imagePathService, relationshipsService } from '@/lib/api';
 import { Select } from '@/components/ui';
 import Link from 'next/link';
-import { getLayoutedElements } from '@/components/canvas';
+import { getLayoutedElementsAsync } from '@/components/canvas';
 
 // Helper Components
 const Accordion = ({ 
@@ -78,52 +78,100 @@ const Accordion = ({
   );
 };
 
-// Schema selector component - shows dropdown only if multiple schemas
+// Multi-schema selector: primary dropdown + extra schema badges + add popover
+// Schema selector: equal badges for all loaded schemas + add popover (no dropdown)
 const SchemaSelector = ({
   schemas,
-  selectedSchemaId,
-  onSelect,
+  loadedSchemaIds,
+  onAddSchema,
+  onRemoveSchema,
   isLoading
 }) => {
+  const [showPopover, setShowPopover] = useState(false);
+  const popoverRef = useRef(null);
+
+  // Close on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target)) {
+        setShowPopover(false);
+      }
+    };
+    if (showPopover) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showPopover]);
+
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-zinc-800 rounded-lg">
         <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
-        <span className="text-sm text-gray-500">Loading schema...</span>
+        <span className="text-sm text-gray-500">Loading schemas...</span>
       </div>
     );
   }
 
-  const selectedSchema = schemas.find(s => s.id === selectedSchemaId);
+  // All loaded schemas (shown as equal badges)
+  const loadedSchemas = schemas.filter(s => loadedSchemaIds.has(s.id));
+  // Schemas available to add (not yet loaded)
+  const availableSchemas = schemas.filter(s => !loadedSchemaIds.has(s.id));
 
-  // If there's only one schema, show it as a label without dropdown
-  if (schemas.length <= 1) {
-    return (
-      <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-zinc-800 rounded-lg">
-        <Layers className="w-4 h-4 text-gray-500" />
-        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          {selectedSchema?.schema_name || 'No schema'}
-        </span>
-      </div>
-    );
-  }
-
-  // Multiple schemas - show dropdown
   return (
-    <div className="flex items-center gap-2">
-      <Layers className="w-4 h-4 text-gray-500" />
-      <select
-        value={selectedSchemaId || ''}
-        onChange={(e) => onSelect(Number(e.target.value))}
-        className="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-      >
-        <option value="">Select Schema</option>
-        {schemas.map(schema => (
-          <option key={schema.id} value={schema.id}>
-            {schema.schema_name}
-          </option>
-        ))}
-      </select>
+    <div className="flex items-center gap-2 flex-wrap">
+      <Layers className="w-4 h-4 text-gray-500 shrink-0" />
+
+      {/* Loaded schema badges */}
+      {loadedSchemas.map(schema => (
+        <span
+          key={schema.id}
+          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-lg"
+        >
+          {schema.schema_name}
+          <button
+            onClick={() => onRemoveSchema(schema.id)}
+            className="hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded p-0.5 transition-colors"
+            title={`Remove ${schema.schema_name} from canvas`}
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </span>
+      ))}
+
+      {/* Add schema button + popover */}
+      {availableSchemas.length > 0 && (
+        <div className="relative" ref={popoverRef}>
+          <button
+            onClick={() => setShowPopover(!showPopover)}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/10 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+            title="Add a schema to the canvas"
+          >
+            <Plus className="w-4 h-4" />
+            Schema
+          </button>
+
+          {showPopover && (
+            <div className="absolute left-0 top-full mt-2 w-56 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg shadow-xl z-50 py-1 animate-in fade-in zoom-in-95 duration-100">
+              <div className="px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                Add Schema to Canvas
+              </div>
+              {availableSchemas.map(schema => (
+                <button
+                  key={schema.id}
+                  onClick={() => {
+                    onAddSchema(schema.id);
+                    setShowPopover(false);
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200 transition-colors"
+                >
+                  <Layers className="w-3.5 h-3.5 text-gray-400" />
+                  {schema.schema_name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -138,7 +186,6 @@ function SchemaEditorContent() {
   const [connection, setConnection] = useState(null);
   const [connectionType, setConnectionType] = useState(null);
   const [schemas, setSchemas] = useState([]);
-  const [selectedSchemaId, setSelectedSchemaId] = useState(null);
   const [tables, setTables] = useState([]);
   const [tableDetails, setTableDetails] = useState({});
 
@@ -151,6 +198,7 @@ function SchemaEditorContent() {
   // UI state
   const [viewMode, setViewMode] = useState('canvas');
   const [showSuggestions, setShowSuggestions] = useState(true);
+  const [collapsedSections, setCollapsedSections] = useState({});
   const [isRelModalOpen, setIsRelModalOpen] = useState(false);
   const [activeImageModal, setActiveImageModal] = useState(null);
   const [activeSampleModal, setActiveSampleModal] = useState(null);
@@ -198,6 +246,9 @@ function SchemaEditorContent() {
   const [highlightedColumns, setHighlightedColumns] = useState([]);
   const [clickedColumn, setClickedColumn] = useState(null);
 
+  // Multi-schema state: tracks ALL schema IDs whose tables are on the canvas
+  const [loadedSchemaIds, setLoadedSchemaIds] = useState(new Set());
+
   // Fetch connection data
   useEffect(() => {
     const fetchConnection = async () => {
@@ -235,13 +286,14 @@ function SchemaEditorContent() {
       return params.schema;
     }
     
-    // For PostgreSQL-like databases, default to 'public' schema
-    // PostgreSQL has separate concepts of database and schema
+    // For PostgreSQL-like databases, don't assume 'public' —
+    // show all schemas and let the user pick (databases may use 
+    // custom schemas like 'core', 'app', etc.)
     const postgresLikeTypes = ['postgresql', 'postgres'];
     if (connType && postgresLikeTypes.some(t => 
       connType.name.toLowerCase().includes(t)
     )) {
-      return 'public';
+      return null; // Show all schemas
     }
     
     // For other databases (MySQL, MongoDB, etc.), database = schema
@@ -274,10 +326,7 @@ function SchemaEditorContent() {
         }
         
         setSchemas(filteredSchemas);
-        // Auto-select the schema (should be only one now)
-        if (filteredSchemas.length > 0 && !selectedSchemaId) {
-          setSelectedSchemaId(filteredSchemas[0].id);
-        }
+        // Don't auto-select — let user choose from the schema picker in the empty state
       } catch (err) {
         console.error('Failed to fetch schemas:', err);
         setError('Failed to load schemas');
@@ -291,13 +340,18 @@ function SchemaEditorContent() {
     }
   }, [connectionId, connection, connectionType, getTargetSchemaName]);
 
-  // Fetch tables and related data
+  // Fetch tables and related data from ALL loaded schemas
   const refreshData = useCallback(async (isSilent = false) => {
-    if (!selectedSchemaId) return;
+    if (loadedSchemaIds.size === 0) return;
     
     if (!isSilent) setIsLoadingTables(true);
     try {
-      const tableList = await metadataService.listTables(selectedSchemaId);
+      // Load tables from ALL loaded schemas in parallel
+      const schemaIdArray = [...loadedSchemaIds];
+      const allTableLists = await Promise.all(
+        schemaIdArray.map(schemaId => metadataService.listTables(schemaId))
+      );
+      const tableList = allTableLists.flat();
       setTables(tableList);
       
       // Fetch details for each table (including columns)
@@ -312,7 +366,7 @@ function SchemaEditorContent() {
       });
       setTableDetails(detailsMap);
 
-      // Fetch relationships and suggestions
+      // Fetch relationships and suggestions (connection-level, spans all schemas)
       try {
         const [rels, pending, accepted, rejected] = await Promise.all([
           relationshipsService.listForConnection(connectionId),
@@ -353,7 +407,7 @@ function SchemaEditorContent() {
     } finally {
       if (!isSilent) setIsLoadingTables(false);
     }
-  }, [selectedSchemaId, connectionId]);
+  }, [loadedSchemaIds, connectionId]);
 
   // Initial fetch
   useEffect(() => {
@@ -584,6 +638,38 @@ function SchemaEditorContent() {
     setClickedColumn(colId);
   }, [clickedColumn, relationships, suggestions]);
 
+  // Multi-schema handlers
+  const handleAddSchema = useCallback((schemaId) => {
+    setLoadedSchemaIds(prev => {
+      if (prev.has(schemaId)) return prev;
+      return new Set([...prev, schemaId]);
+    });
+    setInitialLayoutDone(false);
+    setDataFullyLoaded(false);
+  }, []);
+
+  const handleRemoveSchema = useCallback((schemaId) => {
+    setLoadedSchemaIds(prev => {
+      const next = new Set(prev);
+      next.delete(schemaId);
+      return next;
+    });
+    setInitialLayoutDone(false);
+    setDataFullyLoaded(false);
+  }, []);
+
+  // Add a hidden table's schema to the canvas (from suggestion cross-schema tags)
+  const handleAddHiddenTable = useCallback(async (tableId) => {
+    try {
+      const details = await metadataService.getTableDetails(tableId);
+      if (details.schema_id) {
+        handleAddSchema(details.schema_id);
+      }
+    } catch (err) {
+      console.error('Failed to add table to canvas:', err);
+    }
+  }, [handleAddSchema]);
+
   // Convert tables to React Flow nodes
   useEffect(() => {
     if (tables.length === 0) {
@@ -595,6 +681,8 @@ function SchemaEditorContent() {
     const newNodes = tables.map((table, index) => {
       const details = tableDetails[table.id];
       const nodeId = `table_${table.id}`;
+      const schemaName = details?.schema_name || schemas.find(s => s.id === table.schema_id)?.schema_name || '';
+      const showSchemaBadges = loadedSchemaIds.size > 1;
       const columns = (details?.columns || []).map(col => ({
         id: `col_${col.id}`,
         name: col.column_name,
@@ -614,7 +702,9 @@ function SchemaEditorContent() {
           label: table.table_name,
           active: true,
           columns,
-          schemaName: details?.schema_name || '',
+          schemaName,
+          // Show schema badge when multiple schemas are loaded
+          schemaBadge: showSchemaBadges ? schemaName : null,
           rowCount: table.estimated_row_count,
           // Attach callbacks directly when creating nodes
           onToggleActive: handleToggleActive,
@@ -711,13 +801,20 @@ function SchemaEditorContent() {
 
     // Apply layout logic: only auto-layout once when data is fully loaded
     if (dataFullyLoaded && !initialLayoutDone) {
-      // First time with complete data: Apply DAGRE layout
-      const { nodes: layoutedNodes } = getLayoutedElements(newNodes, newEdges);
-      setNodes(layoutedNodes);
+      // First time with complete data: Apply ELK layout (async)
       setEdges(newEdges);
-      setInitialLayoutDone(true);
-      // Trigger fitView after layout
-      setTimeout(() => setLayoutVersion(v => v + 1), 0);
+      getLayoutedElementsAsync(newNodes, newEdges).then(({ nodes: layoutedNodes }) => {
+        setNodes(layoutedNodes);
+        setInitialLayoutDone(true);
+        // Trigger fitView after layout
+        setTimeout(() => setLayoutVersion(v => v + 1), 50);
+      }).catch((err) => {
+        // Keep app usable even if layout engine fails
+        console.error('ELK layout failed:', err);
+        setNodes(newNodes);
+        setInitialLayoutDone(true);
+        setTimeout(() => setLayoutVersion(v => v + 1), 0);
+      });
     } else if (initialLayoutDone) {
       // After initial layout: preserve user positions, just update data
       setNodes((prevNodes) => {
@@ -733,7 +830,7 @@ function SchemaEditorContent() {
     }
     // If !dataFullyLoaded, do nothing - wait for complete data
 
-  }, [tables, tableDetails, relationships, suggestions, imagePathColumns, dataFullyLoaded, initialLayoutDone, highlightedColumns, clickedColumn, setNodes, setEdges, handleToggleActive, handleToggleColumnActive, handleLinkImage, handleViewSample, handleViewDistinct, handleColumnClick]);
+  }, [tables, tableDetails, relationships, suggestions, imagePathColumns, dataFullyLoaded, initialLayoutDone, highlightedColumns, clickedColumn, loadedSchemaIds, schemas, setNodes, setEdges, handleToggleActive, handleToggleColumnActive, handleLinkImage, handleViewSample, handleViewDistinct, handleColumnClick]);
 
   // Discover relationships
   const handleDiscover = async () => {
@@ -783,10 +880,14 @@ function SchemaEditorContent() {
     setEditingEdge(edge);
   }, []);
 
-  const onLayout = useCallback(() => {
-    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(nodes, edges);
-    setNodes([...layoutedNodes]);
-    setEdges([...layoutedEdges]);
+  const onLayout = useCallback(async () => {
+    try {
+      const { nodes: layoutedNodes, edges: layoutedEdges } = await getLayoutedElementsAsync(nodes, edges);
+      setNodes([...layoutedNodes]);
+      setEdges([...layoutedEdges]);
+    } catch (err) {
+      console.error('ELK auto-layout failed:', err);
+    }
     // Increment layoutVersion to trigger minZoom recalculation and fitView in SchemaCanvas
     setLayoutVersion(v => v + 1);
   }, [nodes, edges, setNodes, setEdges]);
@@ -959,9 +1060,6 @@ function SchemaEditorContent() {
     return { leftTable, leftCol, rightTable, rightCol };
   };
 
-  // Get selected schema name
-  const selectedSchema = schemas.find(s => s.id === selectedSchemaId);
-
   // Loading state
   if (isLoadingConnection) {
     return (
@@ -1012,19 +1110,22 @@ function SchemaEditorContent() {
                 </span>
               )}
             </h1>
-            {selectedSchema && (
-              <p className="text-xs text-gray-500">
-                Schema: {selectedSchema.schema_name} • {tables.length} tables
-              </p>
-            )}
+            <p className="text-xs text-gray-500">
+              {loadedSchemaIds.size === 0
+                ? 'No schema selected'
+                : loadedSchemaIds.size === 1
+                  ? `${tables.length} tables`
+                  : `${loadedSchemaIds.size} schemas • ${tables.length} tables`}
+            </p>
           </div>
           
           <div className="h-6 w-px bg-gray-200 dark:bg-zinc-800 mx-2" />
           
           <SchemaSelector
             schemas={schemas}
-            selectedSchemaId={selectedSchemaId}
-            onSelect={setSelectedSchemaId}
+            loadedSchemaIds={loadedSchemaIds}
+            onAddSchema={handleAddSchema}
+            onRemoveSchema={handleRemoveSchema}
             isLoading={isLoadingSchemas}
           />
           
@@ -1106,22 +1207,35 @@ function SchemaEditorContent() {
             </div>
           ) : tables.length === 0 ? (
             <div className="h-full flex items-center justify-center">
-              <div className="text-center">
-                <TableIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No tables found</h3>
-                <p className="text-gray-500 mb-4">
-                  {selectedSchemaId 
-                    ? 'This schema has no tables. Try syncing the connection.'
-                    : 'Select a schema to view its tables.'}
-                </p>
-                {selectedSchemaId && (
-                  <Link
-                    href="/connections"
-                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    Go to Connections
-                  </Link>
+              <div className="text-center max-w-lg">
+                {loadedSchemaIds.size === 0 ? (
+                  <>
+                    <Layers className="w-12 h-12 text-blue-300 dark:text-blue-800 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Select a schema</h3>
+                    <p className="text-gray-500 mb-6">
+                      Choose a schema to load its tables onto the canvas. You can add multiple schemas later.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 w-full max-w-lg">
+                      {schemas.map(schema => (
+                        <button
+                          key={schema.id}
+                          onClick={() => handleAddSchema(schema.id)}
+                          className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-700 hover:text-blue-700 dark:hover:text-blue-400 transition-all text-left"
+                        >
+                          <Layers className="w-4 h-4 text-gray-400 shrink-0" />
+                          <span className="truncate">{schema.schema_name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <TableIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No tables found</h3>
+                    <p className="text-gray-500">
+                      This schema has no tables. Try adding another schema.
+                    </p>
+                  </>
                 )}
               </div>
             </div>
@@ -1175,16 +1289,100 @@ function SchemaEditorContent() {
           {/* Scrollable Content Area */}
           <div className="flex-1 overflow-y-auto min-w-[320px]">
             <div className="p-4 space-y-4">
-              {suggestions.map((suggestion) => {
+              {/* Sort suggestions: both visible first, then by hidden count (0 → 1 → 2), then by confidence */}
+              {(() => {
+                const sorted = [...suggestions].sort((a, b) => {
+                  const aLeft = tables.some(t => t.id === a.left_column?.table_id);
+                  const aRight = tables.some(t => t.id === a.right_column?.table_id);
+                  const bLeft = tables.some(t => t.id === b.left_column?.table_id);
+                  const bRight = tables.some(t => t.id === b.right_column?.table_id);
+                  const aHidden = (aLeft ? 0 : 1) + (aRight ? 0 : 1);
+                  const bHidden = (bLeft ? 0 : 1) + (bRight ? 0 : 1);
+                  if (aHidden !== bHidden) return aHidden - bHidden;
+                  return (b.confidence_score || 0) - (a.confidence_score || 0);
+                });
+
+                // Count visible vs hidden for section headers
+                const visibleCount = sorted.filter(s => {
+                  const lv = tables.some(t => t.id === s.left_column?.table_id);
+                  const rv = tables.some(t => t.id === s.right_column?.table_id);
+                  return lv && rv;
+                }).length;
+                const hiddenCount = sorted.length - visibleCount;
+
+                let shownVisibleHeader = false;
+                let shownHiddenHeader = false;
+
+                return sorted.map((suggestion) => {
+                  const leftVisible = tables.some(t => t.id === suggestion.left_column?.table_id);
+                  const rightVisible = tables.some(t => t.id === suggestion.right_column?.table_id);
+                  const isVisible = leftVisible && rightVisible;
+
+                  // Section headers (collapsible)
+                  let header = null;
+                  let sectionKey = isVisible ? 'onCanvas' : 'otherSchemas';
+
+                  if (isVisible && !shownVisibleHeader && visibleCount > 0) {
+                    shownVisibleHeader = true;
+                    header = (
+                      <button
+                        key="header-visible"
+                        onClick={() => setCollapsedSections(prev => ({ ...prev, onCanvas: !prev.onCanvas }))}
+                        className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 dark:text-gray-400 pb-1 hover:text-gray-700 dark:hover:text-gray-200 transition-colors group"
+                      >
+                        <span className="flex items-center gap-2">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                          On canvas
+                          <span className="text-[10px] font-normal text-gray-400 bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-full">{visibleCount}</span>
+                        </span>
+                        {collapsedSections.onCanvas
+                          ? <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+                          : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+                      </button>
+                    );
+                  } else if (!isVisible && !shownHiddenHeader && hiddenCount > 0) {
+                    shownHiddenHeader = true;
+                    header = (
+                      <button
+                        key="header-hidden"
+                        onClick={() => setCollapsedSections(prev => ({ ...prev, otherSchemas: !prev.otherSchemas }))}
+                        className={clsx("w-full flex items-center justify-between text-xs font-semibold text-gray-500 dark:text-gray-400 pb-1 hover:text-gray-700 dark:hover:text-gray-200 transition-colors group", visibleCount > 0 && "pt-3 mt-3 border-t border-gray-200 dark:border-zinc-700")}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                          Other schemas
+                          <span className="text-[10px] font-normal text-gray-400 bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-full">{hiddenCount}</span>
+                        </span>
+                        {collapsedSections.otherSchemas
+                          ? <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+                          : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+                      </button>
+                    );
+                  }
+
+                  return { suggestion, header, sectionKey, leftVisible, rightVisible, isVisible };
+                });
+              })().map(({ suggestion, header, sectionKey, leftVisible, rightVisible, isVisible }) => {
                 const names = resolveNames(suggestion);
+                const leftTableId = suggestion.left_column?.table_id;
+                const rightTableId = suggestion.right_column?.table_id;
+                const hasHiddenTable = !isVisible;
+                const isCollapsed = collapsedSections[sectionKey];
+
                 return (
-                  <div key={suggestion.id} className="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg p-3 shadow-sm animate-in fade-in slide-in-from-right-4 duration-300">
+                  <React.Fragment key={suggestion.id}>
+                    {header}
+                    {isCollapsed ? null : (
+                    <div className={clsx("bg-white dark:bg-zinc-800 border rounded-lg p-3 shadow-sm", isVisible ? "border-gray-200 dark:border-zinc-700" : "border-gray-200/60 dark:border-zinc-700/60 opacity-80")}>
                     <div className="flex items-start justify-between mb-2">
                       <div className="text-xs font-mono text-gray-600 dark:text-gray-300 break-all pr-2">
-                        {names.leftTable}.{names.leftCol} <span className="text-gray-400 mx-1">→</span> {names.rightTable}.{names.rightCol}
+                        <span className={!leftVisible ? 'opacity-50' : ''}>{names.leftTable}</span>
+                        .{names.leftCol} <span className="text-gray-400 mx-1">→</span> 
+                        <span className={!rightVisible ? 'opacity-50' : ''}>{names.rightTable}</span>
+                        .{names.rightCol}
                       </div>
                       <span className={clsx(
-                        "text-[10px] font-bold px-1.5 py-0.5 rounded",
+                        "text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0",
                         suggestion.confidence_score > 0.8 
                           ? "text-green-600 bg-green-50 dark:bg-green-900/20" 
                           : "text-amber-600 bg-amber-50 dark:bg-amber-900/20"
@@ -1192,6 +1390,33 @@ function SchemaEditorContent() {
                         {Math.round(suggestion.confidence_score * 100)}%
                       </span>
                     </div>
+
+                    {/* Cross-schema hidden table tags */}
+                    {hasHiddenTable && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {!leftVisible && leftTableId && (
+                          <button
+                            onClick={() => handleAddHiddenTable(leftTableId)}
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-1.5 py-0.5 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+                            title={`Add ${names.leftTable}'s schema to canvas`}
+                          >
+                            <Plus className="w-2.5 h-2.5" />
+                            {names.leftTable} (hidden)
+                          </button>
+                        )}
+                        {!rightVisible && rightTableId && (
+                          <button
+                            onClick={() => handleAddHiddenTable(rightTableId)}
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-1.5 py-0.5 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+                            title={`Add ${names.rightTable}'s schema to canvas`}
+                          >
+                            <Plus className="w-2.5 h-2.5" />
+                            {names.rightTable} (hidden)
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {suggestion.warning && (
                       <div className="flex items-center gap-1.5 text-[10px] text-amber-600 mb-2">
                         <AlertCircle className="w-3 h-3" />
@@ -1213,6 +1438,8 @@ function SchemaEditorContent() {
                       </button>
                     </div>
                   </div>
+                    )}
+                  </React.Fragment>
                 );
               })}
               

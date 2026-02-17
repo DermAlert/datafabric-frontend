@@ -8,12 +8,21 @@
 // =============================================
 
 export type SourceType = 'bronze' | 'silver';
+export type ShareTableSourceType =
+  | 'delta'
+  | 'bronze'
+  | 'silver'
+  | 'bronze_virtualized'
+  | 'silver_virtualized';
+export type DatasetConfigType = 'persistent' | 'virtualized';
+export type DataApiFormat = 'json' | 'csv' | 'ndjson';
 
 export interface AvailableDataset {
   config_id: number;
   name: string;
   description: string | null;
   source_type: SourceType;
+  config_type?: DatasetConfigType;
   output_path: string;
   current_version: number;
   last_execution_status: string;
@@ -122,23 +131,24 @@ export interface Table {
   schema_name: string;
   share_id: number;
   share_name: string;
-  dataset_id: number;
-  dataset_name: string;
+  dataset_id: number | null;
+  dataset_name: string | null;
   status: string;
   share_mode: ShareMode;
   filter_condition: string | null;
   current_version: number | null;
   table_format: string;
   partition_columns: string | null;
-  storage_location: string;
+  storage_location: string | null;
   data_criacao: string;
   data_atualizacao: string;
   // Campos derivados para compatibilidade com UI
   table_id?: number;
   table_name?: string;
-  source_type?: SourceType;
-  source_config_id?: number;
+  source_type?: ShareTableSourceType;
+  source_config_id?: number | null;
   source_config_name?: string;
+  config_type?: DatasetConfigType;
 }
 
 export interface CreateTableFromBronzeRequest {
@@ -154,6 +164,48 @@ export interface CreateTableFromSilverRequest {
   name: string;
   description?: string;
   share_mode?: ShareMode;
+}
+
+export interface CreateTableFromBronzeVirtualizedRequest {
+  bronze_virtualized_config_id: number;
+  name: string;
+  description?: string;
+}
+
+export interface CreateTableFromSilverVirtualizedRequest {
+  silver_virtualized_config_id: number;
+  name: string;
+  description?: string;
+}
+
+export interface TableDataApiColumn {
+  name: string;
+  type: string | null;
+}
+
+export interface TableDataApiJsonResponse {
+  share: string;
+  schema_name: string;
+  table: string;
+  source_type: ShareTableSourceType;
+  columns: TableDataApiColumn[];
+  data: Record<string, unknown>[];
+  row_count: number;
+  has_more: boolean;
+  execution_time_seconds: number;
+}
+
+export interface TableDataApiRequest {
+  format?: DataApiFormat;
+  limit?: number;
+  offset?: number;
+}
+
+export interface TableDataApiResponse {
+  contentType: string;
+  rowCount: number | null;
+  hasMore: boolean | null;
+  payload: TableDataApiJsonResponse | string;
 }
 
 // =============================================

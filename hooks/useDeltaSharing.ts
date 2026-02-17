@@ -5,6 +5,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { deltaSharingService } from '@/lib/api/services/deltaSharing';
+import { bronzeService } from '@/lib/api/services/bronze';
+import { silverService } from '@/lib/api/services/silver';
 import type {
   Share,
   Schema,
@@ -16,11 +18,16 @@ import type {
   CreateSchemaRequest,
   CreateTableFromBronzeRequest,
   CreateTableFromSilverRequest,
+  CreateTableFromBronzeVirtualizedRequest,
+  CreateTableFromSilverVirtualizedRequest,
   CreateRecipientRequest,
   UpdateRecipientRequest,
   ShareWithDetails,
   SchemaWithTables,
+  DatasetConfigType,
 } from '@/types/api/deltaSharing';
+import type { VirtualizedConfig } from '@/types/api/bronze';
+import type { SilverVirtualizedConfig } from '@/types/api/silver';
 
 interface UseDeltaSharingOptions {
   autoFetch?: boolean;
@@ -65,6 +72,16 @@ interface UseDeltaSharingReturn {
     schemaId: number,
     data: CreateTableFromSilverRequest
   ) => Promise<Table | null>;
+  addTableFromBronzeVirtualized: (
+    shareId: number,
+    schemaId: number,
+    data: CreateTableFromBronzeVirtualizedRequest
+  ) => Promise<Table | null>;
+  addTableFromSilverVirtualized: (
+    shareId: number,
+    schemaId: number,
+    data: CreateTableFromSilverVirtualizedRequest
+  ) => Promise<Table | null>;
   removeTable: (shareId: number, schemaId: number, tableId: number) => Promise<boolean>;
   
   // Recipient operations
@@ -105,6 +122,48 @@ export function useDeltaSharing(
 
   const clearError = useCallback(() => setError(null), []);
 
+  const normalizeConfigType = useCallback(
+    (sourceType: Table['source_type'], storageLocation: Table['storage_location']): DatasetConfigType => {
+      if (sourceType === 'bronze_virtualized' || sourceType === 'silver_virtualized') {
+        return 'virtualized';
+      }
+      return storageLocation ? 'persistent' : 'virtualized';
+    },
+    []
+  );
+
+  const mapBronzeVirtualizedToAvailableDataset = useCallback(
+    (config: VirtualizedConfig): AvailableDataset => ({
+      config_id: config.id,
+      name: config.name,
+      description: config.description || null,
+      source_type: 'bronze',
+      config_type: 'virtualized',
+      output_path: '',
+      current_version: 1,
+      last_execution_status: 'active',
+      last_execution_at: config.updated_at,
+      total_rows: 0,
+    }),
+    []
+  );
+
+  const mapSilverVirtualizedToAvailableDataset = useCallback(
+    (config: SilverVirtualizedConfig): AvailableDataset => ({
+      config_id: config.id,
+      name: config.name,
+      description: config.description || null,
+      source_type: 'silver',
+      config_type: 'virtualized',
+      output_path: '',
+      current_version: 1,
+      last_execution_status: 'active',
+      last_execution_at: config.updated_at,
+      total_rows: 0,
+    }),
+    []
+  );
+
   // =============================================
   // Fetch Functions
   // =============================================
@@ -128,14 +187,21 @@ export function useDeltaSharing(
                   // Buscar tables do schema via API
                   const tablesResponse = await deltaSharingService.schemas.searchTables(share.id, schema.id);
                   // Normalizar os dados das tables para compatibilidade com UI
-                  const normalizedTables = (tablesResponse.items || []).map((table) => ({
+                  const normalizedTables = (tablesResponse.items || []).map((table) => {
+                    const fallbackLayer =
+                      table.dataset_name && table.dataset_name.toLowerCase().includes('bronze')
+                        ? 'bronze'
+                        : 'silver';
+                    return {
                     ...table,
                     table_id: table.id,
                     table_name: table.name,
-                    source_type: table.dataset_name?.startsWith('bronze_') ? 'bronze' as const : 'silver' as const,
-                    source_config_id: table.dataset_id,
-                    source_config_name: table.dataset_name,
-                  }));
+                    source_type: table.source_type || fallbackLayer,
+                    source_config_id: table.source_config_id ?? table.dataset_id ?? null,
+                    source_config_name: table.source_config_name || table.dataset_name || undefined,
+                    config_type: table.config_type || normalizeConfigType(table.source_type, table.storage_location),
+                    };
+                  });
                   return {
                     ...schema,
                     tables: normalizedTables,
@@ -169,7 +235,7 @@ export function useDeltaSharing(
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [normalizeConfigType]);
 
   const fetchRecipients = useCallback(async () => {
     setIsLoadingRecipients(true);
@@ -186,14 +252,39 @@ export function useDeltaSharing(
   const fetchDatasets = useCallback(async (sourceType?: SourceType) => {
     setIsLoadingDatasets(true);
     try {
-      const datasets = await deltaSharingService.datasets.list(sourceType);
-      setAvailableDatasets(datasets);
+      const [datasets, bronzeVirtualized, silverVirtualized] = await Promise.all([
+        deltaSharingService.datasets.list(sourceType, { includeVirtualized: true }),
+        sourceType && sourceType !== 'bronze'
+          ? Promise.resolve([])
+          : bronzeService.virtualized.list().catch(() => []),
+        sourceType && sourceType !== 'silver'
+          ? Promise.resolve([])
+          : silverService.virtualized.list().catch(() => []),
+      ]);
+
+      const normalizedDatasets = datasets.map((dataset) => ({
+        ...dataset,
+        config_type: dataset.config_type || 'persistent',
+      }));
+
+      const merged = [
+        ...normalizedDatasets,
+        ...bronzeVirtualized.map(mapBronzeVirtualizedToAvailableDataset),
+        ...silverVirtualized.map(mapSilverVirtualizedToAvailableDataset),
+      ];
+
+      const deduped = merged.filter((dataset, index, arr) => {
+        const key = `${dataset.source_type}:${dataset.config_type}:${dataset.config_id}`;
+        return arr.findIndex((item) => `${item.source_type}:${item.config_type}:${item.config_id}` === key) === index;
+      });
+
+      setAvailableDatasets(deduped);
     } catch (err) {
       handleError(err, 'Failed to fetch available datasets');
     } finally {
       setIsLoadingDatasets(false);
     }
-  }, []);
+  }, [mapBronzeVirtualizedToAvailableDataset, mapSilverVirtualizedToAvailableDataset]);
 
   // =============================================
   // Share Operations
@@ -317,6 +408,50 @@ export function useDeltaSharing(
         return table;
       } catch (err) {
         handleError(err, 'Failed to add table from Silver');
+        return null;
+      }
+    },
+    [fetchShares]
+  );
+
+  const addTableFromBronzeVirtualized = useCallback(
+    async (
+      shareId: number,
+      schemaId: number,
+      data: CreateTableFromBronzeVirtualizedRequest
+    ): Promise<Table | null> => {
+      try {
+        const table = await deltaSharingService.tables.createFromBronzeVirtualized(
+          shareId,
+          schemaId,
+          data
+        );
+        await fetchShares();
+        return table;
+      } catch (err) {
+        handleError(err, 'Failed to add table from Bronze virtualized');
+        return null;
+      }
+    },
+    [fetchShares]
+  );
+
+  const addTableFromSilverVirtualized = useCallback(
+    async (
+      shareId: number,
+      schemaId: number,
+      data: CreateTableFromSilverVirtualizedRequest
+    ): Promise<Table | null> => {
+      try {
+        const table = await deltaSharingService.tables.createFromSilverVirtualized(
+          shareId,
+          schemaId,
+          data
+        );
+        await fetchShares();
+        return table;
+      } catch (err) {
+        handleError(err, 'Failed to add table from Silver virtualized');
         return null;
       }
     },
@@ -489,6 +624,8 @@ export function useDeltaSharing(
     // Table operations
     addTableFromBronze,
     addTableFromSilver,
+    addTableFromBronzeVirtualized,
+    addTableFromSilverVirtualized,
     removeTable,
     
     // Recipient operations

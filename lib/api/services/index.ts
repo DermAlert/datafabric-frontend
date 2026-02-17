@@ -25,3 +25,6 @@ export { silverService } from './silver';
 
 export * from './deltaSharing';
 export { deltaSharingService } from './deltaSharing';
+
+export * from './storageBrowser';
+export { storageBrowserService } from './storageBrowser';
