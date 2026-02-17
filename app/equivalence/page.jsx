@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, memo } from 'react';
+import React, { useState, useCallback, useEffect, useRef, memo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import Link from 'next/link';
 import { clsx } from 'clsx';
@@ -8,6 +9,7 @@ import {
   Plus,
   X,
   Columns,
+  ChevronRight,
   MoreVertical,
   Pencil,
   Trash2,
@@ -46,6 +48,27 @@ const getConnectionColor = (type) => {
   };
   return map[type?.toLowerCase()] || '#64748b';
 };
+
+const getSourceColor = (sourceName) => {
+  const palette = [
+    '#3b82f6', // blue
+    '#22c55e', // green
+    '#a855f7', // purple
+    '#f59e0b', // amber
+    '#ef4444', // red
+    '#06b6d4', // cyan
+    '#ec4899', // pink
+    '#84cc16', // lime
+  ];
+  if (!sourceName) return '#64748b';
+  let hash = 0;
+  for (let i = 0; i < sourceName.length; i++) {
+    hash = sourceName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return palette[Math.abs(hash) % palette.length];
+};
+
+const DISTINCT_PAGE_SIZE = 12;
 
 const formatDate = (dateString) => {
   if (!dateString) return 'Never';
@@ -282,7 +305,16 @@ const AddColumnMappingModal = memo(function AddColumnMappingModal({
 
   useEffect(() => {
     if (isOpen) {
-      connectionService.list().then(setConnections).catch(console.error);
+      connectionService
+        .list()
+        .then((allConnections) => {
+          // Equivalence column mapping only supports metadata sources.
+          const metadataConnections = allConnections.filter(
+            (conn) => conn.content_type === 'metadata'
+          );
+          setConnections(metadataConnections);
+        })
+        .catch(console.error);
     }
   }, [isOpen]);
 
@@ -334,7 +366,7 @@ const AddColumnMappingModal = memo(function AddColumnMappingModal({
           </div>
         </div>
 
-        <div className="h-64 overflow-y-auto border border-gray-200 dark:border-zinc-700 rounded-lg bg-gray-50 dark:bg-zinc-900">
+        <div className="h-64 overflow-auto border border-gray-200 dark:border-zinc-700 rounded-lg bg-gray-50 dark:bg-zinc-900">
           {isLoadingCols ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="w-6 h-6 animate-spin text-purple-500" />
@@ -345,33 +377,54 @@ const AddColumnMappingModal = memo(function AddColumnMappingModal({
               <p className="text-sm">No available columns found</p>
             </div>
           ) : (
-            <table className="w-full text-sm text-left">
-              <thead className="bg-white dark:bg-zinc-800 sticky top-0">
-                <tr>
-                  <th className="px-4 py-2 font-medium">Table</th>
-                  <th className="px-4 py-2 font-medium">Column</th>
-                  <th className="px-4 py-2 font-medium">Type</th>
-                  <th className="px-4 py-2 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
-                {filteredColumns.slice(0, 50).map((col) => (
-                  <tr key={col.id} className="hover:bg-white dark:hover:bg-zinc-800">
-                    <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{col.table_name}</td>
-                    <td className="px-4 py-2 font-medium text-gray-900 dark:text-white">{col.column_name}</td>
-                    <td className="px-4 py-2 text-gray-500 text-xs">{col.data_type}</td>
-                    <td className="px-4 py-2 text-right">
-                      <button
-                        onClick={() => onAdd(col.id)}
-                        className="text-xs px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded hover:bg-purple-200"
+            <div className="p-2 space-y-2">
+              {filteredColumns.slice(0, 50).map((col) => (
+                <div
+                  key={col.id}
+                  className="group flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:border-purple-300 dark:hover:border-purple-700 hover:shadow-sm transition-all"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: getSourceColor(col.data_source_name) }}
+                        aria-hidden="true"
+                        title={col.data_source_name}
+                      />
+                      <span className="truncate font-medium" title={col.data_source_name}>
+                        {col.data_source_name}
+                      </span>
+                      <span className="text-gray-300 dark:text-gray-600">•</span>
+                      <span className="truncate" title={`${col.schema_name}.${col.table_name}`}>
+                        {col.schema_name}.{col.table_name}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="font-mono text-sm font-medium text-gray-900 dark:text-white truncate"
+                        title={col.column_name}
                       >
-                        Add
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        {col.column_name}
+                      </span>
+                      <span
+                        className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-zinc-700 text-gray-500 dark:text-gray-300 uppercase"
+                        title={col.data_type}
+                      >
+                        {col.data_type}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => onAdd(col.id)}
+                    className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30 rounded-md hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
         </div>
         <p className="text-xs text-gray-500 text-right">Showing top 50 matches</p>
@@ -388,88 +441,374 @@ const AddColumnMappingModal = memo(function AddColumnMappingModal({
   );
 });
 
-const AddValueMappingModal = memo(function AddValueMappingModal({
-  isOpen,
-  onClose,
+const ColumnValueMapper = memo(function ColumnValueMapper({
+  mapping,
+  standardValues,
   onAdd,
-  mappedColumns,
-  standardValues
+  existingMappings,
 }) {
-  const [sourceColumnId, setSourceColumnId] = useState('');
+  const [isExpanded, setIsExpanded] = useState(false);
   const [sourceValue, setSourceValue] = useState('');
+  const [showManualInput, setShowManualInput] = useState(false);
   const [standardValue, setStandardValue] = useState('');
   const [customStandardValue, setCustomStandardValue] = useState('');
+  const [distinctOrder, setDistinctOrder] = useState('frequency_desc');
+  const [distinctItems, setDistinctItems] = useState([]);
+  const [visibleSuggestions, setVisibleSuggestions] = useState(5);
+  const [distinctNextOffset, setDistinctNextOffset] = useState(null);
+  const [distinctHasMore, setDistinctHasMore] = useState(false);
+  const [isLoadingDistinct, setIsLoadingDistinct] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [distinctError, setDistinctError] = useState('');
+  const distinctCacheRef = useRef(new Map());
 
-  const handleSubmit = () => {
-    if (!sourceColumnId || !sourceValue) return;
+  const color = getConnectionColor(mapping.data_source_type);
+  const columnId = mapping.column_id;
+
+  // Existing value mappings for this specific column
+  const columnMappings = (existingMappings || []).filter(
+    (vm) => vm.source_column_id === columnId
+  );
+
+  const normalizeValueToInput = (value) => {
+    if (value === null) return 'null';
+    if (value === undefined) return '';
+    return String(value);
+  };
+
+  const formatSuggestion = (value) => {
+    if (value === null) return 'null';
+    const str = String(value);
+    return str.length > 30 ? `${str.slice(0, 30)}...` : str;
+  };
+
+  const applyDistinctResponse = useCallback((response, append) => {
+    const withCount = response.distinct_values_with_count?.length
+      ? response.distinct_values_with_count
+      : (response.distinct_values || []).map((value) => ({ value, count: 0 }));
+
+    setDistinctItems((prev) => {
+      if (!append) return withCount;
+      const seen = new Set(prev.map((item) => JSON.stringify(item.value)));
+      const merged = [...prev];
+      withCount.forEach((item) => {
+        const key = JSON.stringify(item.value);
+        if (!seen.has(key)) {
+          seen.add(key);
+          merged.push(item);
+        }
+      });
+      return merged;
+    });
+
+    setDistinctNextOffset(response.next_offset ?? null);
+    setDistinctHasMore(Boolean(response.has_more ?? response.next_offset !== null));
+  }, []);
+
+  const loadDistinctSuggestions = useCallback(async (append = false) => {
+    const offset = append ? (distinctNextOffset ?? 0) : 0;
+    const requestKey = `${columnId}:${distinctOrder}:${offset}`;
+
+    if (!append) {
+      setDistinctItems([]);
+      setVisibleSuggestions(5);
+    }
+
+    const cached = distinctCacheRef.current.get(requestKey);
+    if (cached) {
+      applyDistinctResponse(cached, append);
+      return;
+    }
+
+    setIsLoadingDistinct(true);
+    setDistinctError('');
+    try {
+      const response = await metadataService.getDistinctValues(columnId, {
+        limit: DISTINCT_PAGE_SIZE,
+        offset,
+        orderBy: distinctOrder,
+      });
+      distinctCacheRef.current.set(requestKey, response);
+      applyDistinctResponse(response, append);
+    } catch (error) {
+      console.error('Failed to load distinct suggestions:', error);
+      setDistinctError('Could not load suggested values');
+      setDistinctHasMore(false);
+      setDistinctNextOffset(null);
+    } finally {
+      setIsLoadingDistinct(false);
+    }
+  }, [columnId, distinctOrder, distinctNextOffset, applyDistinctResponse]);
+
+  // Load distincts when expanded
+  useEffect(() => {
+    if (isExpanded && distinctItems.length === 0 && !isLoadingDistinct && !distinctError) {
+      loadDistinctSuggestions(false);
+    }
+  }, [isExpanded]);
+
+  // Reload when sort order changes
+  useEffect(() => {
+    if (isExpanded) {
+      loadDistinctSuggestions(false);
+    }
+  }, [distinctOrder]);
+
+  const handleSubmit = async () => {
+    if (!sourceValue) return;
     const finalStandardValue = standardValues.length > 0 ? standardValue : customStandardValue;
     if (!finalStandardValue) return;
 
-    onAdd({
-      source_column_id: parseInt(sourceColumnId),
-      source_value: sourceValue,
-      standard_value: finalStandardValue
-    });
-    
-    setSourceValue('');
-    setCustomStandardValue('');
+    setIsSaving(true);
+    try {
+      await onAdd({
+        source_column_id: columnId,
+        source_value: sourceValue,
+        standard_value: finalStandardValue,
+      });
+      setSourceValue('');
+      setCustomStandardValue('');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
+  // Already-mapped source values (to show which are done)
+  const mappedSourceValues = new Set(columnMappings.map((vm) => vm.source_value));
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Add Value Mapping">
-      <div className="space-y-4">
-        <Select
-          label="Source Column"
-          value={sourceColumnId}
-          onChange={setSourceColumnId}
-          required
-          options={mappedColumns.map(mc => ({
-            value: mc.column_id.toString(),
-            label: `${mc.table_name}.${mc.column_name} (${mc.data_source_name})`
-          }))}
-        />
-
-        <Input
-          label="Source Value"
-          placeholder="Original value in database (e.g., 'masculino')"
-          value={sourceValue}
-          onChange={(e) => setSourceValue(e.target.value)}
-          required
-        />
-
-        {standardValues && standardValues.length > 0 ? (
-          <Select
-            label="Standard Value"
-            value={standardValue}
-            onChange={setStandardValue}
-            required
-            options={standardValues.map(v => ({ value: v, label: v }))}
+    <div
+      className={clsx(
+        'rounded-lg transition-colors',
+        isExpanded
+          ? 'border border-purple-200 dark:border-purple-800 bg-white dark:bg-zinc-800'
+          : 'border border-dashed border-gray-300 dark:border-zinc-600 bg-gray-50/50 dark:bg-zinc-800/30 hover:border-purple-300 dark:hover:border-purple-700 hover:bg-purple-50/30 dark:hover:bg-purple-900/10'
+      )}
+    >
+      {/* Header - always visible */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded((prev) => !prev)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <Plus
+            className={clsx(
+              'w-4 h-4 shrink-0 transition-transform duration-200',
+              isExpanded
+                ? 'text-purple-500 rotate-45'
+                : 'text-purple-400'
+            )}
           />
-        ) : (
-          <Input
-            label="Standard Value"
-            placeholder="Normalized target value (e.g., 'M')"
-            value={customStandardValue}
-            onChange={(e) => setCustomStandardValue(e.target.value)}
-            required
-          />
-        )}
-      </div>
-      <div className="flex justify-end gap-3 mt-6">
-        <button
-          onClick={onClose}
-          className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleSubmit}
-          className="px-4 py-2 text-sm font-medium text-white bg-purple-500 hover:bg-purple-600 rounded-lg"
-        >
-          Add Mapping
-        </button>
-      </div>
-    </Modal>
+          <div className="min-w-0">
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">
+              {isExpanded ? 'Adding mappings for' : 'Add mapping'}
+            </div>
+            <div className="flex items-center gap-2">
+              <div
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: color }}
+              />
+              <span className="font-mono text-sm text-gray-900 dark:text-white truncate">
+                {mapping.table_name}.
+                <span className="text-purple-600 dark:text-purple-400">{mapping.column_name}</span>
+              </span>
+            </div>
+            <div className="text-[11px] text-gray-400 dark:text-gray-500">{mapping.data_source_name}</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {columnMappings.length > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium">
+              {columnMappings.length} done
+            </span>
+          )}
+        </div>
+      </button>
+
+      {/* Expanded area */}
+      {isExpanded && (
+        <div className="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-zinc-700 pt-3">
+          {/* Existing mappings for this column */}
+          {columnMappings.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {columnMappings.map((vm) => (
+                <span
+                  key={vm.id}
+                  className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300"
+                >
+                  <code>{vm.source_value}</code>
+                  <ArrowRight className="w-3 h-3 text-gray-400" />
+                  <code className="text-purple-600 dark:text-purple-400">{vm.standard_value}</code>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Distinct suggestions */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Source values</span>
+              <select
+                value={distinctOrder}
+                onChange={(e) => setDistinctOrder(e.target.value)}
+                className="text-[11px] px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-600 dark:text-gray-300"
+              >
+                <option value="frequency_desc">Most frequent</option>
+                <option value="value_asc">A → Z</option>
+                <option value="frequency_asc">Least frequent</option>
+              </select>
+            </div>
+
+            {isLoadingDistinct && distinctItems.length === 0 ? (
+              <div className="flex items-center gap-2 text-xs text-gray-500 py-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Loading...
+              </div>
+            ) : distinctError ? (
+              <div className="text-xs text-red-500">{distinctError}</div>
+            ) : distinctItems.length === 0 ? (
+              <div className="text-xs text-gray-500">No distinct values found.</div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {distinctItems.slice(0, visibleSuggestions).map((item, idx) => {
+                    const inputValue = normalizeValueToInput(item.value);
+                    const isSelected = sourceValue === inputValue;
+                    const alreadyMapped = mappedSourceValues.has(inputValue);
+                    return (
+                      <button
+                        key={`${JSON.stringify(item.value)}-${idx}`}
+                        type="button"
+                        onClick={() => {
+                          if (alreadyMapped) return;
+                          setSourceValue(inputValue);
+                          setShowManualInput(false);
+                        }}
+                        disabled={alreadyMapped}
+                        className={clsx(
+                          'inline-flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors',
+                          alreadyMapped
+                            ? 'bg-green-50 border-green-200 text-green-600 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400 opacity-60 cursor-default line-through'
+                            : isSelected
+                              ? 'bg-purple-100 border-purple-300 text-purple-700 dark:bg-purple-900/30 dark:border-purple-700 dark:text-purple-300'
+                              : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 dark:bg-zinc-900 dark:border-zinc-700 dark:text-gray-300 dark:hover:bg-zinc-800'
+                        )}
+                        title={alreadyMapped ? `Already mapped` : inputValue}
+                      >
+                        <span className="font-mono">{formatSuggestion(item.value)}</span>
+                        {item.count > 0 && (
+                          <span className="text-[10px] px-1 py-0.5 rounded bg-gray-100 dark:bg-zinc-800 text-gray-400">
+                            {item.count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => setShowManualInput((prev) => !prev)}
+                    className={clsx(
+                      'inline-flex items-center rounded text-xs border border-dashed px-2 py-1 transition-colors font-medium',
+                      showManualInput
+                        ? 'border-purple-400 text-purple-600 bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:bg-purple-900/20'
+                        : 'border-gray-300 text-gray-500 hover:border-purple-400 hover:text-purple-600 dark:border-zinc-600 dark:text-gray-400 dark:hover:border-purple-700 dark:hover:text-purple-300'
+                    )}
+                  >
+                    {showManualInput ? 'Hide manual' : 'Type manually'}
+                  </button>
+                </div>
+                {(visibleSuggestions < distinctItems.length || distinctHasMore) && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (visibleSuggestions < distinctItems.length) {
+                        setVisibleSuggestions((prev) => prev + 6);
+                        return;
+                      }
+                      if (distinctHasMore && !isLoadingDistinct) {
+                        await loadDistinctSuggestions(true);
+                        setVisibleSuggestions((prev) => prev + 6);
+                      }
+                    }}
+                    className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium"
+                    disabled={isLoadingDistinct}
+                  >
+                    {isLoadingDistinct ? 'Loading more...' : 'Show more values'}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Manual input (collapsed by default) */}
+          {showManualInput && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  Manual source value
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowManualInput(false)}
+                  className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  Hide
+                </button>
+              </div>
+              <input
+                type="text"
+                placeholder="Type a value..."
+                value={sourceValue}
+                onChange={(e) => setSourceValue(e.target.value)}
+                className="w-full px-3 py-1.5 text-sm rounded-md border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-white placeholder-gray-400"
+              />
+            </div>
+          )}
+
+          {/* Standard value + submit */}
+          {sourceValue && (
+            <div className="flex items-end gap-2 pt-1">
+              <div className="flex-1 min-w-0">
+                {standardValues && standardValues.length > 0 ? (
+                  <Select
+                    label={<span className="text-xs">Map to</span>}
+                    value={standardValue}
+                    onChange={setStandardValue}
+                    options={standardValues.map((v) => ({ value: v, label: v }))}
+                  />
+                ) : (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Map to
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Standard value"
+                      value={customStandardValue}
+                      onChange={(e) => setCustomStandardValue(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm rounded-md border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-white placeholder-gray-400"
+                    />
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={handleSubmit}
+                disabled={
+                  isSaving ||
+                  !sourceValue ||
+                  (standardValues && standardValues.length > 0 ? !standardValue : !customStandardValue)
+                }
+                className="shrink-0 px-3 py-1.5 text-sm font-medium text-white bg-purple-500 hover:bg-purple-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+              >
+                {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                Save
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 });
 
@@ -672,7 +1011,26 @@ const DetailPanel = memo(function DetailPanel({
   onEdit
 }) {
   const [isColumnModalOpen, setIsColumnModalOpen] = useState(false);
-  const [isValueModalOpen, setIsValueModalOpen] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState({
+    columnMappings: false,
+    valueMappings: false,
+    allValueMappings: false,
+  });
+
+  const toggleSection = useCallback((section) => {
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  }, []);
+
+  useEffect(() => {
+    setCollapsedSections({
+      columnMappings: false,
+      valueMappings: false,
+      allValueMappings: false,
+    });
+  }, [group?.id]);
 
   if (isLoading) {
     return (
@@ -718,7 +1076,6 @@ const DetailPanel = memo(function DetailPanel({
       });
       toast.success('Value mapping added');
       onRefresh();
-      setIsValueModalOpen(false);
     } catch (error) {
       console.error(error);
       toast.error(error.message || 'Failed to add value mapping');
@@ -840,10 +1197,20 @@ const DetailPanel = memo(function DetailPanel({
       <div className="flex-1 overflow-auto p-6 space-y-6">
         <section>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => toggleSection('columnMappings')}
+              className="flex-1 min-w-0 font-semibold text-gray-900 dark:text-white flex items-center gap-2 hover:text-gray-700 dark:hover:text-gray-200 transition-colors text-left"
+            >
+              <ChevronRight
+                className={clsx(
+                  'w-4 h-4 text-gray-400 transition-transform duration-200',
+                  !collapsedSections.columnMappings && 'rotate-90'
+                )}
+              />
               <Database className="w-4 h-4 text-gray-400" />
-              Column Mappings
-            </h3>
+              <h3 className="font-semibold text-gray-900 dark:text-white">Column Mappings</h3>
+            </button>
             <button 
               onClick={() => setIsColumnModalOpen(true)}
               className="text-sm text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium flex items-center gap-1"
@@ -853,38 +1220,88 @@ const DetailPanel = memo(function DetailPanel({
             </button>
           </div>
 
-          <div className="space-y-2">
-            {group.column_mappings && group.column_mappings.map((mapping) => (
-              <ColumnMappingCard
-                key={mapping.id}
-                mapping={mapping}
-                onRemove={handleRemoveColumnMapping}
-              />
-            ))}
-            {(!group.column_mappings || group.column_mappings.length === 0) && (
-              <p className="text-sm text-gray-500 italic">No columns mapped yet.</p>
-            )}
-          </div>
+          {!collapsedSections.columnMappings && (
+            <div className="space-y-2">
+              {group.column_mappings && group.column_mappings.map((mapping) => (
+                <ColumnMappingCard
+                  key={mapping.id}
+                  mapping={mapping}
+                  onRemove={handleRemoveColumnMapping}
+                />
+              ))}
+              {(!group.column_mappings || group.column_mappings.length === 0) && (
+                <p className="text-sm text-gray-500 italic">No columns mapped yet.</p>
+              )}
+            </div>
+          )}
         </section>
 
         <section>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => toggleSection('valueMappings')}
+              className="w-full font-semibold text-gray-900 dark:text-white flex items-center gap-2 hover:text-gray-700 dark:hover:text-gray-200 transition-colors text-left"
+            >
+              <ChevronRight
+                className={clsx(
+                  'w-4 h-4 text-gray-400 transition-transform duration-200',
+                  !collapsedSections.valueMappings && 'rotate-90'
+                )}
+              />
               <ArrowRight className="w-4 h-4 text-gray-400" />
-              Value Mappings
-            </h3>
-            {group.column_mappings && group.column_mappings.length > 0 && (
-              <button 
-                onClick={() => setIsValueModalOpen(true)}
-                className="text-sm text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium flex items-center gap-1"
-              >
-                <Plus className="w-4 h-4" />
-                Add Mapping
-              </button>
-            )}
+              <h3 className="font-semibold text-gray-900 dark:text-white">Value Mappings</h3>
+            </button>
           </div>
 
-          <ValueMappingsTable mappings={group.value_mappings || []} onRemove={handleRemoveValueMapping} />
+          {!collapsedSections.valueMappings && (
+            <>
+              {group.column_mappings && group.column_mappings.length > 0 ? (
+                <div className="space-y-3">
+                  {group.column_mappings.map((cm) => (
+                    <ColumnValueMapper
+                      key={cm.id}
+                      mapping={cm}
+                      standardValues={standardValues}
+                      onAdd={handleAddValueMapping}
+                      existingMappings={group.value_mappings || []}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="p-6 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-dashed border-gray-300 dark:border-zinc-600 text-center">
+                  <Layers className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Add column mappings first to configure value transformations.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {(group.value_mappings || []).length > 0 && (
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={() => toggleSection('allValueMappings')}
+                className="w-full font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-3 hover:text-gray-700 dark:hover:text-gray-200 transition-colors text-left"
+              >
+                <ChevronRight
+                  className={clsx(
+                    'w-4 h-4 text-gray-400 transition-transform duration-200',
+                    !collapsedSections.allValueMappings && 'rotate-90'
+                  )}
+                />
+                <Layers className="w-4 h-4 text-gray-400" />
+                <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  All Value Mappings
+                </h4>
+              </button>
+              {!collapsedSections.allValueMappings && (
+                <ValueMappingsTable mappings={group.value_mappings} onRemove={handleRemoveValueMapping} />
+              )}
+            </div>
+          )}
         </section>
       </div>
 
@@ -895,18 +1312,12 @@ const DetailPanel = memo(function DetailPanel({
         groupId={group.id}
       />
 
-      <AddValueMappingModal
-        isOpen={isValueModalOpen}
-        onClose={() => setIsValueModalOpen(false)}
-        onAdd={handleAddValueMapping}
-        mappedColumns={group.column_mappings || []}
-        standardValues={standardValues}
-      />
     </div>
   );
 });
 
 export default function EquivalencePage() {
+  const searchParams = useSearchParams();
   const [groups, setGroups] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroup, setSelectedGroup] = useState(null);
@@ -953,6 +1364,22 @@ export default function EquivalencePage() {
     setSelectedGroup(groupSummary);
     fetchGroupDetails(groupSummary.id);
   }, [fetchGroupDetails]);
+
+  // Auto-select group when arriving with /equivalence?group_id=<id>
+  useEffect(() => {
+    const groupIdParam = searchParams.get('group_id');
+    if (!groupIdParam) return;
+
+    const groupId = Number(groupIdParam);
+    if (!Number.isFinite(groupId)) return;
+    if (selectedGroup?.id === groupId) return;
+    if (!groups.length) return;
+
+    const groupFromList = groups.find((g) => g.id === groupId);
+    if (groupFromList) {
+      handleSelectGroup(groupFromList);
+    }
+  }, [groups, searchParams, selectedGroup?.id, handleSelectGroup]);
 
   const filteredGroups = groups.filter(
     (g) =>

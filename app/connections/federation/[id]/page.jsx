@@ -30,7 +30,7 @@ import {
 } from 'reactflow';
 import { clsx } from 'clsx';
 import FederationCanvas from '@/components/federation/FederationCanvas';
-import { getLayoutedElements } from '@/components/canvas';
+import { getLayoutedElementsAsync } from '@/components/canvas';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { federationService, connectionService, metadataService, relationshipsService } from '@/lib/api';
@@ -303,8 +303,16 @@ function FederationEditorContent() {
           }
         }
         
-        // Apply auto layout on initial load
-        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(initialNodes, initialEdges);
+        // Apply auto layout on initial load (ELK async)
+        let layoutedNodes = initialNodes;
+        let layoutedEdges = initialEdges;
+        try {
+          const elkLayout = await getLayoutedElementsAsync(initialNodes, initialEdges);
+          layoutedNodes = elkLayout.nodes;
+          layoutedEdges = elkLayout.edges;
+        } catch (err) {
+          console.error('ELK layout failed:', err);
+        }
         setNodes(layoutedNodes);
         setEdges(layoutedEdges);
         // Trigger fitView after layout
@@ -596,10 +604,14 @@ function FederationEditorContent() {
 
   // Auto layout
   // Auto layout - also triggers fitView via layoutVersion
-  const onLayout = useCallback(() => {
-    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(nodes, edges);
-    setNodes([...layoutedNodes]);
-    setEdges([...layoutedEdges]);
+  const onLayout = useCallback(async () => {
+    try {
+      const { nodes: layoutedNodes, edges: layoutedEdges } = await getLayoutedElementsAsync(nodes, edges);
+      setNodes([...layoutedNodes]);
+      setEdges([...layoutedEdges]);
+    } catch (err) {
+      console.error('ELK auto-layout failed:', err);
+    }
     // Trigger fitView after layout
     setLayoutVersion(v => v + 1);
   }, [nodes, edges, setNodes, setEdges]);

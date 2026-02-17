@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { connectionService } from '@/lib/api';
+import SshTunnelSection from '@/components/connections/SshTunnelSection';
 
 // Icon mapping from API icon names to local SVG files
 const ICON_MAP = {
@@ -60,6 +61,18 @@ export default function NewConnectionPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [formError, setFormError] = useState(null);
+
+  // SSH Tunnel state
+  const [tunnelEnabled, setTunnelEnabled] = useState(false);
+  const [tunnelData, setTunnelData] = useState({
+    ssh_host: '',
+    ssh_port: 22,
+    ssh_username: '',
+    auth_method: 'password',
+    ssh_password: '',
+    ssh_private_key: '',
+    ssh_passphrase: '',
+  });
 
   // API state
   const [connectionTypes, setConnectionTypes] = useState([]);
@@ -130,6 +143,7 @@ export default function NewConnectionPage() {
     const initialData = {};
     
     Object.entries(properties).forEach(([key, prop]) => {
+      if (key === 'tunnel') return; // Tunnel is handled separately
       const property = prop;
       if (property.default !== undefined) {
         initialData[key] = property.default;
@@ -145,16 +159,65 @@ export default function NewConnectionPage() {
     setFormData(initialData);
   }, [selectedSource]);
 
+  // Detect if selected source supports SSH tunnel
+  const hasTunnelSupport = selectedSource?.connection_params_schema?.properties?.tunnel?.type === 'object';
+
   const handleSourceSelect = (source) => {
     setSelectedSource(source);
     setConnectionName(`My ${getDisplayName(source.name)}`);
     setStep(2);
     setTestResult(null);
+    // Reset tunnel state
+    setTunnelEnabled(false);
+    setTunnelData({
+      ssh_host: '',
+      ssh_port: 22,
+      ssh_username: '',
+      auth_method: 'password',
+      ssh_password: '',
+      ssh_private_key: '',
+      ssh_passphrase: '',
+    });
+  };
+
+  const handleTunnelFieldChange = (field, value) => {
+    setTunnelData(prev => ({ ...prev, [field]: value }));
+    if (formError) setFormError(null);
   };
 
   const handleInputChange = (key, value) => {
     setFormData(prev => ({ ...prev, [key]: value }));
     if (formError) setFormError(null);
+  };
+
+  // Build connection params object including tunnel if enabled
+  const buildConnectionParams = () => {
+    const connectionParams = {};
+    Object.entries(formData).forEach(([key, value]) => {
+      if (key === 'tunnel') return; // Skip tunnel from flat fields
+      if (value !== '' && value !== undefined) {
+        connectionParams[key] = value;
+      }
+    });
+
+    if (tunnelEnabled && hasTunnelSupport) {
+      const tunnel = { enabled: true };
+      tunnel.ssh_host = tunnelData.ssh_host;
+      tunnel.ssh_port = tunnelData.ssh_port || 22;
+      tunnel.ssh_username = tunnelData.ssh_username;
+      tunnel.auth_method = tunnelData.auth_method || 'password';
+
+      if (tunnel.auth_method === 'password') {
+        if (tunnelData.ssh_password) tunnel.ssh_password = tunnelData.ssh_password;
+      } else {
+        if (tunnelData.ssh_private_key) tunnel.ssh_private_key = tunnelData.ssh_private_key;
+        if (tunnelData.ssh_passphrase) tunnel.ssh_passphrase = tunnelData.ssh_passphrase;
+      }
+
+      connectionParams.tunnel = tunnel;
+    }
+
+    return connectionParams;
   };
 
   const handleTestConnection = async () => {
@@ -164,14 +227,7 @@ export default function NewConnectionPage() {
     setTestResult(null);
     
     try {
-      // Build connection params, converting empty strings to undefined for optional fields
-      const connectionParams = {};
-      Object.entries(formData).forEach(([key, value]) => {
-        if (value !== '' && value !== undefined) {
-          connectionParams[key] = value;
-        }
-      });
-
+      const connectionParams = buildConnectionParams();
       const response = await connectionService.test(selectedSource.id, connectionParams);
       setTestResult(response.success ? 'success' : 'error');
     } catch (err) {
@@ -196,12 +252,29 @@ export default function NewConnectionPage() {
     const required = schema.required || [];
 
     for (const fieldName of required) {
+      if (fieldName === 'tunnel') continue; // Tunnel has its own validation
       const value = formData[fieldName];
       if (value === undefined || value === '' || value === null) {
         const properties = schema.properties || schema;
         const property = properties[fieldName];
         const label = property?.title || fieldName.charAt(0).toUpperCase() + fieldName.slice(1).replace(/_/g, ' ');
         return `${label} is required`;
+      }
+    }
+
+    // Validate tunnel fields when enabled
+    if (tunnelEnabled && hasTunnelSupport) {
+      if (!tunnelData.ssh_host?.trim()) {
+        return 'SSH Host is required when tunnel is enabled';
+      }
+      if (!tunnelData.ssh_username?.trim()) {
+        return 'SSH Username is required when tunnel is enabled';
+      }
+      if (tunnelData.auth_method === 'password' && !tunnelData.ssh_password?.trim()) {
+        return 'SSH Password is required when using password authentication';
+      }
+      if (tunnelData.auth_method === 'private_key' && !tunnelData.ssh_private_key?.trim()) {
+        return 'SSH Private Key is required when using key authentication';
       }
     }
 
@@ -222,13 +295,8 @@ export default function NewConnectionPage() {
     setFormError(null);
     
     try {
-      // Build connection params
-      const connectionParams = {};
-      Object.entries(formData).forEach(([key, value]) => {
-        if (value !== '' && value !== undefined) {
-          connectionParams[key] = value;
-        }
-      });
+      // Build connection params (includes tunnel if enabled)
+      const connectionParams = buildConnectionParams();
 
       // Determine content type based on category
       // Backend expects 'metadata' or 'image' (not 'storage')
@@ -429,8 +497,8 @@ export default function NewConnectionPage() {
     const properties = schema.properties || schema;
     const required = schema.required || [];
 
-    // Preserve original order from backend schema
-    const keys = Object.keys(properties);
+    // Preserve original order from backend schema, skip tunnel (rendered separately)
+    const keys = Object.keys(properties).filter(key => key !== 'tunnel');
 
     return (
       <div className="space-y-6">
@@ -627,6 +695,18 @@ export default function NewConnectionPage() {
 
               {/* Dynamic Form Fields */}
               {renderDynamicForm()}
+
+              {/* SSH Tunnel Section */}
+              {hasTunnelSupport && (
+                <div className="pt-2">
+                  <SshTunnelSection
+                    tunnelData={tunnelData}
+                    tunnelEnabled={tunnelEnabled}
+                    onTunnelEnabledChange={setTunnelEnabled}
+                    onTunnelFieldChange={handleTunnelFieldChange}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Form Error */}
@@ -657,6 +737,7 @@ export default function NewConnectionPage() {
                   setSelectedSource(null);
                   setTestResult(null);
                   setFormError(null);
+                  setTunnelEnabled(false);
                 }}
                 className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
               >

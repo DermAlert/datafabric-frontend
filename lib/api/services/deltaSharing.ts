@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from '../client';
+import { getApiUrl } from '../config';
 import type {
   // Dataset Integration
   AvailableDataset,
@@ -24,6 +25,11 @@ import type {
   Table,
   CreateTableFromBronzeRequest,
   CreateTableFromSilverRequest,
+  CreateTableFromBronzeVirtualizedRequest,
+  CreateTableFromSilverVirtualizedRequest,
+  TableDataApiRequest,
+  TableDataApiResponse,
+  TableDataApiJsonResponse,
   // Recipients
   Recipient,
   CreateRecipientRequest,
@@ -44,9 +50,14 @@ const BASE_PATH = '/api/delta-sharing';
  * List all available datasets (Bronze/Silver configs ready for sharing)
  */
 export async function listAvailableDatasets(
-  sourceType?: SourceType
+  sourceType?: SourceType,
+  options?: { includeVirtualized?: boolean }
 ): Promise<AvailableDataset[]> {
-  const params = sourceType ? `?source_type=${sourceType}` : '';
+  const queryParams = new URLSearchParams();
+  if (sourceType) queryParams.set('source_type', sourceType);
+  if (options?.includeVirtualized) queryParams.set('include_virtualized', 'true');
+  const queryString = queryParams.toString();
+  const params = queryString ? `?${queryString}` : '';
   return apiClient.get<AvailableDataset[]>(`${BASE_PATH}/integration/datasets${params}`);
 }
 
@@ -202,6 +213,117 @@ export async function createTableFromSilver(
 }
 
 /**
+ * Create a table from a Bronze virtualized config
+ */
+export async function createTableFromBronzeVirtualized(
+  shareId: number,
+  schemaId: number,
+  data: CreateTableFromBronzeVirtualizedRequest
+): Promise<Table> {
+  return apiClient.post<Table>(
+    `${BASE_PATH}/shares/${shareId}/schemas/${schemaId}/tables/from-bronze-virtualized`,
+    data
+  );
+}
+
+/**
+ * Create a table from a Silver virtualized config
+ */
+export async function createTableFromSilverVirtualized(
+  shareId: number,
+  schemaId: number,
+  data: CreateTableFromSilverVirtualizedRequest
+): Promise<Table> {
+  return apiClient.post<Table>(
+    `${BASE_PATH}/shares/${shareId}/schemas/${schemaId}/tables/from-silver-virtualized`,
+    data
+  );
+}
+
+function parseBooleanHeader(value: string | null): boolean | null {
+  if (value === null) return null;
+  return value.toLowerCase() === 'true';
+}
+
+async function parseDataApiPayload(
+  response: Response,
+  format: NonNullable<TableDataApiRequest['format']>
+): Promise<TableDataApiJsonResponse | string> {
+  if (format === 'json') {
+    return (await response.json()) as TableDataApiJsonResponse;
+  }
+  return await response.text();
+}
+
+/**
+ * Query shared table data (GET) - JSON only
+ */
+export async function getSharedTableData(
+  share: string,
+  schema: string,
+  table: string,
+  params?: Omit<TableDataApiRequest, 'format'>
+): Promise<TableDataApiJsonResponse> {
+  const queryParams = new URLSearchParams();
+  if (params?.limit !== undefined) queryParams.set('limit', params.limit.toString());
+  if (params?.offset !== undefined) queryParams.set('offset', params.offset.toString());
+  const queryString = queryParams.toString();
+  const url = queryString
+    ? `${BASE_PATH}/shares/${share}/schemas/${schema}/tables/${table}/data?${queryString}`
+    : `${BASE_PATH}/shares/${share}/schemas/${schema}/tables/${table}/data`;
+  return apiClient.get<TableDataApiJsonResponse>(url);
+}
+
+/**
+ * Query shared table data (POST) - supports json/csv/ndjson
+ */
+export async function postSharedTableData(
+  share: string,
+  schema: string,
+  table: string,
+  body?: TableDataApiRequest,
+  options?: { bearerToken?: string }
+): Promise<TableDataApiResponse> {
+  const format = body?.format || 'json';
+  const response = await fetch(
+    getApiUrl(`${BASE_PATH}/shares/${share}/schemas/${schema}/tables/${table}/data`),
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options?.bearerToken ? { Authorization: `Bearer ${options.bearerToken}` } : {}),
+      },
+      body: JSON.stringify({
+        format,
+        limit: body?.limit,
+        offset: body?.offset,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw {
+      message:
+        errorData?.message ||
+        errorData?.detail ||
+        `HTTP ${response.status}: ${response.statusText}`,
+      status: response.status,
+      data: errorData,
+    };
+  }
+
+  return {
+    contentType: response.headers.get('content-type') || 'application/json',
+    rowCount: response.headers.get('X-Row-Count')
+      ? Number(response.headers.get('X-Row-Count'))
+      : null,
+    hasMore: parseBooleanHeader(response.headers.get('X-Has-More')),
+    payload: await parseDataApiPayload(response, format),
+  };
+}
+
+/**
  * Delete a table
  */
 export async function deleteTable(
@@ -325,7 +447,11 @@ export const deltaSharingService = {
     search: searchSchemaTables,
     createFromBronze: createTableFromBronze,
     createFromSilver: createTableFromSilver,
+    createFromBronzeVirtualized: createTableFromBronzeVirtualized,
+    createFromSilverVirtualized: createTableFromSilverVirtualized,
     delete: deleteTable,
+    getData: getSharedTableData,
+    postData: postSharedTableData,
   },
   // Recipients
   recipients: {

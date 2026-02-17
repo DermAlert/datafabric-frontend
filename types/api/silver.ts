@@ -13,7 +13,8 @@ export interface SilverTableSelection {
 }
 
 export interface FilterCondition {
-  column_id: number;
+  column_id?: number;
+  column_name?: string;
   operator: 
     | '=' 
     | '!=' 
@@ -51,6 +52,46 @@ export interface ColumnTransformation {
 }
 
 // ===========================================
+// LLM Extraction Types
+// ===========================================
+
+export type LLMExtractionOutputType = 'bool' | 'enum';
+
+export interface LLMExtractionDefinition {
+  source_column_id: number;
+  new_column_name: string;
+  prompt: string;
+  output_type: LLMExtractionOutputType;
+  enum_values?: string[] | null;
+}
+
+export interface LLMExtractionTestRequest {
+  text: string;
+  prompt: string;
+  output_type: LLMExtractionOutputType;
+  enum_values?: string[] | null;
+}
+
+export interface LLMExtractionTestResponse {
+  success: boolean;
+  result: boolean | string | null;
+  output_type: string;
+  prompt_used: string;
+  text_preview: string;
+  model_used: string;
+  error: string | null;
+}
+
+export interface LLMExtractionColumnResult {
+  column_name: string;
+  output_type: string;
+  rows_processed: number;
+  rows_success: number;
+  rows_failed: number;
+  error_rate: number;
+}
+
+// ===========================================
 // Persistent Config Types
 // ===========================================
 
@@ -64,6 +105,7 @@ export interface SilverPersistentConfig {
   column_group_ids?: number[];
   filters?: SilverFilters;
   column_transformations?: ColumnTransformation[];
+  llm_extractions?: LLMExtractionDefinition[] | null;
   exclude_unified_source_columns?: boolean;
   write_mode: 'overwrite';
   current_delta_version?: number | null;
@@ -81,6 +123,7 @@ export interface CreateSilverPersistentConfigRequest {
   column_group_ids?: number[];
   filters?: SilverFilters;
   column_transformations?: ColumnTransformation[];
+  llm_extractions?: LLMExtractionDefinition[] | null;
   exclude_unified_source_columns?: boolean;
 }
 
@@ -91,6 +134,7 @@ export interface UpdateSilverPersistentConfigRequest {
   column_group_ids?: number[];
   filters?: SilverFilters;
   column_transformations?: ColumnTransformation[];
+  llm_extractions?: LLMExtractionDefinition[] | null;
   exclude_unified_source_columns?: boolean;
 }
 
@@ -106,6 +150,7 @@ export interface SilverExecuteResponse {
   write_mode_used: string;
   delta_version: number;
   error?: string;
+  llm_extraction_results?: LLMExtractionColumnResult[] | null;
 }
 
 export interface SilverVersionInfo {
@@ -132,6 +177,58 @@ export interface SilverQueryDataParams {
   offset?: number;
   version?: number;
   as_of_timestamp?: string;
+  path_index?: number;
+}
+
+// ===========================================
+// Server-Side Column Filter Types
+// ===========================================
+
+export type ColumnFilterOperator =
+  | 'eq'
+  | 'neq'
+  | 'contains'
+  | 'not_contains'
+  | 'starts_with'
+  | 'ends_with'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte'
+  | 'between'
+  | 'is_null'
+  | 'is_not_null'
+  | 'in'
+  | 'not_in';
+
+export interface ColumnFilter {
+  column: string;
+  operator: ColumnFilterOperator;
+  value?: string | number | boolean | (string | number)[] | null;
+}
+
+export interface DataQueryRequest {
+  limit?: number;
+  offset?: number;
+  version?: number | null;
+  as_of_timestamp?: string | null;
+  path_index?: number;
+  column_filters?: ColumnFilter[] | null;
+  column_filters_logic?: 'AND' | 'OR';
+  sort_by?: string | null;
+  sort_order?: 'asc' | 'desc';
+}
+
+export interface DataQueryResponse {
+  config_id: number;
+  config_name: string;
+  version?: number | null;
+  as_of_timestamp?: string | null;
+  columns: string[];
+  data: Record<string, unknown>[];
+  row_count: number;
+  total_rows: number;
+  execution_time_seconds: number;
 }
 
 export interface SilverQueryDataResponse {

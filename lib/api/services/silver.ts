@@ -24,6 +24,10 @@ import type {
   TestNormalizationRuleResponse,
   TransformationType,
   FilterOperator,
+  LLMExtractionTestRequest,
+  LLMExtractionTestResponse,
+  DataQueryRequest,
+  DataQueryResponse,
 } from '@/types/api/silver';
 
 const PERSISTENT_BASE_PATH = '/api/silver/persistent/configs';
@@ -107,6 +111,7 @@ export async function querySilverPersistentConfigData(
   if (params?.offset !== undefined) queryParams.set('offset', params.offset.toString());
   if (params?.version !== undefined) queryParams.set('version', params.version.toString());
   if (params?.as_of_timestamp) queryParams.set('as_of_timestamp', params.as_of_timestamp);
+  if (params?.path_index !== undefined) queryParams.set('path_index', params.path_index.toString());
   
   const queryString = queryParams.toString();
   const url = queryString
@@ -243,6 +248,41 @@ export async function getNormalizationRuleTemplates(): Promise<string[]> {
 }
 
 // ===========================================
+// Server-Side Query with Filters
+// ===========================================
+
+/**
+ * Query data from a persistent config with server-side filters, sorting and pagination
+ */
+export async function queryPersistentDataWithFilters(
+  id: number,
+  data: DataQueryRequest
+): Promise<DataQueryResponse> {
+  return apiClient.post<DataQueryResponse>(
+    `${PERSISTENT_BASE_PATH}/${id}/data/query`,
+    data
+  );
+}
+
+// ===========================================
+// LLM Extraction Endpoints
+// ===========================================
+
+const LLM_EXTRACTION_PATH = '/api/silver/llm-extraction';
+
+/**
+ * Test an LLM extraction prompt against sample text
+ */
+export async function testLLMExtraction(
+  data: LLMExtractionTestRequest
+): Promise<LLMExtractionTestResponse> {
+  return apiClient.post<LLMExtractionTestResponse>(
+    `${LLM_EXTRACTION_PATH}/test`,
+    data
+  );
+}
+
+// ===========================================
 // Auxiliary Endpoints
 // ===========================================
 
@@ -275,6 +315,7 @@ export const silverService = {
     execute: executeSilverPersistentConfig,
     getVersions: getSilverPersistentConfigVersions,
     queryData: querySilverPersistentConfigData,
+    queryWithFilters: queryPersistentDataWithFilters,
   },
   // Virtualized Configs
   virtualized: {
@@ -294,6 +335,10 @@ export const silverService = {
     delete: deleteNormalizationRule,
     test: testNormalizationRule,
     getTemplates: getNormalizationRuleTemplates,
+  },
+  // LLM Extraction
+  llmExtraction: {
+    test: testLLMExtraction,
   },
   // Auxiliary
   getTransformationTypes,

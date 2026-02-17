@@ -192,6 +192,11 @@ export default function SchemaListView({ tables }) {
                   <div>
                     <h3 className={clsx("text-sm font-semibold flex items-center gap-2", isActive ? "text-gray-900 dark:text-white" : "text-gray-500 dark:text-gray-400")}>
                       {label}
+                      {table.data?.schemaBadge && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-medium">
+                          {table.data.schemaBadge}
+                        </span>
+                      )}
                       {!isActive && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-zinc-700 text-gray-500 dark:text-gray-400 font-medium">Inactive</span>}
                     </h3>
                     <p className="text-xs text-gray-500">{columns.length} columns</p>

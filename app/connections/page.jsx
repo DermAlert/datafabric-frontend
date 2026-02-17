@@ -22,6 +22,7 @@ import {
   Clock,
   X,
   Save,
+  Shield,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useDisclosure } from '@/hooks';
@@ -30,6 +31,9 @@ import { SearchInput } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { connectionService } from '@/lib/api';
 import { toast } from 'sonner';
+import SshTunnelSection from '@/components/connections/SshTunnelSection';
+
+const ENCRYPTED_SENTINEL = '[ENCRYPTED]';
 
 // ===========================================
 // Helper Functions
@@ -79,6 +83,8 @@ const ConnectionCard = memo(function ConnectionCard({
   const isMetadata = connection.content_type === 'metadata';
   const host = getConnectionHost(connection.connection_params);
   const typeName = connection.connectionType?.name || `Type ${connection.connection_type_id}`;
+  const hasTunnel = connection.connection_params?.tunnel?.enabled === true;
+  const tunnelHost = connection.connection_params?.tunnel?.ssh_host;
 
   return (
     <div className="group bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-5 hover:shadow-md transition-all relative">
@@ -173,6 +179,15 @@ const ConnectionCard = memo(function ConnectionCard({
             {formatLastSync(connection.last_sync_time)}
           </span>
         </div>
+        {hasTunnel && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500">Tunnel</span>
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full">
+              <Shield className="w-3 h-3" />
+              SSH via {tunnelHost}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Test Result Feedback */}
@@ -315,6 +330,20 @@ export default function ConnectionsPage() {
   });
   const [isSaving, setIsSaving] = useState(false);
   const [editError, setEditError] = useState(null);
+
+  // Edit modal tunnel state
+  const [editTunnelEnabled, setEditTunnelEnabled] = useState(false);
+  const [editTunnelData, setEditTunnelData] = useState({
+    ssh_host: '',
+    ssh_port: 22,
+    ssh_username: '',
+    auth_method: 'password',
+    ssh_password: '',
+    ssh_private_key: '',
+    ssh_passphrase: '',
+  });
+  // Track which tunnel fields were originally encrypted (to avoid sending unchanged values)
+  const [editTunnelOriginalEncrypted, setEditTunnelOriginalEncrypted] = useState({});
 
   // Delete modal state
   const [deletingConnection, setDeletingConnection] = useState(null);
@@ -478,9 +507,10 @@ export default function ConnectionsPage() {
     const connection = connections.find(c => c.id === id);
     if (connection) {
       setEditingConnection(connection);
-      // Convert connection_params to the expected format
+      // Convert connection_params to the expected format, excluding tunnel
       const params = {};
       Object.entries(connection.connection_params || {}).forEach(([key, value]) => {
+        if (key === 'tunnel') return; // Handle tunnel separately
         if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
           params[key] = value;
         } else {
@@ -492,6 +522,42 @@ export default function ConnectionsPage() {
         description: connection.description || '',
         connectionParams: params,
       });
+
+      // Populate tunnel state from existing connection
+      const existingTunnel = connection.connection_params?.tunnel;
+      if (existingTunnel && existingTunnel.enabled) {
+        setEditTunnelEnabled(true);
+        // Track which sensitive fields are encrypted
+        const encryptedFields = {};
+        ['ssh_password', 'ssh_private_key', 'ssh_passphrase'].forEach(field => {
+          if (existingTunnel[field] === ENCRYPTED_SENTINEL) {
+            encryptedFields[field] = true;
+          }
+        });
+        setEditTunnelOriginalEncrypted(encryptedFields);
+        setEditTunnelData({
+          ssh_host: existingTunnel.ssh_host || '',
+          ssh_port: existingTunnel.ssh_port ?? 22,
+          ssh_username: existingTunnel.ssh_username || '',
+          auth_method: existingTunnel.auth_method || 'password',
+          ssh_password: existingTunnel.ssh_password || '',
+          ssh_private_key: existingTunnel.ssh_private_key || '',
+          ssh_passphrase: existingTunnel.ssh_passphrase || '',
+        });
+      } else {
+        setEditTunnelEnabled(false);
+        setEditTunnelOriginalEncrypted({});
+        setEditTunnelData({
+          ssh_host: '',
+          ssh_port: 22,
+          ssh_username: '',
+          auth_method: 'password',
+          ssh_password: '',
+          ssh_private_key: '',
+          ssh_passphrase: '',
+        });
+      }
+
       setEditError(null);
     }
   }, [connections]);
@@ -500,6 +566,17 @@ export default function ConnectionsPage() {
     setEditingConnection(null);
     setEditFormData({ name: '', description: '', connectionParams: {} });
     setEditError(null);
+    setEditTunnelEnabled(false);
+    setEditTunnelOriginalEncrypted({});
+    setEditTunnelData({
+      ssh_host: '',
+      ssh_port: 22,
+      ssh_username: '',
+      auth_method: 'password',
+      ssh_password: '',
+      ssh_private_key: '',
+      ssh_passphrase: '',
+    });
   }, []);
 
   // Handle input change for connection params
@@ -508,6 +585,12 @@ export default function ConnectionsPage() {
       ...prev,
       connectionParams: { ...prev.connectionParams, [key]: value }
     }));
+    setEditError(null);
+  }, []);
+
+  // Handle tunnel field change in edit mode
+  const handleEditTunnelFieldChange = useCallback((field, value) => {
+    setEditTunnelData(prev => ({ ...prev, [field]: value }));
     setEditError(null);
   }, []);
 
@@ -520,9 +603,12 @@ export default function ConnectionsPage() {
 
     // Validate required fields from schema
     const schema = editingConnection.connectionType?.connection_params_schema;
+    const editHasTunnelSupport = schema?.properties?.tunnel?.type === 'object';
+
     if (schema) {
       const requiredFields = schema.required || [];
       for (const field of requiredFields) {
+        if (field === 'tunnel') continue; // Tunnel has its own validation
         const value = editFormData.connectionParams[field];
         if (value === undefined || value === '' || value === null) {
           const property = schema.properties?.[field];
@@ -533,17 +619,74 @@ export default function ConnectionsPage() {
       }
     }
 
+    // Validate tunnel fields when enabled
+    if (editTunnelEnabled && editHasTunnelSupport) {
+      const td = editTunnelData;
+      const isFieldEmpty = (field) => {
+        const val = td[field];
+        // If field was originally encrypted and user hasn't entered a new value, that's OK
+        if (editTunnelOriginalEncrypted[field] && (!val || val === ENCRYPTED_SENTINEL)) return false;
+        return !val || (typeof val === 'string' && !val.trim());
+      };
+
+      if (isFieldEmpty('ssh_host')) {
+        setEditError('SSH Host is required when tunnel is enabled');
+        return;
+      }
+      if (isFieldEmpty('ssh_username')) {
+        setEditError('SSH Username is required when tunnel is enabled');
+        return;
+      }
+      if (td.auth_method === 'password' && isFieldEmpty('ssh_password')) {
+        setEditError('SSH Password is required when using password authentication');
+        return;
+      }
+      if (td.auth_method === 'private_key' && isFieldEmpty('ssh_private_key')) {
+        setEditError('SSH Private Key is required when using key authentication');
+        return;
+      }
+    }
+
     setIsSaving(true);
     setEditError(null);
 
     try {
-      // Build connection_params, filtering out empty values
+      // Build connection_params, filtering out empty values and excluding tunnel
       const connectionParams = {};
       Object.entries(editFormData.connectionParams).forEach(([key, value]) => {
+        if (key === 'tunnel') return; // Handle tunnel separately
         if (value !== '' && value !== undefined && value !== null) {
+          // Skip [ENCRYPTED] sentinel values (the backend keeps the existing encrypted value)
+          if (value === ENCRYPTED_SENTINEL) return;
           connectionParams[key] = value;
         }
       });
+
+      // Build tunnel block
+      if (editHasTunnelSupport) {
+        if (editTunnelEnabled) {
+          const tunnel = { enabled: true };
+          tunnel.ssh_host = editTunnelData.ssh_host;
+          tunnel.ssh_port = editTunnelData.ssh_port || 22;
+          tunnel.ssh_username = editTunnelData.ssh_username;
+          tunnel.auth_method = editTunnelData.auth_method || 'password';
+
+          // For sensitive fields: only send if user changed them (not [ENCRYPTED])
+          const sensitiveFields = ['ssh_password', 'ssh_private_key', 'ssh_passphrase'];
+          sensitiveFields.forEach(field => {
+            const val = editTunnelData[field];
+            if (val && val !== ENCRYPTED_SENTINEL && val.trim()) {
+              tunnel[field] = val;
+            }
+            // If originally encrypted and user left blank, don't send it (backend keeps existing)
+          });
+
+          connectionParams.tunnel = tunnel;
+        } else {
+          // Explicitly disable tunnel
+          connectionParams.tunnel = { enabled: false };
+        }
+      }
 
       const updateData = {
         name: editFormData.name.trim(),
@@ -569,7 +712,7 @@ export default function ConnectionsPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [editingConnection, editFormData, connectionTypes, handleCloseEditModal]);
+  }, [editingConnection, editFormData, editTunnelEnabled, editTunnelData, editTunnelOriginalEncrypted, connectionTypes, handleCloseEditModal]);
 
   const router = useRouter();
   const handleBrowse = useCallback((id) => {
@@ -578,8 +721,12 @@ export default function ConnectionsPage() {
 
   // Render form field based on schema property for edit modal
   const renderEditFormField = useCallback((key, property, isRequired) => {
+    // Skip tunnel — rendered separately via SshTunnelSection
+    if (key === 'tunnel') return null;
+
     const value = editFormData.connectionParams[key] ?? '';
     const label = property.title || key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+    const isEncryptedValue = value === ENCRYPTED_SENTINEL;
     
     // Get enum options from property or known fields
     const enumOptions = property.enum || KNOWN_FIELD_OPTIONS[key.toLowerCase()];
@@ -620,7 +767,7 @@ export default function ConnectionsPage() {
       );
     }
 
-    // Handle password
+    // Handle password (with [ENCRYPTED] support)
     if (property.format === 'password') {
       return (
         <div key={key}>
@@ -630,9 +777,9 @@ export default function ConnectionsPage() {
           </label>
           <input
             type="password"
-            value={String(value)}
+            value={isEncryptedValue ? '' : String(value)}
             onChange={(e) => handleParamChange(key, e.target.value)}
-            placeholder={property.description}
+            placeholder={isEncryptedValue ? 'Encrypted — leave blank to keep' : property.description}
             className="w-full px-4 py-2 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
           />
         </div>
@@ -883,7 +1030,7 @@ export default function ConnectionsPage() {
                       const schema = editingConnection.connectionType.connection_params_schema;
                       const properties = schema.properties || {};
                       const required = schema.required || [];
-                      const keys = Object.keys(properties);
+                      const keys = Object.keys(properties).filter(k => k !== 'tunnel');
 
                       return keys.map(key => {
                         const property = properties[key];
@@ -892,6 +1039,23 @@ export default function ConnectionsPage() {
                       });
                     })()}
                   </div>
+                </div>
+              )}
+
+              {/* SSH Tunnel Section (Edit) */}
+              {editingConnection.connectionType?.connection_params_schema?.properties?.tunnel?.type === 'object' && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wide">
+                    Network
+                  </h3>
+                  <SshTunnelSection
+                    tunnelData={editTunnelData}
+                    tunnelEnabled={editTunnelEnabled}
+                    onTunnelEnabledChange={setEditTunnelEnabled}
+                    onTunnelFieldChange={handleEditTunnelFieldChange}
+                    isEditMode={true}
+                    compact={true}
+                  />
                 </div>
               )}
 

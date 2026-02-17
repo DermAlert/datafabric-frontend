@@ -23,6 +23,7 @@ export interface MetadataSchema {
   external_reference: string;
   properties: Record<string, unknown>;
   fl_ativo: boolean;
+  is_system_schema?: boolean;
 }
 
 // Table - database table within a schema
@@ -82,10 +83,18 @@ export interface DistinctValuesResponse {
   column_name: string;
   connection_type: string;
   distinct_values: Array<string | number | boolean | null>;
+  distinct_values_with_count?: Array<{
+    value: string | number | boolean | null;
+    count: number;
+  }>;
   total_distinct: number;  // Total de valores distintos na coluna
   total_returned: number;  // Quantos foram retornados (com limit)
   search_filter: string | null;
   limit: number;
+  offset?: number;
+  next_offset?: number | null;
+  has_more?: boolean;
+  order_by?: 'value_asc' | 'frequency_desc' | 'frequency_asc' | string;
 }
 
 // Table sample column info

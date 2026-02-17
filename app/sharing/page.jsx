@@ -32,7 +32,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { useDisclosure, useDeltaSharing } from '@/hooks';
-import { Modal, EmptyState, LayerBadge } from '@/components/ui';
+import { Modal, EmptyState, LayerBadge, TypeBadge } from '@/components/ui';
 import { Input, SearchInput, Textarea } from '@/components/ui/Input';
 import { formatDate, formatNumber } from '@/lib/utils';
 
@@ -48,6 +48,14 @@ const getShareDatasets = (share) => {
   if (!share?.schemas) return [];
   return share.schemas.flatMap((schema) => schema.tables || []);
 };
+
+const getDatasetLayer = (sourceType) =>
+  sourceType === 'bronze' || sourceType === 'bronze_virtualized' ? 'bronze' : 'silver';
+
+const isVirtualizedDataset = (dataset) =>
+  dataset?.config_type === 'virtualized' ||
+  dataset?.source_type === 'bronze_virtualized' ||
+  dataset?.source_type === 'silver_virtualized';
 
 const ShareListItem = memo(function ShareListItem({ share, isSelected, onSelect }) {
   const datasetCount = getShareDatasets(share).length;
@@ -92,9 +100,25 @@ const ShareListItem = memo(function ShareListItem({ share, isSelected, onSelect 
 
 const DatasetCard = memo(function DatasetCard({ dataset, onRemove, shareName }) {
   const [copied, setCopied] = useState(false);
-  const isBronze = dataset.source_type === 'bronze';
+  const layer = getDatasetLayer(dataset.source_type);
+  const isBronze = layer === 'bronze';
+  const configType = dataset.config_type || (isVirtualizedDataset(dataset) ? 'virtualized' : 'persistent');
+  const pythonCode =
+    configType === 'virtualized'
+      ? `import requests
 
-  const pythonCode = `import delta_sharing
+API_BASE = "http://localhost:8004/api/delta-sharing"
+TOKEN = "<recipient-bearer-token>"
+
+response = requests.get(
+    f"{API_BASE}/shares/${shareName || dataset.share_name}/schemas/${dataset.schema_name}/tables/${dataset.table_name}/data",
+    headers={"Authorization": f"Bearer {TOKEN}"},
+    params={"limit": 100, "offset": 0}
+)
+response.raise_for_status()
+payload = response.json()
+print(payload["data"][:3])`
+      : `import delta_sharing
 
 profile_file = "<profile-file-path>"
 
@@ -128,7 +152,8 @@ print(df.head())`;
           <div className="flex-1">
             <div className="flex items-center gap-2">
               <span className="font-medium text-gray-900 dark:text-white">{dataset.table_name}</span>
-              <LayerBadge layer={dataset.source_type} />
+              <LayerBadge layer={layer} />
+              <TypeBadge type={configType} variant={layer} />
             </div>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               {dataset.description || `From ${dataset.source_config_name}`}
@@ -571,6 +596,7 @@ const DetailPanel = memo(function DetailPanel({
   const datasets = getShareDatasets(share);
   const schemas = share.schemas || [];
   const hasMultipleSchemas = schemas.filter((s) => s.name !== DEFAULT_SCHEMA_NAME).length > 0;
+  const virtualizedCount = datasets.filter((dataset) => isVirtualizedDataset(dataset)).length;
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800">
@@ -615,16 +641,21 @@ const DetailPanel = memo(function DetailPanel({
           <div className="w-px h-8 bg-gray-200 dark:bg-zinc-700" />
           <div className="text-center">
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
-              {datasets.filter((d) => d.source_type === 'bronze').length}
+              {datasets.filter((d) => getDatasetLayer(d.source_type) === 'bronze').length}
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400">Bronze</div>
           </div>
           <div className="w-px h-8 bg-gray-200 dark:bg-zinc-700" />
           <div className="text-center">
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
-              {datasets.filter((d) => d.source_type === 'silver').length}
+              {datasets.filter((d) => getDatasetLayer(d.source_type) === 'silver').length}
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400">Silver</div>
+          </div>
+          <div className="w-px h-8 bg-gray-200 dark:bg-zinc-700" />
+          <div className="text-center">
+            <div className="text-2xl font-bold text-gray-900 dark:text-white">{virtualizedCount}</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">Virtualized</div>
           </div>
           {schemas.length > 1 && (
             <>
@@ -926,6 +957,8 @@ const AddDatasetModal = memo(function AddDatasetModal({
 }) {
   const [selectedDataset, setSelectedDataset] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const getDatasetOptionKey = (dataset) =>
+    `${dataset.source_type}-${dataset.config_type || 'persistent'}-${dataset.config_id}`;
 
   const bronzeDatasets = datasets.filter((d) => d.source_type === 'bronze');
   const silverDatasets = datasets.filter((d) => d.source_type === 'silver');
@@ -964,7 +997,7 @@ const AddDatasetModal = memo(function AddDatasetModal({
         <div className="flex items-start gap-2">
           <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
           <p className="text-sm text-blue-700 dark:text-blue-300">
-            Only datasets with successful executions can be shared via Delta Sharing.
+            Persistent and virtualized datasets can be shared. Virtualized datasets are queried on-demand via Trino.
           </p>
         </div>
       </div>
@@ -993,11 +1026,11 @@ const AddDatasetModal = memo(function AddDatasetModal({
                 </div>
                 {bronzeDatasets.map((dataset) => (
                   <label
-                    key={`bronze-${dataset.config_id}`}
+                    key={getDatasetOptionKey(dataset)}
                     className={clsx(
                       'flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors',
-                      selectedDataset?.config_id === dataset.config_id &&
-                        selectedDataset?.source_type === 'bronze'
+                      selectedDataset &&
+                        getDatasetOptionKey(selectedDataset) === getDatasetOptionKey(dataset)
                         ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20'
                         : 'border-gray-200 dark:border-zinc-700 hover:border-amber-300 dark:hover:border-amber-700'
                     )}
@@ -1006,22 +1039,30 @@ const AddDatasetModal = memo(function AddDatasetModal({
                       type="radio"
                       name="dataset"
                       className="w-4 h-4 text-amber-600"
-                      checked={
-                        selectedDataset?.config_id === dataset.config_id &&
-                        selectedDataset?.source_type === 'bronze'
-                      }
+                      checked={Boolean(
+                        selectedDataset &&
+                          getDatasetOptionKey(selectedDataset) === getDatasetOptionKey(dataset)
+                      )}
                       onChange={() => setSelectedDataset(dataset)}
                     />
                     <div className="flex-1">
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">
-                        {dataset.name}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">
+                          {dataset.name}
+                        </span>
+                        <TypeBadge
+                          type={dataset.config_type || 'persistent'}
+                          variant="bronze"
+                        />
+                      </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                         {dataset.description || 'No description'}
                       </p>
                     </div>
                     <span className="text-xs text-gray-400">
-                      {formatNumber(dataset.total_rows)} rows
+                      {dataset.total_rows !== null && dataset.total_rows !== undefined
+                        ? `${formatNumber(dataset.total_rows)} rows`
+                        : 'On demand'}
                     </span>
                   </label>
                 ))}
@@ -1039,11 +1080,11 @@ const AddDatasetModal = memo(function AddDatasetModal({
                 </div>
                 {silverDatasets.map((dataset) => (
                   <label
-                    key={`silver-${dataset.config_id}`}
+                    key={getDatasetOptionKey(dataset)}
                     className={clsx(
                       'flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors',
-                      selectedDataset?.config_id === dataset.config_id &&
-                        selectedDataset?.source_type === 'silver'
+                      selectedDataset &&
+                        getDatasetOptionKey(selectedDataset) === getDatasetOptionKey(dataset)
                         ? 'border-purple-400 bg-purple-50 dark:bg-purple-900/20'
                         : 'border-gray-200 dark:border-zinc-700 hover:border-purple-300 dark:hover:border-purple-700'
                     )}
@@ -1052,22 +1093,30 @@ const AddDatasetModal = memo(function AddDatasetModal({
                       type="radio"
                       name="dataset"
                       className="w-4 h-4 text-purple-600"
-                      checked={
-                        selectedDataset?.config_id === dataset.config_id &&
-                        selectedDataset?.source_type === 'silver'
-                      }
+                      checked={Boolean(
+                        selectedDataset &&
+                          getDatasetOptionKey(selectedDataset) === getDatasetOptionKey(dataset)
+                      )}
                       onChange={() => setSelectedDataset(dataset)}
                     />
                     <div className="flex-1">
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">
-                        {dataset.name}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">
+                          {dataset.name}
+                        </span>
+                        <TypeBadge
+                          type={dataset.config_type || 'persistent'}
+                          variant="silver"
+                        />
+                      </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                         {dataset.description || 'No description'}
                       </p>
                     </div>
                     <span className="text-xs text-gray-400">
-                      {formatNumber(dataset.total_rows)} rows
+                      {dataset.total_rows !== null && dataset.total_rows !== undefined
+                        ? `${formatNumber(dataset.total_rows)} rows`
+                        : 'On demand'}
                     </span>
                   </label>
                 ))}
@@ -1263,7 +1312,7 @@ print(df.head())`;
       <div className="mb-6 p-3 bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 rounded-lg">
         <div className="flex items-center gap-2 text-sm">
           <span className="font-medium text-gray-700 dark:text-gray-300">Dependencies:</span>
-          <code className="bg-gray-200 dark:bg-zinc-700 px-2 py-0.5 rounded text-xs">pip install delta-sharing pandas</code>
+          <code className="bg-gray-200 dark:bg-zinc-700 px-2 py-0.5 rounded text-xs">pip install delta-sharing pandas requests</code>
         </div>
       </div>
 
@@ -1315,7 +1364,7 @@ print(df.head())`;
         <div className="flex items-start gap-2">
           <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-blue-700 dark:text-blue-300">
-            <p><strong>Tip:</strong> Click the <Code className="w-3 h-3 inline" /> button on each dataset to copy the Python code with all parameters already filled in.</p>
+            <p><strong>Tip:</strong> Persistent tables use Delta Sharing protocol, while virtualized tables use Data API (`/data`). Click the <Code className="w-3 h-3 inline" /> button on each dataset to copy the right snippet.</p>
           </div>
         </div>
       </div>
@@ -1392,6 +1441,8 @@ export default function SharingPage() {
     deleteSchema,
     addTableFromBronze,
     addTableFromSilver,
+    addTableFromBronzeVirtualized,
+    addTableFromSilverVirtualized,
     removeTable,
     associateRecipientToShares,
     removeRecipientFromShare,
@@ -1483,6 +1534,14 @@ export default function SharingPage() {
       if (!schema) return false;
 
       if (dataset.source_type === 'bronze') {
+        if (dataset.config_type === 'virtualized') {
+          const result = await addTableFromBronzeVirtualized(share.id, schema.id, {
+            bronze_virtualized_config_id: dataset.config_id,
+            name: dataset.name,
+            description: dataset.description || '',
+          });
+          return !!result;
+        }
         const result = await addTableFromBronze(share.id, schema.id, {
           bronze_config_id: dataset.config_id,
           name: dataset.name,
@@ -1490,6 +1549,14 @@ export default function SharingPage() {
         });
         return !!result;
       } else {
+        if (dataset.config_type === 'virtualized') {
+          const result = await addTableFromSilverVirtualized(share.id, schema.id, {
+            silver_virtualized_config_id: dataset.config_id,
+            name: dataset.name,
+            description: dataset.description || '',
+          });
+          return !!result;
+        }
         const result = await addTableFromSilver(share.id, schema.id, {
           silver_config_id: dataset.config_id,
           name: dataset.name,
@@ -1498,7 +1565,13 @@ export default function SharingPage() {
         return !!result;
       }
     },
-    [getOrCreateDefaultSchema, addTableFromBronze, addTableFromSilver]
+    [
+      getOrCreateDefaultSchema,
+      addTableFromBronze,
+      addTableFromSilver,
+      addTableFromBronzeVirtualized,
+      addTableFromSilverVirtualized,
+    ]
   );
 
   const handleRemoveDataset = useCallback(

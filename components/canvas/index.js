@@ -5,4 +5,4 @@ export { SchemaEdge, FederationEdge } from './RelationshipEdge';
 
 export { default as CanvasWrapper } from './CanvasWrapper';
 
-export { getLayoutedElements, getGridPositions, calculateMinZoom } from './layout';
+export { getLayoutedElementsAsync, getGridPositions, calculateMinZoom } from './layout';

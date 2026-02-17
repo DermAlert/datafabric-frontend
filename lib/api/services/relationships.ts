@@ -69,13 +69,35 @@ export async function listSuggestions(
   if (tableId) params.append('table_id', tableId.toString());
   if (minConfidence) params.append('min_confidence', minConfidence.toString());
   if (status) params.append('status', status);
-  // Request all pages if needed, but for now we rely on default size (usually 20 or 50)
-  params.append('size', '100'); 
-  
-  // Use the new generic endpoint if status is provided, otherwise fallback to pending for backward compatibility if needed
-  // But based on user info, /api/relationships/suggestions handles filtering
-  const result = await apiClient.get<SearchResult<RelationshipSuggestion>>(`${BASE_PATH}/suggestions?${params.toString()}`);
-  return result.items || [];
+
+  // Fetch ALL pages to avoid missing suggestions due to pagination
+  const pageSize = 100;
+  let allItems: RelationshipSuggestion[] = [];
+  let page = 1;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const pageParams = new URLSearchParams(params);
+    pageParams.set('size', pageSize.toString());
+    pageParams.set('page', page.toString());
+
+    const result = await apiClient.get<SearchResult<RelationshipSuggestion>>(
+      `${BASE_PATH}/suggestions?${pageParams.toString()}`
+    );
+
+    const items = result.items || [];
+    allItems = allItems.concat(items);
+
+    // Stop if we got fewer items than page size (last page) or no total info
+    const total = result.total ?? 0;
+    if (items.length < pageSize || allItems.length >= total) break;
+
+    page++;
+    // Safety: max 10 pages (1000 suggestions)
+    if (page > 10) break;
+  }
+
+  return allItems;
 }
 
 /**
