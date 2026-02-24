@@ -97,10 +97,16 @@ export interface DeltaVersionInfo {
   rows_deleted?: number;
   timestamp: string;
   operation_parameters?: Record<string, unknown>;
+  total_rows?: number;
+  /** Maps output path → Delta Lake version at this execution (Bronze multi-source only) */
+  path_delta_versions?: Record<string, number> | null;
 }
 
 export interface VersionHistoryResponse {
+  config_id?: number;
+  config_name?: string;
   current_version: number;
+  output_paths?: string[];
   versions: DeltaVersionInfo[];
 }
 

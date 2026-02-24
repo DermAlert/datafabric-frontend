@@ -25,6 +25,7 @@ import type {
   ShareWithDetails,
   SchemaWithTables,
   DatasetConfigType,
+  UnpinVersionResponse,
 } from '@/types/api/deltaSharing';
 import type { VirtualizedConfig } from '@/types/api/bronze';
 import type { SilverVirtualizedConfig } from '@/types/api/silver';
@@ -83,6 +84,8 @@ interface UseDeltaSharingReturn {
     data: CreateTableFromSilverVirtualizedRequest
   ) => Promise<Table | null>;
   removeTable: (shareId: number, schemaId: number, tableId: number) => Promise<boolean>;
+  pinTableVersion: (shareId: number, schemaId: number, tableId: number, deltaVersion: number) => Promise<Table | null>;
+  unpinTableVersion: (shareId: number, schemaId: number, tableId: number) => Promise<UnpinVersionResponse | null>;
   
   // Recipient operations
   createRecipient: (data: CreateRecipientRequest) => Promise<Recipient | null>;
@@ -192,13 +195,22 @@ export function useDeltaSharing(
                       table.dataset_name && table.dataset_name.toLowerCase().includes('bronze')
                         ? 'bronze'
                         : 'silver';
+                    const resolvedSourceType = table.source_type || fallbackLayer;
+                    const resolvedConfigId =
+                      table.bronze_persistent_config_id
+                      ?? table.silver_persistent_config_id
+                      ?? table.bronze_virtualized_config_id
+                      ?? table.silver_virtualized_config_id
+                      ?? table.source_config_id
+                      ?? table.dataset_id
+                      ?? null;
                     return {
                     ...table,
                     table_id: table.id,
                     table_name: table.name,
-                    source_type: table.source_type || fallbackLayer,
-                    source_config_id: table.source_config_id ?? table.dataset_id ?? null,
-                    source_config_name: table.source_config_name || table.dataset_name || undefined,
+                    source_type: resolvedSourceType,
+                    source_config_id: resolvedConfigId,
+                    source_config_name: table.source_config_name || table.name || undefined,
                     config_type: table.config_type || normalizeConfigType(table.source_type, table.storage_location),
                     };
                   });
@@ -381,12 +393,11 @@ export function useDeltaSharing(
       shareId: number,
       schemaId: number,
       data: CreateTableFromBronzeRequest
-    ): Promise<Table | null> => {
+    ): Promise<Table[] | null> => {
       try {
-        const table = await deltaSharingService.tables.createFromBronze(shareId, schemaId, data);
-        // Refresh shares to get updated data
+        const tables = await deltaSharingService.tables.createFromBronze(shareId, schemaId, data);
         await fetchShares();
-        return table;
+        return tables;
       } catch (err) {
         handleError(err, 'Failed to add table from Bronze');
         return null;
@@ -468,6 +479,34 @@ export function useDeltaSharing(
       } catch (err) {
         handleError(err, 'Failed to remove table');
         return false;
+      }
+    },
+    [fetchShares]
+  );
+
+  const pinTableVersion = useCallback(
+    async (shareId: number, schemaId: number, tableId: number, deltaVersion: number): Promise<Table | null> => {
+      try {
+        const table = await deltaSharingService.tables.pinVersion(shareId, schemaId, tableId, { delta_version: deltaVersion });
+        await fetchShares();
+        return table;
+      } catch (err) {
+        handleError(err, 'Failed to pin table version');
+        return null;
+      }
+    },
+    [fetchShares]
+  );
+
+  const unpinTableVersion = useCallback(
+    async (shareId: number, schemaId: number, tableId: number): Promise<UnpinVersionResponse | null> => {
+      try {
+        const result = await deltaSharingService.tables.unpinVersion(shareId, schemaId, tableId);
+        await fetchShares();
+        return result;
+      } catch (err) {
+        handleError(err, 'Failed to unpin table version');
+        return null;
       }
     },
     [fetchShares]
@@ -627,6 +666,8 @@ export function useDeltaSharing(
     addTableFromBronzeVirtualized,
     addTableFromSilverVirtualized,
     removeTable,
+    pinTableVersion,
+    unpinTableVersion,
     
     // Recipient operations
     createRecipient,

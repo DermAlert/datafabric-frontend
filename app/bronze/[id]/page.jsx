@@ -134,12 +134,13 @@ export default function DatasetViewPage() {
   const tableCount = config?.tables?.length || 0;
   const isMultiTable = !isFederated && tableCount > 1;
 
-  // Discover table groups for multi-table configs (run once on config load)
+  // Discover table groups for multi-table configs
   const loadTableGroups = useCallback(
-    async (version) => {
-      if (!isMultiTable || !configId) return;
+    async (version, numTables) => {
+      const count = numTables ?? tableCount;
+      if (count <= 1 || !configId) return;
       try {
-        const promises = Array.from({ length: tableCount }, (_, idx) =>
+        const promises = Array.from({ length: count }, (_, idx) =>
           bronzeService.persistent.queryData(configId, {
             limit: 1,
             offset: 0,
@@ -163,14 +164,12 @@ export default function DatasetViewPage() {
             return null;
           })
           .filter(Boolean);
-        if (parsedGroups.length > 0) {
-          setGroups(parsedGroups);
-        }
+        setGroups(parsedGroups);
       } catch (err) {
         console.error('Failed to discover table groups:', err);
       }
     },
-    [configId, isMultiTable, tableCount]
+    [configId, tableCount]
   );
 
   // Load persistent data via POST with filters (works for all cases)
@@ -187,14 +186,20 @@ export default function DatasetViewPage() {
         const fl = overrides.filtersLogic ?? serverFiltersLogic;
         const sb = overrides.sortBy !== undefined ? overrides.sortBy : serverSortBy;
         const so = overrides.sortOrder ?? serverSortOrder;
-        const pathIdx = overrides.pathIndex ?? (isMultiTable ? selectedGroupIndex : undefined);
+        // Use groups.length > 1 as the effective multi-table flag — isMultiTable reflects
+        // the CURRENT config's table count, but when viewing an older version the current
+        // config may have fewer tables while still having multiple groups loaded.
+        const hasMultipleGroups = isMultiTable || groups.length > 1;
+        const pathIdx = overrides.pathIndex !== undefined
+          ? overrides.pathIndex
+          : (hasMultipleGroups ? selectedGroupIndex : undefined);
 
         const body = {
           limit: ps,
           offset: (pg - 1) * ps,
           version: version ?? undefined,
         };
-        if (isMultiTable && pathIdx !== undefined) {
+        if (pathIdx !== undefined) {
           body.path_index = pathIdx;
         }
         if (f.length > 0) {
@@ -223,7 +228,7 @@ export default function DatasetViewPage() {
         setIsLoadingData(false);
       }
     },
-    [configId, isPersistent, isMultiTable, selectedGroupIndex, serverFilters, serverFiltersLogic, serverSortBy, serverSortOrder, serverPage, serverPageSize]
+    [configId, isPersistent, isMultiTable, groups, selectedGroupIndex, serverFilters, serverFiltersLogic, serverSortBy, serverSortOrder, serverPage, serverPageSize]
   );
 
   // Load virtualized data
@@ -288,11 +293,45 @@ export default function DatasetViewPage() {
     }
   }, [config, configId, isPersistent, isVirtualized, isMultiTable, loadPersistentData, loadVirtualizedData, loadTableGroups]);
 
-  // Handle version change
-  const handleVersionSelect = (version) => {
+  // Handle version change — rebuild tabs from that version's config_snapshot.tables
+  const handleVersionSelect = async (version) => {
     setSelectedVersion(version);
-    loadPersistentData(version, { page: 1 });
     versionDropdown.onClose();
+
+    const versionEntry = versions.find((v) => v.version === version);
+    const versionTables = versionEntry?.config_snapshot?.tables || config?.tables || [];
+    const versionTableCount = versionTables.length;
+    const versionIsMultiTable = !config?.enable_federated_joins && versionTableCount > 1;
+
+    if (versionIsMultiTable) {
+      await loadTableGroups(version, versionTableCount);
+      const newIndex = selectedGroupIndex < versionTableCount ? selectedGroupIndex : 0;
+      setSelectedGroupIndex(newIndex);
+      setServerFilters([]);
+      setServerSortBy(null);
+      setServerSortOrder('asc');
+      setServerPage(1);
+      loadPersistentData(version, {
+        pathIndex: newIndex,
+        filters: [],
+        sortBy: null,
+        sortOrder: 'asc',
+        page: 1,
+      });
+    } else {
+      setGroups(versionTableCount === 1 ? [] : groups);
+      setSelectedGroupIndex(0);
+      setServerFilters([]);
+      setServerSortBy(null);
+      setServerSortOrder('asc');
+      setServerPage(1);
+      loadPersistentData(version, {
+        filters: [],
+        sortBy: null,
+        sortOrder: 'asc',
+        page: 1,
+      });
+    }
   };
 
   // Handle group/source tab change (reset filters for new tab)

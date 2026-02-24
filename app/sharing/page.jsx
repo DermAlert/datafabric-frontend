@@ -30,14 +30,158 @@ import {
   Download,
   HelpCircle,
   ExternalLink,
+  Pin,
+  CheckCircle2,
 } from 'lucide-react';
 import { useDisclosure, useDeltaSharing } from '@/hooks';
-import { Modal, EmptyState, LayerBadge, TypeBadge } from '@/components/ui';
+import { Modal, EmptyState, LayerBadge, TypeBadge, VersionStrategyPicker } from '@/components/ui';
 import { Input, SearchInput, Textarea } from '@/components/ui/Input';
 import { formatDate, formatNumber } from '@/lib/utils';
+import { bronzeService } from '@/lib/api/services/bronze';
+import { silverService } from '@/lib/api/services/silver';
 
 // Nome do schema padrão (criado automaticamente)
 const DEFAULT_SCHEMA_NAME = 'default';
+
+// ─── Python code-generation helpers ───────────────────────────────────────────
+
+/** Convert a Delta table name to a safe Python identifier (df_<name>). */
+const toPythonVar = (name) => {
+  const sanitized = name
+    .replace(/[^a-zA-Z0-9]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  // Prefix with df_ so variable names are always valid and self-describing
+  return `df_${sanitized || 'table'}`;
+};
+
+/**
+ * Build the ready-to-copy Python snippet for a dataset card.
+ *
+ * Cases handled:
+ *  1. Virtualized (Bronze or Silver)   → REST API via requests
+ *  2. Persistent, single table, pinned  → load_as_pandas(..., version=N)
+ *  3. Persistent, single table, latest → load_as_pandas(...)
+ *  4. Persistent, multiple paths        → one load_as_pandas per path, each
+ *                                         with its own pin (or latest) comment
+ */
+const buildPythonCode = (configType, allTables, share, schema, dataset) => {
+  // ── 1. Virtualized: query via REST Data API ────────────────────────────────
+  if (configType === 'virtualized') {
+    const tableName = dataset.protocol_table_name || dataset.table_name;
+    return (
+`import requests
+
+API_BASE = "http://localhost:8004/api/delta-sharing"
+TOKEN = "<recipient-bearer-token>"
+
+response = requests.get(
+    f"{API_BASE}/shares/${share}/schemas/${schema}/tables/${tableName}/data",
+    headers={"Authorization": f"Bearer {TOKEN}"},
+    params={"limit": 100, "offset": 0},
+)
+response.raise_for_status()
+payload = response.json()
+print(payload["data"][:3])`
+    );
+  }
+
+  // ── 2-4. Persistent: Delta Sharing protocol ────────────────────────────────
+  const header =
+`import delta_sharing
+
+# Download your .share credential file from the Recipients tab
+profile_file = "<profile-file-path>"`;
+
+  // ── 2 & 3. Single table ────────────────────────────────────────────────────
+  if (allTables.length === 1) {
+    const t = allTables[0];
+    const tableName = t.protocol_table_name || t.table_name;
+    const layer = getDatasetLayer(t.source_type);
+    const isPinned = t.pinned_delta_version != null;
+
+    if (isPinned) {
+      return (
+`${header}
+
+# Pinned to v${t.pinned_delta_version} — always returns this exact ${layer} snapshot
+df = delta_sharing.load_as_pandas(
+    f"{profile_file}#${share}.${schema}.${tableName}",
+    version=${t.pinned_delta_version},
+)
+print(df.head())`
+      );
+    }
+    return (
+`${header}
+
+# Always-latest ${layer} data — auto-updates with each execution
+df = delta_sharing.load_as_pandas(f"{profile_file}#${share}.${schema}.${tableName}")
+print(df.head())`
+    );
+  }
+
+  // ── 4. Multiple paths (logical Bronze with several source tables) ───────────
+  // When any sibling is pinned, only show pinned siblings (others don't have
+  // data at that execution). When none are pinned, show all.
+  const anyPinned = allTables.some((t) => t.pinned_delta_version != null);
+  const visibleTables = anyPinned
+    ? allTables.filter((t) => t.pinned_delta_version != null)
+    : allTables;
+
+  // If filtering left us with exactly one table, use the single-table format
+  if (visibleTables.length === 1) {
+    const t = visibleTables[0];
+    const tableName = t.protocol_table_name || t.table_name;
+    const layer = getDatasetLayer(t.source_type);
+    if (t.pinned_delta_version != null) {
+      return (
+`${header}
+
+# Pinned to v${t.pinned_delta_version} — always returns this exact ${layer} snapshot
+df = delta_sharing.load_as_pandas(
+    f"{profile_file}#${share}.${schema}.${tableName}",
+    version=${t.pinned_delta_version},
+)
+print(df.head())`
+      );
+    }
+    return (
+`${header}
+
+# Always-latest ${layer} data — auto-updates with each execution
+df = delta_sharing.load_as_pandas(f"{profile_file}#${share}.${schema}.${tableName}")
+print(df.head())`
+    );
+  }
+
+  const blocks = visibleTables.map((t) => {
+    const tableName = t.protocol_table_name || t.table_name;
+    const varName = toPythonVar(tableName);
+    const layer = getDatasetLayer(t.source_type);
+    const isPinned = t.pinned_delta_version != null;
+
+    if (isPinned) {
+      return (
+`# ${tableName} — pinned to v${t.pinned_delta_version}
+${varName} = delta_sharing.load_as_pandas(
+    f"{profile_file}#${share}.${schema}.${tableName}",
+    version=${t.pinned_delta_version},
+)
+print("=== ${tableName} ===")
+print(${varName}.head())`
+      );
+    }
+    return (
+`# ${tableName} — always-latest ${layer} data
+${varName} = delta_sharing.load_as_pandas(f"{profile_file}#${share}.${schema}.${tableName}")
+print("=== ${tableName} ===")
+print(${varName}.head())`
+    );
+  }).join('\n\n');
+
+  return `${header}\n\n${blocks}`;
+};
 
 // ===========================================
 // Share List Item Component
@@ -56,6 +200,36 @@ const isVirtualizedDataset = (dataset) =>
   dataset?.config_type === 'virtualized' ||
   dataset?.source_type === 'bronze_virtualized' ||
   dataset?.source_type === 'silver_virtualized';
+
+// Group tables that share the same persistent config into a single visual entry.
+// Returns { representative, siblings[] } for each group.
+const groupTablesByConfig = (tables) => {
+  if (!tables || !tables.length) return [];
+
+  const configGroups = new Map();
+  const standalone = [];
+
+  for (const t of tables) {
+    const configId = t.bronze_persistent_config_id || t.silver_persistent_config_id;
+    const configType = t.config_type || (isVirtualizedDataset(t) ? 'virtualized' : 'persistent');
+    if (configId && configType === 'persistent') {
+      const key = `${t.source_type}_${configId}_${t.schema_id || ''}`;
+      if (!configGroups.has(key)) {
+        configGroups.set(key, []);
+      }
+      configGroups.get(key).push(t);
+    } else {
+      standalone.push({ representative: t, siblings: [t] });
+    }
+  }
+
+  const grouped = [];
+  for (const members of configGroups.values()) {
+    grouped.push({ representative: members[0], siblings: members });
+  }
+
+  return [...grouped, ...standalone];
+};
 
 const ShareListItem = memo(function ShareListItem({ share, isSelected, onSelect }) {
   const datasetCount = getShareDatasets(share).length;
@@ -98,32 +272,58 @@ const ShareListItem = memo(function ShareListItem({ share, isSelected, onSelect 
 // Dataset Card Component
 // ===========================================
 
-const DatasetCard = memo(function DatasetCard({ dataset, onRemove, shareName }) {
+const DatasetCard = memo(function DatasetCard({ dataset, onRemove, onManagePin, shareName, siblingTables, executionVersion }) {
   const [copied, setCopied] = useState(false);
+  const [derivedExecVersion, setDerivedExecVersion] = useState(null);
   const layer = getDatasetLayer(dataset.source_type);
   const isBronze = layer === 'bronze';
   const configType = dataset.config_type || (isVirtualizedDataset(dataset) ? 'virtualized' : 'persistent');
-  const pythonCode =
-    configType === 'virtualized'
-      ? `import requests
+  const isPinnable = configType === 'persistent';
+  const isPinned = dataset.pinned_delta_version != null;
 
-API_BASE = "http://localhost:8004/api/delta-sharing"
-TOKEN = "<recipient-bearer-token>"
+  const allTables = siblingTables && siblingTables.length > 1 ? siblingTables : [dataset];
+  const hasSiblingTables = allTables.length > 1;
+  const share = shareName || dataset.share_name;
+  const schema = dataset.schema_name;
 
-response = requests.get(
-    f"{API_BASE}/shares/${shareName || dataset.share_name}/schemas/${dataset.schema_name}/tables/${dataset.table_name}/data",
-    headers={"Authorization": f"Bearer {TOKEN}"},
-    params={"limit": 100, "offset": 0}
-)
-response.raise_for_status()
-payload = response.json()
-print(payload["data"][:3])`
-      : `import delta_sharing
+  // For pinned multi-path Bronze datasets: lazily derive the logical execution version
+  // by reverse-looking up which execution version's path_delta_versions matches the
+  // primary path's current pinned_delta_version. Runs once per card on mount/pin change.
+  useEffect(() => {
+    if (executionVersion != null || !isBronze || !hasSiblingTables || !isPinned) {
+      setDerivedExecVersion(null);
+      return;
+    }
+    const configId = dataset.source_config_id;
+    if (!configId) return;
+    let cancelled = false;
+    bronzeService.persistent.getVersions(configId)
+      .then((res) => {
+        if (cancelled) return;
+        const versions = res.versions || [];
+        const primaryLoc = dataset.storage_location
+          ? dataset.storage_location.replace(/^[a-z][a-z0-9+\-.]*:\/\//i, '').replace(/\/+$/, '')
+          : null;
+        if (!primaryLoc) return;
+        const match = versions.find((v) => {
+          if (!v.path_delta_versions) return false;
+          const normalizedPdv = Object.fromEntries(
+            Object.entries(v.path_delta_versions).map(([k, val]) => [
+              k.replace(/^[a-z][a-z0-9+\-.]*:\/\//i, '').replace(/\/+$/, ''), val,
+            ])
+          );
+          return normalizedPdv[primaryLoc] === dataset.pinned_delta_version;
+        });
+        setDerivedExecVersion(match ? match.version : null);
+      })
+      .catch(() => { if (!cancelled) setDerivedExecVersion(null); });
+    return () => { cancelled = true; };
+  }, [isBronze, hasSiblingTables, isPinned, dataset.source_config_id, dataset.storage_location, dataset.pinned_delta_version, executionVersion]);
 
-profile_file = "<profile-file-path>"
+  // Effective execution version: prefer parent-provided (post-save), fall back to derived (on load)
+  const effectiveExecVersion = executionVersion ?? derivedExecVersion;
 
-df = delta_sharing.load_as_pandas(f"{profile_file}#${shareName || dataset.share_name}.${dataset.schema_name}.${dataset.table_name}")
-print(df.head())`;
+  const pythonCode = buildPythonCode(configType, allTables, share, schema, dataset);
 
   const handleCopyCode = async () => {
     await navigator.clipboard.writeText(pythonCode);
@@ -151,15 +351,43 @@ print(df.head())`;
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2">
-              <span className="font-medium text-gray-900 dark:text-white">{dataset.table_name}</span>
+              <span className="font-medium text-gray-900 dark:text-white">
+                {dataset.source_config_name || dataset.table_name}
+              </span>
               <LayerBadge layer={layer} />
               <TypeBadge type={configType} variant={layer} />
             </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {dataset.description || `From ${dataset.source_config_name}`}
-            </p>
-            <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 dark:text-gray-500">
-              <span>Version {dataset.current_version}</span>
+            {dataset.description && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{dataset.description}</p>
+            )}
+            <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+              <span>v{dataset.current_version ?? '—'}</span>
+              {allTables.length > 1 && (() => {
+                const anyPinned = allTables.some((t) => t.pinned_delta_version != null);
+                const pinnedCount = anyPinned
+                  ? allTables.filter((t) => t.pinned_delta_version != null).length
+                  : allTables.length;
+                return (
+                  <span className="text-violet-500 dark:text-violet-400">
+                    {anyPinned ? `${pinnedCount}/${allTables.length}` : allTables.length} paths
+                  </span>
+                );
+              })()}
+              {isPinnable && allTables.some((t) => t.pinned_delta_version != null) && (() => {
+                const pinnedVersions = [...new Set(
+                  allTables.filter((t) => t.pinned_delta_version != null).map((t) => t.pinned_delta_version)
+                )];
+                // Use effective execution version when available, else derive from delta versions
+                const versionLabel = effectiveExecVersion != null
+                  ? ` v${effectiveExecVersion}`
+                  : (pinnedVersions.length === 1 ? ` v${pinnedVersions[0]}` : '');
+                return (
+                  <span className="inline-flex items-center gap-1 text-emerald-500 dark:text-emerald-400">
+                    <CheckCircle2 className="w-3 h-3" />
+                    {`selected${versionLabel}`}
+                  </span>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -176,8 +404,22 @@ print(df.head())`;
           >
             {copied ? <Check className="w-4 h-4" /> : <Code className="w-4 h-4" />}
           </button>
+          {isPinnable && (
+            <button
+              onClick={() => onManagePin(dataset, allTables)}
+              className={clsx(
+                'p-1.5 rounded-lg transition-colors',
+                isPinned
+                  ? 'text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                  : 'text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+              )}
+              title={isPinned ? `Serving v${effectiveExecVersion ?? dataset.pinned_delta_version} — click to change` : 'Select a version to serve'}
+            >
+              <Pin className="w-4 h-4" />
+            </button>
+          )}
           <button
-            onClick={() => onRemove(dataset)}
+            onClick={() => onRemove(dataset, allTables)}
             className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
             title="Remove dataset"
           >
@@ -199,6 +441,8 @@ const SchemaFolder = memo(function SchemaFolder({
   onAddDataset,
   onRemoveDataset,
   onDeleteSchema,
+  onManagePin,
+  pinnedExecutionVersions,
 }) {
   const [isExpanded, setIsExpanded] = useState(true);
   const tables = schema.tables || [];
@@ -264,8 +508,16 @@ const SchemaFolder = memo(function SchemaFolder({
               </button>
             </div>
           ) : (
-            tables.map((dataset) => (
-              <DatasetCard key={dataset.table_id} dataset={dataset} shareName={shareName} onRemove={onRemoveDataset} />
+            groupTablesByConfig(tables).map(({ representative, siblings }) => (
+              <DatasetCard
+                key={representative.table_id}
+                dataset={representative}
+                shareName={shareName}
+                onRemove={onRemoveDataset}
+                onManagePin={onManagePin}
+                siblingTables={siblings}
+                executionVersion={pinnedExecutionVersions?.[representative.source_config_id]}
+              />
             ))
           )}
         </div>
@@ -285,6 +537,8 @@ const FoldersView = memo(function FoldersView({
   onRemoveDataset,
   onDeleteSchema,
   onAddSchema,
+  onManagePin,
+  pinnedExecutionVersions,
 }) {
   // Separar pastas customizadas do schema default
   const customFolders = schemas.filter((s) => s.name !== DEFAULT_SCHEMA_NAME);
@@ -308,6 +562,8 @@ const FoldersView = memo(function FoldersView({
               onAddDataset={onAddDataset}
               onRemoveDataset={onRemoveDataset}
               onDeleteSchema={onDeleteSchema}
+              onManagePin={onManagePin}
+              pinnedExecutionVersions={pinnedExecutionVersions}
             />
           ))}
         </div>
@@ -347,8 +603,16 @@ const FoldersView = memo(function FoldersView({
           </div>
         ) : (
           <div className="space-y-2">
-            {looseDatasets.map((dataset) => (
-              <DatasetCard key={dataset.table_id} dataset={dataset} shareName={shareName} onRemove={onRemoveDataset} />
+            {groupTablesByConfig(looseDatasets).map(({ representative, siblings }) => (
+              <DatasetCard
+                key={representative.table_id}
+                dataset={representative}
+                shareName={shareName}
+                onRemove={onRemoveDataset}
+                onManagePin={onManagePin}
+                siblingTables={siblings}
+                executionVersion={pinnedExecutionVersions?.[representative.source_config_id]}
+              />
             ))}
           </div>
         )}
@@ -561,6 +825,7 @@ const DetailPanel = memo(function DetailPanel({
   onDeleteSchema,
   onDeleteShare,
   onShowHelp,
+  onManagePin,
   recipients,
   onAddRecipient,
   onRemoveRecipient,
@@ -568,6 +833,7 @@ const DetailPanel = memo(function DetailPanel({
   onRegenerateToken,
   isLoading,
   isLoadingRecipients,
+  pinnedExecutionVersions,
 }) {
   const [activeTab, setActiveTab] = useState('datasets'); // 'datasets' or 'recipients'
   const [viewMode, setViewMode] = useState('flat'); // 'flat' or 'folders'
@@ -594,9 +860,10 @@ const DetailPanel = memo(function DetailPanel({
   }
 
   const datasets = getShareDatasets(share);
+  const groupedDatasets = groupTablesByConfig(datasets);
   const schemas = share.schemas || [];
   const hasMultipleSchemas = schemas.filter((s) => s.name !== DEFAULT_SCHEMA_NAME).length > 0;
-  const virtualizedCount = datasets.filter((dataset) => isVirtualizedDataset(dataset)).length;
+  const virtualizedCount = groupedDatasets.filter(({ representative }) => isVirtualizedDataset(representative)).length;
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800">
@@ -635,20 +902,20 @@ const DetailPanel = memo(function DetailPanel({
         {/* Stats Row */}
         <div className="flex items-center gap-6 mt-4 pt-4 border-t border-gray-100 dark:border-zinc-800">
           <div className="text-center">
-            <div className="text-2xl font-bold text-gray-900 dark:text-white">{datasets.length}</div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-white">{groupedDatasets.length}</div>
             <div className="text-xs text-gray-500 dark:text-gray-400">Datasets</div>
           </div>
           <div className="w-px h-8 bg-gray-200 dark:bg-zinc-700" />
           <div className="text-center">
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
-              {datasets.filter((d) => getDatasetLayer(d.source_type) === 'bronze').length}
+              {groupedDatasets.filter(({ representative }) => getDatasetLayer(representative.source_type) === 'bronze').length}
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400">Bronze</div>
           </div>
           <div className="w-px h-8 bg-gray-200 dark:bg-zinc-700" />
           <div className="text-center">
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
-              {datasets.filter((d) => getDatasetLayer(d.source_type) === 'silver').length}
+              {groupedDatasets.filter(({ representative }) => getDatasetLayer(representative.source_type) === 'silver').length}
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400">Silver</div>
           </div>
@@ -682,7 +949,7 @@ const DetailPanel = memo(function DetailPanel({
             )}
           >
             <Database className="w-4 h-4" />
-            Shared Datasets ({datasets.length})
+            Shared Datasets ({groupedDatasets.length})
           </button>
           <button
             onClick={() => setActiveTab('recipients')}
@@ -779,11 +1046,21 @@ const DetailPanel = memo(function DetailPanel({
                 onRemoveDataset={onRemoveDataset}
                 onDeleteSchema={onDeleteSchema}
                 onAddSchema={onAddSchema}
+                onManagePin={onManagePin}
+                pinnedExecutionVersions={pinnedExecutionVersions}
               />
             ) : (
               <div className="space-y-2">
-                {datasets.map((dataset) => (
-                  <DatasetCard key={dataset.table_id} dataset={dataset} shareName={share.name} onRemove={onRemoveDataset} />
+                {groupTablesByConfig(datasets).map(({ representative, siblings }) => (
+                  <DatasetCard
+                    key={representative.table_id}
+                    dataset={representative}
+                    shareName={share.name}
+                    onRemove={onRemoveDataset}
+                    onManagePin={onManagePin}
+                    siblingTables={siblings}
+                    executionVersion={pinnedExecutionVersions?.[representative.source_config_id]}
+                  />
                 ))}
               </div>
             )}
@@ -956,6 +1233,10 @@ const AddDatasetModal = memo(function AddDatasetModal({
   targetSchema,
 }) {
   const [selectedDataset, setSelectedDataset] = useState(null);
+  const [useLatestVersion, setUseLatestVersion] = useState(true);
+  const [selectedPinVersion, setSelectedPinVersion] = useState(null);
+  const [versions, setVersions] = useState([]);
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const getDatasetOptionKey = (dataset) =>
     `${dataset.source_type}-${dataset.config_type || 'persistent'}-${dataset.config_id}`;
@@ -963,14 +1244,41 @@ const AddDatasetModal = memo(function AddDatasetModal({
   const bronzeDatasets = datasets.filter((d) => d.source_type === 'bronze');
   const silverDatasets = datasets.filter((d) => d.source_type === 'silver');
 
+  const isPersistent = selectedDataset && selectedDataset.config_type !== 'virtualized';
+
+  const handleSelectDataset = (dataset) => {
+    setSelectedDataset(dataset);
+    setUseLatestVersion(true);
+    setSelectedPinVersion(null);
+    setVersions([]);
+
+    if (dataset.config_type !== 'virtualized' && dataset.config_id) {
+      setIsLoadingVersions(true);
+      const fetchVersions = dataset.source_type === 'bronze'
+        ? bronzeService.persistent.getVersions(dataset.config_id)
+        : silverService.persistent.getVersions(dataset.config_id);
+      fetchVersions
+        .then((res) => setVersions(res.versions || []))
+        .catch(() => setVersions([]))
+        .finally(() => setIsLoadingVersions(false));
+    }
+  };
+
   const handleSubmit = async () => {
     if (!selectedDataset || !share) return;
     setIsSubmitting(true);
 
-    const success = await onAdd(share, selectedDataset, targetSchema);
+    const pinnedDeltaVersion = isPersistent && !useLatestVersion && selectedPinVersion != null
+      ? selectedPinVersion
+      : null;
+
+    const success = await onAdd(share, selectedDataset, targetSchema, pinnedDeltaVersion);
     
     if (success) {
       setSelectedDataset(null);
+      setUseLatestVersion(true);
+      setSelectedPinVersion(null);
+      setVersions([]);
       onClose();
     }
     setIsSubmitting(false);
@@ -978,6 +1286,9 @@ const AddDatasetModal = memo(function AddDatasetModal({
 
   const handleClose = () => {
     setSelectedDataset(null);
+    setUseLatestVersion(true);
+    setSelectedPinVersion(null);
+    setVersions([]);
     onClose();
   };
 
@@ -1043,7 +1354,7 @@ const AddDatasetModal = memo(function AddDatasetModal({
                         selectedDataset &&
                           getDatasetOptionKey(selectedDataset) === getDatasetOptionKey(dataset)
                       )}
-                      onChange={() => setSelectedDataset(dataset)}
+                      onChange={() => handleSelectDataset(dataset)}
                     />
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
@@ -1097,7 +1408,7 @@ const AddDatasetModal = memo(function AddDatasetModal({
                         selectedDataset &&
                           getDatasetOptionKey(selectedDataset) === getDatasetOptionKey(dataset)
                       )}
-                      onChange={() => setSelectedDataset(dataset)}
+                      onChange={() => handleSelectDataset(dataset)}
                     />
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
@@ -1124,6 +1435,25 @@ const AddDatasetModal = memo(function AddDatasetModal({
             )}
           </div>
 
+          {/* Version Strategy — only for persistent datasets */}
+          {isPersistent && (
+            <div className="mt-4">
+              <VersionStrategyPicker
+                useLatest={useLatestVersion}
+                onChangeStrategy={(latest) => {
+                  setUseLatestVersion(latest);
+                  if (latest) setSelectedPinVersion(null);
+                }}
+                selectedVersion={selectedPinVersion}
+                onSelectVersion={setSelectedPinVersion}
+                versions={versions}
+                currentVersion={versions[0]?.version ?? selectedDataset?.current_version ?? null}
+                isLoadingVersions={isLoadingVersions}
+                latestHint="Auto-updates with each execution"
+                pinHint="Lock to specific version for reproducibility"
+              />
+            </div>
+          )}
         </>
       )}
 
@@ -1288,13 +1618,24 @@ const AddRecipientModal = memo(function AddRecipientModal({
 
 const HelpModal = memo(function HelpModal({ isOpen, onClose, share }) {
   const [copiedCode, setCopiedCode] = useState(false);
+  const shareName = share?.name || '<SHARE>';
 
-  const pythonCode = `import delta_sharing
+  const pythonCode =
+`import delta_sharing
 
+# Download your .share credential file from the Recipients tab
 profile_file = "<profile-file-path>"
 
-df = delta_sharing.load_as_pandas(f"{profile_file}#${share?.name || '<SHARE>'}.<SCHEMA>.<TABLE>")
-print(df.head())`;
+# ── Always-latest (auto-updates with each execution) ──────────────
+df = delta_sharing.load_as_pandas(f"{profile_file}#${shareName}.<SCHEMA>.<TABLE>")
+print(df.head())
+
+# ── Pinned to a specific version (reproducible snapshot) ──────────
+df_pinned = delta_sharing.load_as_pandas(
+    f"{profile_file}#${shareName}.<SCHEMA>.<TABLE>",
+    version=<VERSION>,
+)
+print(df_pinned.head())`;
 
   const handleCopyCode = async () => {
     await navigator.clipboard.writeText(pythonCode);
@@ -1364,7 +1705,12 @@ print(df.head())`;
         <div className="flex items-start gap-2">
           <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-blue-700 dark:text-blue-300">
-            <p><strong>Tip:</strong> Persistent tables use Delta Sharing protocol, while virtualized tables use Data API (`/data`). Click the <Code className="w-3 h-3 inline" /> button on each dataset to copy the right snippet.</p>
+            <p>
+              <strong>Tip:</strong> Click the <Code className="w-3 h-3 inline" /> button on each dataset card to copy a ready-to-run snippet.
+              Persistent datasets (Bronze &amp; Silver) use the Delta Sharing protocol (<code>delta_sharing</code>).
+              Virtualized datasets use the REST Data API (<code>requests</code>).
+              Pinned tables automatically include <code>version=N</code>.
+            </p>
           </div>
         </div>
       </div>
@@ -1377,6 +1723,269 @@ print(df.head())`;
           Close
         </button>
       </div>
+    </Modal>
+  );
+});
+
+// ===========================================
+// Manage Pin Modal
+// ===========================================
+
+const ManagePinModal = memo(function ManagePinModal({
+  isOpen,
+  onClose,
+  dataset,
+  siblingTables,
+  onPin,
+  onUnpin,
+  onPinSaved,
+}) {
+  const isPinned = dataset?.pinned_delta_version != null;
+  const [useLatest, setUseLatest] = useState(!isPinned);
+  const [selectedVersion, setSelectedVersion] = useState(null);
+  const [versions, setVersions] = useState([]);
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const allSiblings = siblingTables && siblingTables.length > 0 ? siblingTables : (dataset ? [dataset] : []);
+  const hasSiblings = allSiblings.length > 1;
+
+  // Inline normalizer (needed before full definition below for useEffect closure)
+  const _normalizePath = (path) => {
+    if (!path) return path;
+    return path.replace(/^[a-z][a-z0-9+\-.]*:\/\//i, '').replace(/\/+$/, '');
+  };
+
+  useEffect(() => {
+    if (!isOpen || !dataset) return;
+
+    const pinned = dataset.pinned_delta_version != null;
+    setUseLatest(!pinned);
+    setError('');
+
+    const configId = dataset.source_config_id;
+    if (!configId) { setVersions([]); setSelectedVersion(pinned ? dataset.pinned_delta_version : null); return; }
+
+    const layer = getDatasetLayer(dataset.source_type);
+    setIsLoadingVersions(true);
+    const fetchVersionsFn = layer === 'bronze'
+      ? bronzeService.persistent.getVersions(configId)
+      : silverService.persistent.getVersions(configId);
+
+    fetchVersionsFn
+      .then((res) => {
+        const loadedVersions = res.versions || [];
+        setVersions(loadedVersions);
+
+        if (!pinned) {
+          setSelectedVersion(null);
+          return;
+        }
+
+        // For multi-path Bronze: reverse-lookup the execution version whose pdv entry
+        // for the primary path matches the current pinned_delta_version.
+        // This ensures the modal shows the correct logical version, not the raw delta version.
+        if (hasSiblings && loadedVersions.length > 0) {
+          const primaryLoc = _normalizePath(dataset.storage_location);
+          const match = loadedVersions.find((v) => {
+            if (!v.path_delta_versions) return false;
+            const normalizedPdv = Object.fromEntries(
+              Object.entries(v.path_delta_versions).map(([k, val]) => [_normalizePath(k), val])
+            );
+            return normalizedPdv[primaryLoc] === dataset.pinned_delta_version;
+          });
+          setSelectedVersion(match ? match.version : dataset.pinned_delta_version);
+        } else {
+          setSelectedVersion(dataset.pinned_delta_version);
+        }
+      })
+      .catch(() => {
+        setVersions([]);
+        setSelectedVersion(pinned ? dataset.pinned_delta_version : null);
+      })
+      .finally(() => setIsLoadingVersions(false));
+  }, [isOpen, dataset]);
+
+  // Normalize storage paths for comparison: strip URI scheme (s3a://, s3://, abfss://, etc.) and trailing slashes.
+  const normalizeStoragePath = (path) => {
+    if (!path) return path;
+    return path.replace(/^[a-z][a-z0-9+\-.]*:\/\//i, '').replace(/\/+$/, '');
+  };
+
+  const getPathDeltaVersionsForSelection = () => {
+    if (selectedVersion == null) return null;
+    const v = versions.find((ver) => ver.version === selectedVersion);
+    const pdv = v?.path_delta_versions;
+    if (!pdv || typeof pdv !== 'object' || Object.keys(pdv).length === 0) return null;
+    // Return a normalized version of pdv with keys stripped of URI scheme and trailing slashes
+    return Object.fromEntries(Object.entries(pdv).map(([k, val]) => [normalizeStoragePath(k), val]));
+  };
+
+  const countActivePathsForSelection = () => {
+    const pdv = getPathDeltaVersionsForSelection();
+    if (!pdv || !hasSiblings) return allSiblings.length;
+    return allSiblings.filter((t) => t.storage_location && normalizeStoragePath(t.storage_location) in pdv).length;
+  };
+
+  const handleSave = async () => {
+    if (useLatest) {
+      const anyPinned = allSiblings.some((t) => t.pinned_delta_version != null);
+      if (!anyPinned) { onClose(); return; }
+      setIsSubmitting(true);
+      setError('');
+      const results = await Promise.all(
+        allSiblings
+          .filter((t) => t.pinned_delta_version != null)
+          .map((t) => onUnpin(t))
+      );
+      setIsSubmitting(false);
+      if (results.some(Boolean)) onClose();
+      else setError('Failed to switch to latest version.');
+    } else {
+      if (selectedVersion == null || selectedVersion < 0) {
+        setError('Select a version to serve.');
+        return;
+      }
+      setIsSubmitting(true);
+      setError('');
+
+      const pdv = getPathDeltaVersionsForSelection();
+
+      if (hasSiblings && pdv) {
+        const promises = allSiblings.map((t) => {
+          const loc = normalizeStoragePath(t.storage_location);
+          if (loc && loc in pdv) {
+            return onPin(t, pdv[loc]);
+          }
+          if (t.pinned_delta_version != null) {
+            return onUnpin(t);
+          }
+          return Promise.resolve(true);
+        });
+        const results = await Promise.all(promises);
+        setIsSubmitting(false);
+        if (results.some(Boolean)) {
+          onPinSaved?.(dataset.source_config_id, selectedVersion);
+          onClose();
+        } else setError('Failed to select version. Ensure the version exists.');
+      } else {
+        const result = await onPin(dataset, selectedVersion);
+        setIsSubmitting(false);
+        if (result) onClose();
+        else setError('Failed to select version. Ensure the version exists.');
+      }
+    }
+  };
+
+  const layer = dataset ? getDatasetLayer(dataset.source_type) : 'bronze';
+  const isBronze = layer === 'bronze';
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Version Selection">
+      {dataset && (
+        <>
+          {/* Dataset info */}
+          <div className="flex items-center gap-3 mb-5 p-3 bg-gray-50 dark:bg-zinc-800 rounded-lg">
+            <div
+              className={clsx(
+                'w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0',
+                isBronze ? 'bg-amber-100 dark:bg-amber-900/30' : 'bg-purple-100 dark:bg-purple-900/30'
+              )}
+            >
+              {isBronze ? (
+                <HardDrive className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+              ) : (
+                <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              )}
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">{dataset.table_name}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Current version: <strong>v{dataset.current_version ?? '—'}</strong>
+                {isPinned && (
+                  <span className="ml-2 text-emerald-600 dark:text-emerald-400">
+                    · Serving v{hasSiblings && selectedVersion != null ? selectedVersion : dataset.pinned_delta_version}
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* Explanation */}
+          <div className="mb-5 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <div className="flex items-start gap-2">
+              <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-blue-700 dark:text-blue-300">
+                When a version is selected, consumers always receive data from that specific Delta version,
+                even when new executions create newer versions. Switch to &quot;Always Latest&quot; to always serve the most recent data.
+              </p>
+            </div>
+          </div>
+
+          <VersionStrategyPicker
+            useLatest={useLatest}
+            onChangeStrategy={setUseLatest}
+            selectedVersion={selectedVersion}
+            onSelectVersion={setSelectedVersion}
+            versions={versions}
+            currentVersion={versions[0]?.version ?? dataset.current_version}
+            isLoadingVersions={isLoadingVersions}
+            latestLabel="Always Latest"
+            latestHint="Auto-updates with each execution"
+            pinLabel="Select Version"
+            pinHint="Serve a specific version to consumers"
+            versionListLabel="Choose a version to serve"
+          />
+
+          {/* Active-paths hint for multi-source Bronze */}
+          {!useLatest && hasSiblings && selectedVersion != null && (() => {
+            const activePaths = countActivePathsForSelection();
+            const total = allSiblings.length;
+            if (activePaths < total) {
+              return (
+                <div className="mt-3 p-2.5 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-lg">
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    <strong>{activePaths}</strong> of {total} source tables had data at this version.
+                    {' '}Tables without data will be excluded from the code snippet.
+                  </p>
+                </div>
+              );
+            }
+            return (
+              <div className="mt-3 p-2.5 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/50 rounded-lg">
+                <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                  All <strong>{total}/{total}</strong> source tables have data at this version.
+                </p>
+              </div>
+            );
+          })()}
+
+          {error && <p className="mt-3 text-xs text-red-500">{error}</p>}
+
+          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-zinc-800">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={isSubmitting}
+              className={clsx(
+                'px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2',
+                useLatest
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-amber-500 hover:bg-amber-600 text-white'
+              )}
+            >
+              {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {useLatest ? 'Use Latest' : 'Select Version'}
+            </button>
+          </div>
+        </>
+      )}
     </Modal>
   );
 });
@@ -1444,6 +2053,8 @@ export default function SharingPage() {
     addTableFromBronzeVirtualized,
     addTableFromSilverVirtualized,
     removeTable,
+    pinTableVersion,
+    unpinTableVersion,
     associateRecipientToShares,
     removeRecipientFromShare,
     regenerateRecipientToken,
@@ -1454,6 +2065,9 @@ export default function SharingPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [targetSchema, setTargetSchema] = useState(null);
+  const [pinTarget, setPinTarget] = useState(null);
+  const [pinSiblings, setPinSiblings] = useState([]);
+  const [pinnedExecutionVersions, setPinnedExecutionVersions] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const createShareModal = useDisclosure();
@@ -1462,6 +2076,7 @@ export default function SharingPage() {
   const addRecipientModal = useDisclosure();
   const helpModal = useDisclosure();
   const deleteConfirmModal = useDisclosure();
+  const managePinModal = useDisclosure();
 
   // Update selected share when shares change
   useEffect(() => {
@@ -1528,7 +2143,7 @@ export default function SharingPage() {
   );
 
   const handleAddDataset = useCallback(
-    async (share, dataset, specifiedSchema) => {
+    async (share, dataset, specifiedSchema, pinnedDeltaVersion) => {
       // Usar schema especificado ou criar/usar o default
       const schema = specifiedSchema || await getOrCreateDefaultSchema(share);
       if (!schema) return false;
@@ -1537,30 +2152,28 @@ export default function SharingPage() {
         if (dataset.config_type === 'virtualized') {
           const result = await addTableFromBronzeVirtualized(share.id, schema.id, {
             bronze_virtualized_config_id: dataset.config_id,
-            name: dataset.name,
             description: dataset.description || '',
           });
           return !!result;
         }
         const result = await addTableFromBronze(share.id, schema.id, {
           bronze_config_id: dataset.config_id,
-          name: dataset.name,
           description: dataset.description || '',
+          ...(pinnedDeltaVersion != null && { pinned_delta_version: pinnedDeltaVersion }),
         });
         return !!result;
       } else {
         if (dataset.config_type === 'virtualized') {
           const result = await addTableFromSilverVirtualized(share.id, schema.id, {
             silver_virtualized_config_id: dataset.config_id,
-            name: dataset.name,
             description: dataset.description || '',
           });
           return !!result;
         }
         const result = await addTableFromSilver(share.id, schema.id, {
           silver_config_id: dataset.config_id,
-          name: dataset.name,
           description: dataset.description || '',
+          ...(pinnedDeltaVersion != null && { pinned_delta_version: pinnedDeltaVersion }),
         });
         return !!result;
       }
@@ -1575,12 +2188,15 @@ export default function SharingPage() {
   );
 
   const handleRemoveDataset = useCallback(
-    (dataset) => {
+    (dataset, allSiblings) => {
       setDeleteTarget({
         type: 'dataset',
         data: dataset,
+        siblings: allSiblings || [dataset],
         title: 'Remove Dataset',
-        message: `Are you sure you want to remove "${dataset.table_name}" from this share?`,
+        message: allSiblings && allSiblings.length > 1
+          ? `Are you sure you want to remove "${dataset.source_config_name || dataset.table_name}" (${allSiblings.length} tables) from this share?`
+          : `Are you sure you want to remove "${dataset.table_name}" from this share?`,
       });
       deleteConfirmModal.onOpen();
     },
@@ -1619,11 +2235,11 @@ export default function SharingPage() {
 
     let success = false;
     if (deleteTarget.type === 'dataset') {
-      success = await removeTable(
-        selectedShare.id,
-        deleteTarget.data.schema_id,
-        deleteTarget.data.table_id
+      const siblings = deleteTarget.siblings || [deleteTarget.data];
+      const results = await Promise.all(
+        siblings.map((t) => removeTable(selectedShare.id, t.schema_id, t.table_id))
       );
+      success = results.some(Boolean);
     } else if (deleteTarget.type === 'schema') {
       success = await deleteSchema(selectedShare.id, deleteTarget.data.id);
     } else if (deleteTarget.type === 'share') {
@@ -1651,6 +2267,22 @@ export default function SharingPage() {
     refreshDatasets();
     addDatasetModal.onOpen();
   }, [refreshDatasets, addDatasetModal]);
+
+  const handleManagePin = useCallback((dataset, siblings) => {
+    setPinTarget(dataset);
+    setPinSiblings(siblings || [dataset]);
+    managePinModal.onOpen();
+  }, [managePinModal]);
+
+  const handlePinVersion = useCallback(async (dataset, deltaVersion) => {
+    const result = await pinTableVersion(dataset.share_id, dataset.schema_id, dataset.table_id, deltaVersion);
+    return !!result;
+  }, [pinTableVersion]);
+
+  const handleUnpinVersion = useCallback(async (dataset) => {
+    const result = await unpinTableVersion(dataset.share_id, dataset.schema_id, dataset.table_id);
+    return result != null;
+  }, [unpinTableVersion]);
 
   // Recipient handlers
   const handleAddRecipientToShare = useCallback(
@@ -1846,6 +2478,7 @@ export default function SharingPage() {
               onDeleteSchema={handleDeleteSchema}
               onDeleteShare={handleDeleteShare}
               onShowHelp={helpModal.onOpen}
+              onManagePin={handleManagePin}
               recipients={shareRecipients}
               onAddRecipient={addRecipientModal.onOpen}
               onRemoveRecipient={handleRemoveRecipient}
@@ -1853,6 +2486,7 @@ export default function SharingPage() {
               onRegenerateToken={handleRegenerateToken}
               isLoading={isLoading && !selectedShare}
               isLoadingRecipients={isLoading}
+              pinnedExecutionVersions={pinnedExecutionVersions}
             />
           </main>
         </div>
@@ -1910,6 +2544,18 @@ export default function SharingPage() {
         title={deleteTarget?.title || 'Confirm Delete'}
         message={deleteTarget?.message || 'Are you sure you want to delete this item?'}
         isLoading={isSubmitting}
+      />
+
+      <ManagePinModal
+        isOpen={managePinModal.isOpen}
+        onClose={() => { managePinModal.onClose(); setPinTarget(null); setPinSiblings([]); }}
+        dataset={pinTarget}
+        siblingTables={pinSiblings}
+        onPin={handlePinVersion}
+        onUnpin={handleUnpinVersion}
+        onPinSaved={(configId, execVersion) =>
+          setPinnedExecutionVersions((prev) => ({ ...prev, [configId]: execVersion }))
+        }
       />
     </DashboardLayout>
   );

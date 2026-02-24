@@ -7,3 +7,4 @@ export { DropdownMenu, DropdownItem, DropdownDivider } from './DropdownMenu';
 export { EmptyState } from './EmptyState';
 export { Card, CardHeader, CardContent, CardFooter } from './Card';
 export { DataTable } from './DataTable';
+export { VersionStrategyPicker } from './VersionStrategyPicker';
