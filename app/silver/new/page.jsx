@@ -44,8 +44,8 @@ import { VersionStrategyPicker } from '@/components/ui';
 
 const BASE_STEPS = [
   { id: 'type_source', title: 'Type & Source', icon: Info },
-  { id: 'transformations', title: 'Transformations', icon: Code2 },
   { id: 'equivalence', title: 'Equivalence', icon: GitMerge },
+  { id: 'transformations', title: 'Transformations', icon: Code2 },
   { id: 'llm_extraction', title: 'LLM Extraction', icon: BrainCircuit, persistentOnly: true },
   { id: 'filters', title: 'Filters', icon: Filter },
   { id: 'review', title: 'Review', icon: Eye },
@@ -1266,7 +1266,7 @@ export default function NewSilverDatasetPage() {
                 <div className="mt-6 p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
                   <p className="text-sm text-blue-700 dark:text-blue-300">
                     <strong>Tip:</strong> For value mappings (e.g., M to Masculino), use Column Groups
-                    in the next step instead of transformations.
+                    in the previous step instead of transformations.
                   </p>
                 </div>
               </div>
