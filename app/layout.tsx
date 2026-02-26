@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DataFabric Platform",
-  description: "Modern Data Fabric Platform Interface",
+  title: "DermAlert",
+  description: "DermAlert Platform Interface",
 };
 
 export default function RootLayout({

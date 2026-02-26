@@ -27,6 +27,9 @@ import type {
   CreateTableFromSilverRequest,
   CreateTableFromBronzeVirtualizedRequest,
   CreateTableFromSilverVirtualizedRequest,
+  UpdateTableRequest,
+  PinVersionRequest,
+  UnpinVersionResponse,
   TableDataApiRequest,
   TableDataApiResponse,
   TableDataApiJsonResponse,
@@ -185,14 +188,15 @@ export async function searchSchemaTables(
 // =============================================
 
 /**
- * Create a table from a Bronze config
+ * Create table(s) from a Bronze config.
+ * When path_index is omitted, creates one table per output path.
  */
 export async function createTableFromBronze(
   shareId: number,
   schemaId: number,
   data: CreateTableFromBronzeRequest
-): Promise<Table> {
-  return apiClient.post<Table>(
+): Promise<Table[]> {
+  return apiClient.post<Table[]>(
     `${BASE_PATH}/shares/${shareId}/schemas/${schemaId}/tables/from-bronze`,
     data
   );
@@ -324,6 +328,49 @@ export async function postSharedTableData(
 }
 
 /**
+ * Update a table (e.g. set/unset pinned_delta_version)
+ */
+export async function updateTable(
+  shareId: number,
+  schemaId: number,
+  tableId: number,
+  data: UpdateTableRequest
+): Promise<Table> {
+  return apiClient.put<Table>(
+    `${BASE_PATH}/shares/${shareId}/schemas/${schemaId}/tables/${tableId}`,
+    data
+  );
+}
+
+/**
+ * Pin a table to a specific Delta version
+ */
+export async function pinTableVersion(
+  shareId: number,
+  schemaId: number,
+  tableId: number,
+  data: PinVersionRequest
+): Promise<Table> {
+  return apiClient.put<Table>(
+    `${BASE_PATH}/shares/${shareId}/schemas/${schemaId}/tables/${tableId}/pin-version`,
+    data
+  );
+}
+
+/**
+ * Unpin a table version (consumers receive latest data)
+ */
+export async function unpinTableVersion(
+  shareId: number,
+  schemaId: number,
+  tableId: number
+): Promise<UnpinVersionResponse> {
+  return apiClient.delete<UnpinVersionResponse>(
+    `${BASE_PATH}/shares/${shareId}/schemas/${schemaId}/tables/${tableId}/pin-version`
+  );
+}
+
+/**
  * Delete a table
  */
 export async function deleteTable(
@@ -449,6 +496,9 @@ export const deltaSharingService = {
     createFromSilver: createTableFromSilver,
     createFromBronzeVirtualized: createTableFromBronzeVirtualized,
     createFromSilverVirtualized: createTableFromSilverVirtualized,
+    update: updateTable,
+    pinVersion: pinTableVersion,
+    unpinVersion: unpinTableVersion,
     delete: deleteTable,
     getData: getSharedTableData,
     postData: postSharedTableData,

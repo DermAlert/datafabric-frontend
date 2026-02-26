@@ -730,7 +730,10 @@ export const DataTable = ({
   if (!sortedColumns.length) {
     return (
       <div className="flex items-center justify-center py-12 text-gray-500 dark:text-gray-400">
-        <p>No columns to display</p>
+        {isLoading
+          ? <Loader2 className="w-6 h-6 text-purple-500 animate-spin" />
+          : <p>No columns to display</p>
+        }
       </div>
     );
   }

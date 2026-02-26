@@ -41,6 +41,7 @@ import { bronzeService } from '@/lib/api/services/bronze';
 import { metadataService } from '@/lib/api/services/metadata';
 import { connectionService } from '@/lib/api/services/connection';
 import { equivalenceService } from '@/lib/api/services/equivalence';
+import { VersionStrategyPicker } from '@/components/ui';
 
 const BASE_STEPS = [
   { id: 'type_source', title: 'Type & Source', icon: Info },
@@ -1155,195 +1156,21 @@ export default function EditSilverDatasetPage() {
 
                       {/* Version Strategy */}
                       <div className="mb-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Bronze Version Strategy
-                          </h3>
-                          {!isLoadingVersions && bronzeVersions.length > 0 && (
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {bronzeVersions.length} version{bronzeVersions.length !== 1 ? 's' : ''} available
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          {/* Latest Version Card */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setUseLatestVersion(true);
-                              setSourceBronzeVersion(null);
-                            }}
-                            className={clsx(
-                              'relative p-4 rounded-xl border-2 text-left transition-all',
-                              useLatestVersion
-                                ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                                : 'border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600'
-                            )}
-                          >
-                            {useLatestVersion && (
-                              <div className="absolute top-2 right-2">
-                                <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
-                                  <Check className="w-3 h-3 text-white" />
-                                </div>
-                              </div>
-                            )}
-                            <div className="flex items-center gap-3 mb-2">
-                              <div
-                                className={clsx(
-                                  'p-2 rounded-lg',
-                                  useLatestVersion
-                                    ? 'bg-green-100 dark:bg-green-900/40'
-                                    : 'bg-gray-100 dark:bg-zinc-800'
-                                )}
-                              >
-                                <RefreshCw
-                                  className={clsx(
-                                    'w-5 h-5',
-                                    useLatestVersion
-                                      ? 'text-green-600 dark:text-green-400'
-                                      : 'text-gray-500 dark:text-gray-400'
-                                  )}
-                                />
-                              </div>
-                              <div>
-                                <span
-                                  className={clsx(
-                                    'font-semibold text-sm',
-                                    useLatestVersion
-                                      ? 'text-green-700 dark:text-green-300'
-                                      : 'text-gray-900 dark:text-white'
-                                  )}
-                                >
-                                  Always Latest
-                                </span>
-                                {!isLoadingVersions && bronzeVersions.length > 0 && (
-                                  <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                                    (currently v{bronzeVersions[0]?.version})
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 pl-11">
-                              Auto-updates with each Bronze execution
-                            </p>
-                          </button>
-
-                          {/* Pinned Version Card */}
-                          <button
-                            type="button"
-                            onClick={() => setUseLatestVersion(false)}
-                            disabled={isLoadingVersions || bronzeVersions.length === 0}
-                            className={clsx(
-                              'relative p-4 rounded-xl border-2 text-left transition-all',
-                              !useLatestVersion
-                                ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
-                                : 'border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600',
-                              (isLoadingVersions || bronzeVersions.length === 0) && 'opacity-50 cursor-not-allowed'
-                            )}
-                          >
-                            {!useLatestVersion && (
-                              <div className="absolute top-2 right-2">
-                                <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center">
-                                  <Check className="w-3 h-3 text-white" />
-                                </div>
-                              </div>
-                            )}
-                            <div className="flex items-center gap-3 mb-2">
-                              <div
-                                className={clsx(
-                                  'p-2 rounded-lg',
-                                  !useLatestVersion
-                                    ? 'bg-amber-100 dark:bg-amber-900/40'
-                                    : 'bg-gray-100 dark:bg-zinc-800'
-                                )}
-                              >
-                                <GitCommit
-                                  className={clsx(
-                                    'w-5 h-5',
-                                    !useLatestVersion
-                                      ? 'text-amber-600 dark:text-amber-400'
-                                      : 'text-gray-500 dark:text-gray-400'
-                                  )}
-                                />
-                              </div>
-                              <span
-                                className={clsx(
-                                  'font-semibold text-sm',
-                                  !useLatestVersion
-                                    ? 'text-amber-700 dark:text-amber-300'
-                                    : 'text-gray-900 dark:text-white'
-                                )}
-                              >
-                                Pin to Version
-                              </span>
-                            </div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 pl-11">
-                              {isLoadingVersions
-                                ? 'Loading versions...'
-                                : bronzeVersions.length === 0
-                                ? 'No versions available yet'
-                                : 'Lock to specific version for reproducibility'}
-                            </p>
-                          </button>
-                        </div>
-
-                        {/* Version Selector */}
-                        {!useLatestVersion && bronzeVersions.length > 0 && (
-                          <div className="mt-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50">
-                            <label className="block text-xs font-medium text-amber-700 dark:text-amber-300 mb-2">
-                              Select Version to Pin
-                            </label>
-                            <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-auto">
-                              {bronzeVersions.map((v, idx) => (
-                                <button
-                                  key={`${v.version}-${v.timestamp}`}
-                                  type="button"
-                                  onClick={() => setSourceBronzeVersion(v.version)}
-                                  className={clsx(
-                                    'flex items-center justify-between p-3 rounded-lg border text-left transition-all',
-                                    sourceBronzeVersion === v.version
-                                      ? 'border-amber-500 bg-white dark:bg-zinc-800 shadow-sm'
-                                      : 'border-amber-200 dark:border-amber-800/30 bg-white/50 dark:bg-zinc-800/50 hover:bg-white dark:hover:bg-zinc-800'
-                                  )}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div
-                                      className={clsx(
-                                        'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold',
-                                        sourceBronzeVersion === v.version
-                                          ? 'bg-amber-500 text-white'
-                                          : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-                                      )}
-                                    >
-                                      {v.version}
-                                    </div>
-                                    <div>
-                                      <div className="flex items-center gap-2">
-                                        <span className="font-medium text-sm text-gray-900 dark:text-white">
-                                          Version {v.version}
-                                        </span>
-                                        {idx === 0 && (
-                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
-                                            LATEST
-                                          </span>
-                                        )}
-                                      </div>
-                                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                                        {new Date(v.timestamp).toLocaleDateString()} at{' '}
-                                        {new Date(v.timestamp).toLocaleTimeString()}
-                                        {v.total_rows && ` • ${v.total_rows.toLocaleString()} rows`}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  {sourceBronzeVersion === v.version && (
-                                    <Check className="w-5 h-5 text-amber-500" />
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                        <VersionStrategyPicker
+                          useLatest={useLatestVersion}
+                          onChangeStrategy={(latest) => {
+                            setUseLatestVersion(latest);
+                            if (latest) setSourceBronzeVersion(null);
+                          }}
+                          selectedVersion={sourceBronzeVersion}
+                          onSelectVersion={setSourceBronzeVersion}
+                          versions={bronzeVersions}
+                          currentVersion={bronzeVersions[0]?.version ?? null}
+                          isLoadingVersions={isLoadingVersions}
+                          latestLabel="Always Latest"
+                          latestHint="Auto-updates with each Bronze execution"
+                          pinHint="Lock to specific version for reproducibility"
+                        />
                       </div>
                     </>
                   ) : (

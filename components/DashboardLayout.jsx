@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -284,20 +285,24 @@ export default function DashboardLayout({ children }) {
             collapsed ? 'justify-center flex-col gap-4' : 'justify-between'
           )}
         >
-          <div className="flex items-center gap-2 font-bold text-xl text-gray-900 dark:text-white transition-all overflow-hidden">
-            <Layers
-              className="w-6 h-6 text-blue-600 dark:text-blue-500 flex-shrink-0"
-              aria-hidden="true"
+          <Link href="/" className="flex items-center transition-all overflow-hidden">
+            <Image
+              src="/dermalert_no_background_color.svg"
+              alt="DermAlert"
+              width={collapsed ? 32 : 160}
+              height={collapsed ? 32 : 42}
+              className="dark:hidden transition-all duration-300 object-contain"
+              priority
             />
-            <span
-              className={clsx(
-                'whitespace-nowrap transition-all duration-300',
-                collapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'
-              )}
-            >
-              DataFabric
-            </span>
-          </div>
+            <Image
+              src="/dermalert_no_background_white.svg"
+              alt="DermAlert"
+              width={collapsed ? 32 : 160}
+              height={collapsed ? 32 : 42}
+              className="hidden dark:block transition-all duration-300 object-contain"
+              priority
+            />
+          </Link>
           <div className={collapsed ? 'scale-75' : ''}>
             <ModeToggle />
           </div>

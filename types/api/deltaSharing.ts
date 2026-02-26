@@ -126,6 +126,7 @@ export type ShareMode = 'full' | 'filtered' | 'aggregated';
 export interface Table {
   id: number;
   name: string;
+  protocol_table_name?: string | null;
   description: string | null;
   schema_id: number;
   schema_name: string;
@@ -137,11 +138,17 @@ export interface Table {
   share_mode: ShareMode;
   filter_condition: string | null;
   current_version: number | null;
+  pinned_delta_version: number | null;
   table_format: string;
   partition_columns: string | null;
   storage_location: string | null;
   data_criacao: string;
   data_atualizacao: string;
+  // Campos do backend para identificar config de origem
+  bronze_persistent_config_id?: number | null;
+  silver_persistent_config_id?: number | null;
+  bronze_virtualized_config_id?: number | null;
+  silver_virtualized_config_id?: number | null;
   // Campos derivados para compatibilidade com UI
   table_id?: number;
   table_name?: string;
@@ -157,6 +164,7 @@ export interface CreateTableFromBronzeRequest {
   description?: string;
   share_mode?: ShareMode;
   path_index?: number;
+  pinned_delta_version?: number | null;
 }
 
 export interface CreateTableFromSilverRequest {
@@ -164,6 +172,21 @@ export interface CreateTableFromSilverRequest {
   name: string;
   description?: string;
   share_mode?: ShareMode;
+  pinned_delta_version?: number | null;
+}
+
+export interface UpdateTableRequest {
+  pinned_delta_version?: number | null;
+}
+
+export interface PinVersionRequest {
+  delta_version: number;
+}
+
+export interface UnpinVersionResponse {
+  message: string;
+  table_id: number;
+  table_name: string;
 }
 
 export interface CreateTableFromBronzeVirtualizedRequest {
