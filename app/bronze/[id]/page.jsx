@@ -338,17 +338,29 @@ export default function DatasetViewPage() {
   const handleGroupChange = (index) => {
     if (index === selectedGroupIndex) return;
     setSelectedGroupIndex(index);
-    setServerFilters([]);
-    setServerSortBy(null);
-    setServerSortOrder('asc');
-    setServerPage(1);
-    loadPersistentData(selectedVersion, {
-      pathIndex: index,
-      filters: [],
-      sortBy: null,
-      sortOrder: 'asc',
-      page: 1,
-    });
+
+    if (isVirtualized) {
+      const group = groups[index];
+      if (group) {
+        setColumns(group.columns || []);
+        setData(group.data || []);
+        setTotalRows(group.data?.length || 0);
+      }
+      setSearchQuery('');
+      setCurrentPage(1);
+    } else {
+      setServerFilters([]);
+      setServerSortBy(null);
+      setServerSortOrder('asc');
+      setServerPage(1);
+      loadPersistentData(selectedVersion, {
+        pathIndex: index,
+        filters: [],
+        sortBy: null,
+        sortOrder: 'asc',
+        page: 1,
+      });
+    }
   };
 
   // Handle refresh
@@ -583,7 +595,9 @@ export default function DatasetViewPage() {
                 className={clsx(
                   'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap',
                   selectedGroupIndex === idx
-                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                    ? isVirtualized
+                      ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400'
+                      : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
                     : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-zinc-800'
                 )}
               >
