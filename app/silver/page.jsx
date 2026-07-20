@@ -46,6 +46,9 @@ import {
 import { SearchInput } from '@/components/ui/Input';
 import { formatBytes, formatDate } from '@/lib/utils';
 import { silverService } from '@/lib/api/services/silver';
+import { bronzeService } from '@/lib/api/services/bronze';
+import { metadataService } from '@/lib/api/services/metadata';
+import { connectionService } from '@/lib/api/services/connection';
 import { equivalenceService } from '@/lib/api/services/equivalence';
 
 // ===========================================
@@ -389,6 +392,8 @@ const TransformationsSection = memo(function TransformationsSection({
   currentCount,
   isCollapsed,
   onToggle,
+  columnMeta,
+  ruleMeta,
 }) {
   if (!transformations || transformations.length === 0) return null;
 
@@ -440,48 +445,60 @@ const TransformationsSection = memo(function TransformationsSection({
         )}
       >
         <div className="space-y-2">
-          {transformations.map((t, i) => (
-            <div
-              key={i}
-              className={clsx(
-                'flex items-center justify-between p-3 rounded-lg border',
-                isViewingOldVersion
-                  ? 'bg-amber-50/50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50'
-                  : 'bg-white dark:bg-zinc-800 border-gray-200 dark:border-zinc-700'
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <code
-                  className={clsx(
-                    'px-2 py-1 rounded text-sm font-mono',
-                    isViewingOldVersion
-                      ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200'
-                      : 'bg-gray-100 dark:bg-zinc-700 text-gray-800 dark:text-gray-200'
+          {transformations.map((t, i) => {
+            const colInfo = columnMeta?.[t.column_id];
+            const ruleInfo = ruleMeta?.[t.rule_id];
+
+            return (
+              <div
+                key={i}
+                className={clsx(
+                  'flex items-center justify-between p-3 rounded-lg border',
+                  isViewingOldVersion
+                    ? 'bg-amber-50/50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50'
+                    : 'bg-white dark:bg-zinc-800 border-gray-200 dark:border-zinc-700'
+                )}
+              >
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <code
+                    className={clsx(
+                      'px-2 py-1 rounded text-sm font-mono shrink-0',
+                      isViewingOldVersion
+                        ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200'
+                        : 'bg-gray-100 dark:bg-zinc-700 text-gray-800 dark:text-gray-200'
+                    )}
+                  >
+                    {colInfo
+                      ? `${colInfo.tableName}.${colInfo.columnName}`
+                      : `column_id: ${t.column_id}`}
+                  </code>
+                  {colInfo?.connectionName && (
+                    <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
+                      ({colInfo.connectionName})
+                    </span>
                   )}
-                >
-                  column_id: {t.column_id}
-                </code>
-                <ArrowRightLeft className="w-4 h-4 text-gray-400" />
-                <span
-                  className={clsx(
-                    'px-2 py-1 rounded text-xs font-medium',
-                    isViewingOldVersion
-                      ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
-                      : t.type === 'template'
-                      ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
-                      : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                  )}
-                >
-                  {transformationLabels[t.type] || t.type.toUpperCase()}
-                </span>
+                  <ArrowRightLeft className="w-4 h-4 text-gray-400 shrink-0" />
+                  <span
+                    className={clsx(
+                      'px-2 py-1 rounded text-xs font-medium shrink-0',
+                      isViewingOldVersion
+                        ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                        : t.type === 'template'
+                        ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                        : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                    )}
+                  >
+                    {transformationLabels[t.type] || t.type.toUpperCase()}
+                  </span>
+                </div>
+                {t.rule_id && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0 ml-2 whitespace-nowrap">
+                    Rule: {ruleInfo?.name || `#${t.rule_id}`}
+                  </span>
+                )}
               </div>
-              {t.rule_id && (
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  Rule ID: {t.rule_id}
-                </span>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>
@@ -571,8 +588,18 @@ const FiltersSection = memo(function FiltersSection({
   isViewingOldVersion,
   isCollapsed,
   onToggle,
+  columnMeta,
 }) {
   if (!filters?.conditions || filters.conditions.length === 0) return null;
+
+  const resolveColumnName = (condition) => {
+    if (condition.column_name) return condition.column_name;
+    const info = condition.column_id && columnMeta?.[condition.column_id];
+    if (info) {
+      return info.tableName ? `${info.tableName}.${info.columnName}` : info.columnName;
+    }
+    return `column_${condition.column_id}`;
+  };
 
   return (
     <section
@@ -620,13 +647,14 @@ const FiltersSection = memo(function FiltersSection({
             WHERE{' '}
             {filters.conditions
               .map((c) => {
+                const colName = resolveColumnName(c);
                 if (['IS NULL', 'IS NOT NULL'].includes(c.operator)) {
-                  return `column_${c.column_id} ${c.operator}`;
+                  return `${colName} ${c.operator}`;
                 }
                 if (c.operator === 'BETWEEN') {
-                  return `column_${c.column_id} BETWEEN ${c.value_min} AND ${c.value_max}`;
+                  return `${colName} BETWEEN ${c.value_min} AND ${c.value_max}`;
                 }
-                return `column_${c.column_id} ${c.operator} '${c.value}'`;
+                return `${colName} ${c.operator} '${c.value}'`;
               })
               .join(` ${filters.logic} `)}
           </code>
@@ -644,6 +672,7 @@ const LLMExtractionsSection = memo(function LLMExtractionsSection({
   llmExtractions,
   isCollapsed,
   onToggle,
+  columnMeta,
 }) {
   if (!llmExtractions || llmExtractions.length === 0) return null;
 
@@ -709,9 +738,20 @@ const LLMExtractionsSection = memo(function LLMExtractionsSection({
                   ))}
                 </div>
               )}
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                Source column ID: {ext.source_column_id}
-              </p>
+              {(() => {
+                const srcInfo = columnMeta?.[ext.source_column_id];
+                return (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    Source:{' '}
+                    {srcInfo
+                      ? `${srcInfo.tableName}.${srcInfo.columnName}`
+                      : `column_id: ${ext.source_column_id}`}
+                    {srcInfo?.connectionName && (
+                      <span className="ml-1 opacity-75">({srcInfo.connectionName})</span>
+                    )}
+                  </p>
+                );
+              })()}
             </div>
           ))}
         </div>
@@ -729,13 +769,15 @@ const DetailPanel = memo(function DetailPanel({
   currentConfig,
   versions,
   columnGroupMeta,
+  columnMeta,
+  ruleMeta,
   selectedVersion,
   onSelectVersion,
   isLoadingVersions,
   isLoadingConfig,
   onExecute,
   isExecuting,
-  showPending, // Only show pending option if there are uncommitted changes
+  showPending,
 }) {
   const versionDropdown = useDisclosure();
 
@@ -1166,6 +1208,8 @@ const DetailPanel = memo(function DetailPanel({
               currentCount={dataset.columnTransformations?.length}
               isCollapsed={collapsedSections.transformations}
               onToggle={() => toggleSection('transformations')}
+              columnMeta={columnMeta}
+              ruleMeta={ruleMeta}
             />
 
             {/* Column Groups (Equivalence) */}
@@ -1183,6 +1227,7 @@ const DetailPanel = memo(function DetailPanel({
               isViewingOldVersion={isViewingOldVersion}
               isCollapsed={collapsedSections.filters}
               onToggle={() => toggleSection('filters')}
+              columnMeta={columnMeta}
             />
 
             {/* LLM Extractions */}
@@ -1191,6 +1236,7 @@ const DetailPanel = memo(function DetailPanel({
                 llmExtractions={displayConfig?.llm_extractions}
                 isCollapsed={collapsedSections.llmExtractions}
                 onToggle={() => toggleSection('llmExtractions')}
+                columnMeta={columnMeta}
               />
             )}
           </>
@@ -1244,6 +1290,8 @@ export default function SilverLayerPage() {
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
   const [executingId, setExecutingId] = useState(null);
+  const [columnMeta, setColumnMeta] = useState({});
+  const [ruleMeta, setRuleMeta] = useState({});
 
   // Load version history and current config when selecting a persistent dataset
   useEffect(() => {
@@ -1297,6 +1345,80 @@ export default function SilverLayerPage() {
     };
     loadColumnGroupNames();
   }, []);
+
+  // Load normalization rules for displaying real names
+  useEffect(() => {
+    const loadRules = async () => {
+      try {
+        const rules = await silverService.normalizationRules.list();
+        const meta = {};
+        for (const rule of rules) {
+          meta[rule.id] = { name: rule.name };
+        }
+        setRuleMeta(meta);
+      } catch (err) {
+        console.error('Failed to load normalization rules:', err);
+      }
+    };
+    loadRules();
+  }, []);
+
+  // Load column metadata (column names + table names + connection names) when dataset changes
+  useEffect(() => {
+    const loadColumnMeta = async () => {
+      if (!selectedDataset) {
+        setColumnMeta({});
+        return;
+      }
+
+      try {
+        let tableIds = [];
+
+        if (selectedDataset.type === 'persistent' && currentConfig) {
+          const bronzeConfig = await bronzeService.persistent.get(currentConfig.source_bronze_config_id);
+          tableIds = bronzeConfig.tables?.map((t) => t.table_id) || [];
+        } else if (selectedDataset.type === 'virtualized' && selectedDataset.tables) {
+          tableIds = selectedDataset.tables.map((t) => t.table_id);
+        }
+
+        if (tableIds.length === 0) {
+          setColumnMeta({});
+          return;
+        }
+
+        const [tableResults, connections] = await Promise.all([
+          Promise.all(
+            tableIds.map((tableId) => metadataService.getTableDetails(tableId).catch(() => null))
+          ),
+          connectionService.list().catch(() => []),
+        ]);
+
+        const connMap = {};
+        for (const conn of connections) {
+          connMap[conn.id] = conn.name;
+        }
+
+        const meta = {};
+        for (const tableDetails of tableResults) {
+          if (!tableDetails?.columns) continue;
+          const connName = connMap[tableDetails.connection_id] || null;
+          for (const col of tableDetails.columns) {
+            meta[col.id] = {
+              columnName: col.column_name || col.name,
+              tableName: tableDetails.table_name,
+              connectionName: connName,
+            };
+          }
+        }
+
+        setColumnMeta(meta);
+      } catch (err) {
+        console.error('Failed to load column metadata:', err);
+      }
+    };
+
+    loadColumnMeta();
+  }, [selectedDataset, currentConfig]);
 
   // Handlers
   const handleSelectDataset = useCallback((dataset) => {
@@ -1560,6 +1682,8 @@ export default function SilverLayerPage() {
               currentConfig={currentConfig}
               versions={versions}
               columnGroupMeta={columnGroupMeta}
+              columnMeta={columnMeta}
+              ruleMeta={ruleMeta}
               selectedVersion={selectedVersion}
               onSelectVersion={setSelectedVersion}
               isLoadingVersions={isLoadingVersions}
