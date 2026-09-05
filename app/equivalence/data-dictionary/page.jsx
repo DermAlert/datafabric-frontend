@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { Suspense, useState, useEffect, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { 
   Plus, 
@@ -146,7 +146,7 @@ function TokensInput({
   );
 }
 
-export default function DataDictionaryPage() {
+function DataDictionaryContent() {
   const searchParams = useSearchParams();
   const domainParam = searchParams.get('domain');
   const termParam = searchParams.get('term');
@@ -1041,5 +1041,13 @@ export default function DataDictionaryPage() {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+export default function DataDictionaryPage() {
+  return (
+    <Suspense fallback={null}>
+      <DataDictionaryContent />
+    </Suspense>
   );
 }

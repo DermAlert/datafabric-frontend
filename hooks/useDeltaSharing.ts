@@ -67,7 +67,7 @@ interface UseDeltaSharingReturn {
     shareId: number,
     schemaId: number,
     data: CreateTableFromBronzeRequest
-  ) => Promise<Table | null>;
+  ) => Promise<Table[] | null>;
   addTableFromSilver: (
     shareId: number,
     schemaId: number,

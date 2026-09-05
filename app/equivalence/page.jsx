@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, useRef, memo } from 'react';
+import React, { Suspense, useState, useCallback, useEffect, useRef, memo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import Link from 'next/link';
@@ -1316,7 +1316,7 @@ const DetailPanel = memo(function DetailPanel({
   );
 });
 
-export default function EquivalencePage() {
+function EquivalenceContent() {
   const searchParams = useSearchParams();
   const [groups, setGroups] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1526,5 +1526,13 @@ export default function EquivalencePage() {
         />
       </div>
     </DashboardLayout>
+  );
+}
+
+export default function EquivalencePage() {
+  return (
+    <Suspense fallback={null}>
+      <EquivalenceContent />
+    </Suspense>
   );
 }
